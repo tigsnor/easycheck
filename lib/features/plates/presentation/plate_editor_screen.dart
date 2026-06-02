@@ -6,7 +6,12 @@ import '../../dilution/domain/dilution_service.dart';
 import '../domain/plate.dart';
 
 class PlateEditorScreen extends StatefulWidget {
-  const PlateEditorScreen({super.key});
+  const PlateEditorScreen({
+    this.experimentTitle = 'CCK-8 2배 희석 실험 초안',
+    super.key,
+  });
+
+  final String experimentTitle;
 
   @override
   State<PlateEditorScreen> createState() => _PlateEditorScreenState();
@@ -52,7 +57,10 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            _ExperimentHeaderCard(series: _demoConcentrations),
+            _ExperimentHeaderCard(
+              title: widget.experimentTitle,
+              series: _demoConcentrations,
+            ),
             const SizedBox(height: 18),
             Text(
               _plate.name,
@@ -83,8 +91,9 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
 }
 
 class _ExperimentHeaderCard extends StatelessWidget {
-  const _ExperimentHeaderCard({required this.series});
+  const _ExperimentHeaderCard({required this.title, required this.series});
 
+  final String title;
   final List<double> series;
 
   @override
@@ -96,7 +105,7 @@ class _ExperimentHeaderCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'CCK-8 2배 희석 실험 초안',
+              title,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),

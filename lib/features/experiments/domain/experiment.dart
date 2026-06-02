@@ -1,5 +1,7 @@
 enum ExperimentStatus { draft, planned, inProgress, completed, archived }
 
+const _unset = Object();
+
 class Experiment {
   const Experiment({
     required this.id,
@@ -28,9 +30,9 @@ class Experiment {
   Experiment copyWith({
     String? id,
     String? title,
-    String? projectName,
+    Object? projectName = _unset,
     String? experimentType,
-    String? researcher,
+    Object? researcher = _unset,
     ExperimentStatus? status,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -40,9 +42,13 @@ class Experiment {
     return Experiment(
       id: id ?? this.id,
       title: title ?? this.title,
-      projectName: projectName ?? this.projectName,
+      projectName: identical(projectName, _unset)
+          ? this.projectName
+          : projectName as String?,
       experimentType: experimentType ?? this.experimentType,
-      researcher: researcher ?? this.researcher,
+      researcher: identical(researcher, _unset)
+          ? this.researcher
+          : researcher as String?,
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

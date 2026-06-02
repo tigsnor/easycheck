@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../features/plates/presentation/plate_editor_screen.dart';
+import '../features/experiments/presentation/experiments_home_screen.dart';
 import 'theme.dart';
 
 class EasyCheckApp extends StatelessWidget {
@@ -12,7 +12,7 @@ class EasyCheckApp extends StatelessWidget {
       title: 'EasyCheck',
       debugShowCheckedModeBanner: false,
       theme: buildEasyCheckTheme(),
-      home: const PlateEditorScreen(),
+      home: const ExperimentsHomeScreen(),
     );
   }
 }
