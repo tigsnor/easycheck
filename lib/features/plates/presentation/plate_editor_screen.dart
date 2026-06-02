@@ -156,7 +156,8 @@ class _PlateGrid extends StatelessWidget {
               itemBuilder: (context, index) {
                 final row = index ~/ columnCount;
                 final column = index % columnCount;
-                final position = WellPosition(rowIndex: row, columnIndex: column);
+                final position =
+                    WellPosition(rowIndex: row, columnIndex: column);
                 final isSelected = selectedPosition == position;
                 final concentration = column < 2 && row < concentrations.length
                     ? concentrations[row]
@@ -193,7 +194,8 @@ class _WellCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasDose = concentration != null;
-    final background = hasDose ? const Color(0xFFE6D9FF) : const Color(0xFFF2F2F7);
+    final background =
+        hasDose ? const Color(0xFFE6D9FF) : const Color(0xFFF2F2F7);
     final borderColor = selected ? Colors.black : Colors.transparent;
 
     return Semantics(
@@ -216,7 +218,8 @@ class _WellCell extends StatelessWidget {
             style: TextStyle(
               fontSize: hasDose ? 9 : 7,
               fontWeight: hasDose ? FontWeight.w700 : FontWeight.w500,
-              color: hasDose ? const Color(0xFF4B208C) : const Color(0xFF8E8E93),
+              color:
+                  hasDose ? const Color(0xFF4B208C) : const Color(0xFF8E8E93),
             ),
           ),
         ),

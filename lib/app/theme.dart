@@ -11,8 +11,7 @@ ThemeData buildEasyCheckTheme() {
       seedColor: noteYellow,
       primary: noteYellow,
       onPrimary: ink,
-      surface: Colors.white,
-      background: background,
+      surface: background,
     ),
     scaffoldBackgroundColor: background,
     appBarTheme: const AppBarTheme(

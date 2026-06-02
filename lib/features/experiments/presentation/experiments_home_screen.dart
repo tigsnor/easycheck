@@ -142,9 +142,11 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
           experiment: experiment,
           onChanged: (updated) {
             setState(() {
-              final index = _experiments.indexWhere((item) => item.id == updated.id);
+              final index =
+                  _experiments.indexWhere((item) => item.id == updated.id);
               if (index != -1) {
-                _experiments[index] = updated.copyWith(updatedAt: DateTime.now());
+                _experiments[index] =
+                    updated.copyWith(updatedAt: DateTime.now());
               }
             });
           },
@@ -178,7 +180,8 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   }
 
   void _deleteExperiment(Experiment experiment) {
-    setState(() => _experiments.removeWhere((item) => item.id == experiment.id));
+    setState(
+        () => _experiments.removeWhere((item) => item.id == experiment.id));
   }
 
   Future<void> _showCreateExperimentSheet() async {
@@ -280,16 +283,18 @@ class _ExperimentCard extends StatelessWidget {
                       children: [
                         Text(
                           experiment.title,
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           '${experiment.experimentType} · ${experiment.status.label}',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Colors.black54,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.black54,
+                                  ),
                         ),
                       ],
                     ),
@@ -365,7 +370,8 @@ class _EmptyExperimentCard extends StatelessWidget {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            Icon(Icons.search_off_rounded, size: 42, color: Colors.grey.shade500),
+            Icon(Icons.search_off_rounded,
+                size: 42, color: Colors.grey.shade500),
             const SizedBox(height: 12),
             const Text('검색 결과가 없습니다.'),
           ],
@@ -423,16 +429,18 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
-            value: _experimentType,
+            initialValue: _experimentType,
             decoration: const InputDecoration(labelText: '실험 유형'),
             items: const [
               DropdownMenuItem(value: 'CCK-8', child: Text('CCK-8')),
               DropdownMenuItem(value: 'MTT', child: Text('MTT')),
               DropdownMenuItem(value: 'ELISA', child: Text('ELISA')),
-              DropdownMenuItem(value: 'Dose-response', child: Text('Dose-response')),
+              DropdownMenuItem(
+                  value: 'Dose-response', child: Text('Dose-response')),
               DropdownMenuItem(value: 'Custom', child: Text('Custom')),
             ],
-            onChanged: (value) => setState(() => _experimentType = value ?? 'Custom'),
+            onChanged: (value) =>
+                setState(() => _experimentType = value ?? 'Custom'),
           ),
           const SizedBox(height: 12),
           TextField(

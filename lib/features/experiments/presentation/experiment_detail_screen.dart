@@ -28,7 +28,8 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.experiment.title);
-    _projectController = TextEditingController(text: widget.experiment.projectName ?? '');
+    _projectController =
+        TextEditingController(text: widget.experiment.projectName ?? '');
     _notesController = TextEditingController(text: widget.experiment.notes);
     _status = widget.experiment.status;
     _experimentType = widget.experiment.experimentType;
@@ -75,29 +76,43 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                 child: Column(
                   children: [
                     DropdownButtonFormField<String>(
-                      value: _experimentType,
+                      initialValue: _experimentType,
                       decoration: const InputDecoration(labelText: '실험 유형'),
                       items: const [
                         DropdownMenuItem(value: 'CCK-8', child: Text('CCK-8')),
                         DropdownMenuItem(value: 'MTT', child: Text('MTT')),
                         DropdownMenuItem(value: 'ELISA', child: Text('ELISA')),
-                        DropdownMenuItem(value: 'Dose-response', child: Text('Dose-response')),
-                        DropdownMenuItem(value: 'Custom', child: Text('Custom')),
+                        DropdownMenuItem(
+                            value: 'Dose-response',
+                            child: Text('Dose-response')),
+                        DropdownMenuItem(
+                            value: 'Custom', child: Text('Custom')),
                       ],
-                      onChanged: (value) => setState(() => _experimentType = value ?? 'Custom'),
+                      onChanged: (value) =>
+                          setState(() => _experimentType = value ?? 'Custom'),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<ExperimentStatus>(
-                      value: _status,
+                      initialValue: _status,
                       decoration: const InputDecoration(labelText: '상태'),
                       items: const [
-                        DropdownMenuItem(value: ExperimentStatus.draft, child: Text('초안')),
-                        DropdownMenuItem(value: ExperimentStatus.planned, child: Text('계획됨')),
-                        DropdownMenuItem(value: ExperimentStatus.inProgress, child: Text('진행 중')),
-                        DropdownMenuItem(value: ExperimentStatus.completed, child: Text('완료')),
-                        DropdownMenuItem(value: ExperimentStatus.archived, child: Text('보관됨')),
+                        DropdownMenuItem(
+                            value: ExperimentStatus.draft, child: Text('초안')),
+                        DropdownMenuItem(
+                            value: ExperimentStatus.planned,
+                            child: Text('계획됨')),
+                        DropdownMenuItem(
+                            value: ExperimentStatus.inProgress,
+                            child: Text('진행 중')),
+                        DropdownMenuItem(
+                            value: ExperimentStatus.completed,
+                            child: Text('완료')),
+                        DropdownMenuItem(
+                            value: ExperimentStatus.archived,
+                            child: Text('보관됨')),
                       ],
-                      onChanged: (value) => setState(() => _status = value ?? ExperimentStatus.draft),
+                      onChanged: (value) => setState(
+                          () => _status = value ?? ExperimentStatus.draft),
                     ),
                     const SizedBox(height: 12),
                     TextField(
