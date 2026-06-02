@@ -30,3 +30,16 @@ flutter run
 ```bash
 flutter test
 ```
+
+### Flutter SDK가 없을 때
+
+현재 환경에서 `flutter: command not found`가 발생하면 아래 bootstrap 스크립트로 프로젝트 로컬 Flutter SDK를 설치합니다. 설치 위치는 기본적으로 `.tool/flutter`이며 git에는 포함되지 않습니다.
+
+```bash
+scripts/bootstrap_flutter.sh
+export PATH="$PWD/.tool/flutter/bin:$PATH"
+flutter pub get
+flutter test
+```
+
+만약 네트워크 정책 때문에 Google Storage 또는 GitHub 접근이 `403`으로 막히면, Flutter 공식 SDK를 수동으로 설치한 뒤 `flutter`가 PATH에 잡히도록 설정하고 같은 테스트 명령을 실행합니다.
