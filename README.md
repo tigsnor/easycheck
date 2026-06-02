@@ -5,6 +5,7 @@ EasyCheck는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 ## 문서
 
 - [Flutter 개발 플랜](docs/flutter-development-plan.md)
+- [MVP 우선 개발 로드맵](docs/mvp-first-roadmap.md)
 
 ## 현재 구현 상태
 
@@ -44,3 +45,7 @@ flutter test
 ```
 
 만약 네트워크 정책 때문에 Google Storage 또는 GitHub 접근이 `403`으로 막히면, Flutter 공식 SDK를 수동으로 설치한 뒤 `flutter`가 PATH에 잡히도록 설정하고 같은 테스트 명령을 실행합니다.
+
+## CI
+
+GitHub Actions의 [Flutter CI](.github/workflows/flutter.yml)는 push와 pull request에서 `flutter pub get`, `dart format --set-exit-if-changed .`, `flutter analyze`, `flutter test`를 실행합니다.
