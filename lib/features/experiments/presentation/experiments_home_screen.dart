@@ -207,8 +207,9 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
       return;
     }
     setState(() {
-      _experiments =
-          _experiments.where((item) => item.id != experiment.id).toList();
+      _experiments = _experiments
+          .where((item) => item.id != experiment.id)
+          .toList();
     });
   }
 
@@ -331,17 +332,13 @@ class _ExperimentCard extends StatelessWidget {
                       children: [
                         Text(
                           experiment.title,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
+                          style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           '${experiment.experimentType} · ${experiment.status.label}',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
+                          style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: Colors.black54),
                         ),
                       ],

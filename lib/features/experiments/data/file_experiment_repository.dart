@@ -28,11 +28,12 @@ class FileExperimentRepository implements ExperimentRepository {
       throw const FormatException('Experiments file must contain a JSON list.');
     }
 
-    final experiments = decoded
-        .whereType<Map<String, Object?>>()
-        .map(Experiment.fromJson)
-        .toList()
-      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    final experiments =
+        decoded
+            .whereType<Map<String, Object?>>()
+            .map(Experiment.fromJson)
+            .toList()
+          ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
     return experiments;
   }

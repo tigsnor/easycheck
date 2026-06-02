@@ -25,7 +25,10 @@ class Plate {
           .whereType<Map<String, Object?>>()
           .map(Well.fromJson)
           .toList(),
-      groups: const [],
+      groups: (json['groups'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, Object?>>()
+          .map(WellGroup.fromJson)
+          .toList(),
       notes: json['notes'] as String? ?? '',
     );
   }
@@ -47,6 +50,7 @@ class Plate {
       'rowCount': rowCount,
       'columnCount': columnCount,
       'wells': wells.map((well) => well.toJson()).toList(),
+      'groups': groups.map((group) => group.toJson()).toList(),
       'notes': notes,
     };
   }
