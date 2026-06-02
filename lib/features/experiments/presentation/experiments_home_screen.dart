@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../plates/presentation/plate_editor_screen.dart';
+import '../data/file_experiment_repository.dart';
+import '../data/experiment_repository.dart';
 import '../domain/experiment.dart';
 import 'experiment_detail_screen.dart';
 
@@ -12,22 +15,13 @@ class ExperimentsHomeScreen extends StatefulWidget {
 }
 
 class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
+  static const _uuid = Uuid();
+
   final _searchController = TextEditingController();
-  final List<Experiment> _experiments = [
-    Experiment(
-      id: 'demo-cck8',
-      title: 'Drug A CCK-8 2배 희석',
-      projectName: 'Cell viability',
-      experimentType: 'CCK-8',
-      researcher: 'EasyCheck',
-      status: ExperimentStatus.planned,
-      createdAt: DateTime(2026, 6, 2, 9),
-      updatedAt: DateTime(2026, 6, 2, 9),
-      notes: '96-well plate에서 1000 µM부터 2배 희석하는 기본 실험 노트 예시입니다.',
-      tags: const ['CCK8', 'DoseResponse', 'DrugA'],
-    ),
-  ];
+  final ExperimentRepository _repository = const FileExperimentRepository();
+  List<Experiment> _experiments = const [];
   String _query = '';
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -35,6 +29,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
     _searchController.addListener(() {
       setState(() => _query = _searchController.text.trim().toLowerCase());
     });
+    _loadExperiments();
   }
 
   @override
@@ -82,9 +77,9 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
           children: [
             Text(
               '실험 노트',
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 12),
             SearchBar(
@@ -105,13 +100,19 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
             const SizedBox(height: 18),
             Text(
               '최근 실험',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 10),
-            if (experiments.isEmpty)
-              const _EmptyExperimentCard()
+            if (_isLoading)
+              const _LoadingExperimentCard()
+            else if (experiments.isEmpty)
+              _EmptyExperimentCard(
+                message: _query.isEmpty ? '아직 실험 노트가 없습니다.' : '검색 결과가 없습니다.',
+                actionLabel: _query.isEmpty ? '첫 실험 만들기' : null,
+                onAction: _query.isEmpty ? _showCreateExperimentSheet : null,
+              )
             else
               for (final experiment in experiments)
                 Padding(
@@ -135,21 +136,33 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
     );
   }
 
+  Future<void> _loadExperiments() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final experiments = await _repository.loadExperiments();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _experiments = experiments;
+        _isLoading = false;
+      });
+    } on Object catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isLoading = false);
+      _showError('실험 노트를 불러오지 못했습니다: $error');
+    }
+  }
+
   void _openExperiment(Experiment experiment) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ExperimentDetailScreen(
           experiment: experiment,
-          onChanged: (updated) {
-            setState(() {
-              final index =
-                  _experiments.indexWhere((item) => item.id == updated.id);
-              if (index != -1) {
-                _experiments[index] =
-                    updated.copyWith(updatedAt: DateTime.now());
-              }
-            });
-          },
+          onChanged: _saveExperiment,
         ),
       ),
     );
@@ -158,30 +171,45 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   void _openPlate(Experiment experiment) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => PlateEditorScreen(experimentTitle: experiment.title),
+        builder: (_) => PlateEditorScreen(
+          experimentId: experiment.id,
+          experimentTitle: experiment.title,
+        ),
       ),
     );
   }
 
-  void _duplicateExperiment(Experiment experiment) {
-    final now = DateTime.now();
-    setState(() {
-      _experiments.insert(
-        0,
-        experiment.copyWith(
-          id: 'experiment-${now.microsecondsSinceEpoch}',
-          title: '${experiment.title} 복사본',
-          status: ExperimentStatus.draft,
-          createdAt: now,
-          updatedAt: now,
-        ),
-      );
-    });
+  Future<void> _saveExperiment(Experiment experiment) async {
+    final saved = experiment.copyWith(updatedAt: DateTime.now());
+    await _repository.saveExperiment(saved);
+    if (!mounted) {
+      return;
+    }
+    setState(() => _upsertLocalExperiment(saved));
   }
 
-  void _deleteExperiment(Experiment experiment) {
-    setState(
-        () => _experiments.removeWhere((item) => item.id == experiment.id));
+  Future<void> _duplicateExperiment(Experiment experiment) async {
+    final now = DateTime.now();
+    final copy = experiment.copyWith(
+      id: _uuid.v4(),
+      title: '${experiment.title} 복사본',
+      status: ExperimentStatus.draft,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    await _saveExperiment(copy);
+  }
+
+  Future<void> _deleteExperiment(Experiment experiment) async {
+    await _repository.deleteExperiment(experiment.id);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _experiments =
+          _experiments.where((item) => item.id != experiment.id).toList();
+    });
   }
 
   Future<void> _showCreateExperimentSheet() async {
@@ -196,7 +224,27 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
       return;
     }
 
-    setState(() => _experiments.insert(0, created));
+    await _saveExperiment(created);
+  }
+
+  void _upsertLocalExperiment(Experiment experiment) {
+    final experiments = [..._experiments];
+    final index = experiments.indexWhere((item) => item.id == experiment.id);
+
+    if (index == -1) {
+      experiments.insert(0, experiment);
+    } else {
+      experiments[index] = experiment;
+    }
+
+    experiments.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    _experiments = experiments;
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -215,9 +263,9 @@ class _QuickActionsCard extends StatelessWidget {
           children: [
             Text(
               '오늘 할 일',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 10),
             Wrap(
@@ -283,18 +331,18 @@ class _ExperimentCard extends StatelessWidget {
                       children: [
                         Text(
                           experiment.title,
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           '${experiment.experimentType} · ${experiment.status.label}',
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Colors.black54,
-                                  ),
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: Colors.black54),
                         ),
                       ],
                     ),
@@ -360,8 +408,30 @@ class _ExperimentCard extends StatelessWidget {
   }
 }
 
+class _LoadingExperimentCard extends StatelessWidget {
+  const _LoadingExperimentCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Card(
+      child: Padding(
+        padding: EdgeInsets.all(24),
+        child: Center(child: CircularProgressIndicator()),
+      ),
+    );
+  }
+}
+
 class _EmptyExperimentCard extends StatelessWidget {
-  const _EmptyExperimentCard();
+  const _EmptyExperimentCard({
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -370,10 +440,21 @@ class _EmptyExperimentCard extends StatelessWidget {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            Icon(Icons.search_off_rounded,
-                size: 42, color: Colors.grey.shade500),
+            Icon(
+              Icons.search_off_rounded,
+              size: 42,
+              color: Colors.grey.shade500,
+            ),
             const SizedBox(height: 12),
-            const Text('검색 결과가 없습니다.'),
+            Text(message),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: onAction,
+                icon: const Icon(Icons.note_add_outlined),
+                label: Text(actionLabel!),
+              ),
+            ],
           ],
         ),
       ),
@@ -389,6 +470,8 @@ class _CreateExperimentSheet extends StatefulWidget {
 }
 
 class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
+  static const _uuid = Uuid();
+
   final _titleController = TextEditingController();
   final _projectController = TextEditingController(text: 'Cell viability');
   final _notesController = TextEditingController();
@@ -414,9 +497,9 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
         children: [
           Text(
             '새 실험 노트',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 14),
           TextField(
@@ -436,7 +519,9 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
               DropdownMenuItem(value: 'MTT', child: Text('MTT')),
               DropdownMenuItem(value: 'ELISA', child: Text('ELISA')),
               DropdownMenuItem(
-                  value: 'Dose-response', child: Text('Dose-response')),
+                value: 'Dose-response',
+                child: Text('Dose-response'),
+              ),
               DropdownMenuItem(value: 'Custom', child: Text('Custom')),
             ],
             onChanged: (value) =>
@@ -474,16 +559,16 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
   void _createExperiment() {
     final title = _titleController.text.trim();
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('실험 제목을 입력해주세요.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('실험 제목을 입력해주세요.')));
       return;
     }
 
     final now = DateTime.now();
     Navigator.of(context).pop(
       Experiment(
-        id: 'experiment-${now.microsecondsSinceEpoch}',
+        id: _uuid.v4(),
         title: title,
         projectName: _projectController.text.trim().isEmpty
             ? null

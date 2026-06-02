@@ -1,6 +1,1 @@
-enum DilutionDirection {
-  topToBottom,
-  bottomToTop,
-  leftToRight,
-  rightToLeft,
-}
+enum DilutionDirection { topToBottom, bottomToTop, leftToRight, rightToLeft }

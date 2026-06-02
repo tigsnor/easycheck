@@ -11,7 +11,7 @@ class ExperimentDetailScreen extends StatefulWidget {
   });
 
   final Experiment experiment;
-  final ValueChanged<Experiment> onChanged;
+  final Future<void> Function(Experiment experiment) onChanged;
 
   @override
   State<ExperimentDetailScreen> createState() => _ExperimentDetailScreenState();
@@ -28,8 +28,9 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.experiment.title);
-    _projectController =
-        TextEditingController(text: widget.experiment.projectName ?? '');
+    _projectController = TextEditingController(
+      text: widget.experiment.projectName ?? '',
+    );
     _notesController = TextEditingController(text: widget.experiment.notes);
     _status = widget.experiment.status;
     _experimentType = widget.experiment.experimentType;
@@ -48,12 +49,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('실험 노트'),
-        actions: [
-          TextButton(
-            onPressed: () => _save(),
-            child: const Text('저장'),
-          ),
-        ],
+        actions: [TextButton(onPressed: _save, child: const Text('저장'))],
       ),
       body: SafeArea(
         child: ListView(
@@ -61,9 +57,9 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
           children: [
             TextField(
               controller: _titleController,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
               decoration: const InputDecoration(
                 border: InputBorder.none,
                 hintText: '실험 제목',
@@ -83,10 +79,13 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                         DropdownMenuItem(value: 'MTT', child: Text('MTT')),
                         DropdownMenuItem(value: 'ELISA', child: Text('ELISA')),
                         DropdownMenuItem(
-                            value: 'Dose-response',
-                            child: Text('Dose-response')),
+                          value: 'Dose-response',
+                          child: Text('Dose-response'),
+                        ),
                         DropdownMenuItem(
-                            value: 'Custom', child: Text('Custom')),
+                          value: 'Custom',
+                          child: Text('Custom'),
+                        ),
                       ],
                       onChanged: (value) =>
                           setState(() => _experimentType = value ?? 'Custom'),
@@ -97,22 +96,29 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                       decoration: const InputDecoration(labelText: '상태'),
                       items: const [
                         DropdownMenuItem(
-                            value: ExperimentStatus.draft, child: Text('초안')),
+                          value: ExperimentStatus.draft,
+                          child: Text('초안'),
+                        ),
                         DropdownMenuItem(
-                            value: ExperimentStatus.planned,
-                            child: Text('계획됨')),
+                          value: ExperimentStatus.planned,
+                          child: Text('계획됨'),
+                        ),
                         DropdownMenuItem(
-                            value: ExperimentStatus.inProgress,
-                            child: Text('진행 중')),
+                          value: ExperimentStatus.inProgress,
+                          child: Text('진행 중'),
+                        ),
                         DropdownMenuItem(
-                            value: ExperimentStatus.completed,
-                            child: Text('완료')),
+                          value: ExperimentStatus.completed,
+                          child: Text('완료'),
+                        ),
                         DropdownMenuItem(
-                            value: ExperimentStatus.archived,
-                            child: Text('보관됨')),
+                          value: ExperimentStatus.archived,
+                          child: Text('보관됨'),
+                        ),
                       ],
                       onChanged: (value) => setState(
-                          () => _status = value ?? ExperimentStatus.draft),
+                        () => _status = value ?? ExperimentStatus.draft,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -150,30 +156,35 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     );
   }
 
-  void _saveAndOpenPlate() {
-    if (!_save(showMessage: false)) {
+  Future<void> _saveAndOpenPlate() async {
+    if (!await _save(showMessage: false)) {
+      return;
+    }
+
+    if (!mounted) {
       return;
     }
 
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => PlateEditorScreen(
+          experimentId: widget.experiment.id,
           experimentTitle: _titleController.text.trim(),
         ),
       ),
     );
   }
 
-  bool _save({bool showMessage = true}) {
+  Future<bool> _save({bool showMessage = true}) async {
     final title = _titleController.text.trim();
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('실험 제목을 입력해주세요.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('실험 제목을 입력해주세요.')));
       return false;
     }
 
-    widget.onChanged(
+    await widget.onChanged(
       widget.experiment.copyWith(
         title: title,
         projectName: _projectController.text.trim().isEmpty
@@ -185,10 +196,14 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       ),
     );
 
+    if (!mounted) {
+      return true;
+    }
+
     if (showMessage) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('실험 노트를 저장했습니다.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('실험 노트를 저장했습니다.')));
     }
 
     return true;

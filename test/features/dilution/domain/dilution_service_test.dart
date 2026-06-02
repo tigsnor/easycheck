@@ -13,10 +13,15 @@ void main() {
         includeZeroControl: true,
       );
 
-      expect(
-        service.buildSeries(plan),
-        [1000.0, 500.0, 250.0, 125.0, 62.5, 31.25, 0.0],
-      );
+      expect(service.buildSeries(plan), [
+        1000.0,
+        500.0,
+        250.0,
+        125.0,
+        62.5,
+        31.25,
+        0.0,
+      ]);
     });
 
     test('builds a 10-fold dilution series without zero control', () {
