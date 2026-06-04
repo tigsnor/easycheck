@@ -14,6 +14,7 @@ EasyCheck는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 첫 구현 단계로 Flutter 앱의 기본 골격과 96-well plate 화면 프로토타입을 추가했습니다.
 
 - Flutter 앱 진입점과 iOS 메모앱 느낌의 기본 테마
+- iOS/Android 로컬 실행을 위한 Flutter platform scaffold
 - 실험 노트 홈 화면, 검색, 생성, 수정, 복제, 삭제와 JSON 파일 기반 로컬 저장
 - 실험별 96-well plate grid, 행/열/범위 선택, 그룹 색상 지정, JSON 파일 기반 plate layout 저장
 - 선택한 well의 상세 정보를 보여주는 카드
@@ -29,6 +30,17 @@ Flutter SDK가 설치된 환경에서 아래 명령을 실행합니다.
 flutter pub get
 flutter run
 ```
+
+### iOS/Android에서 실행 확인
+
+이 저장소에는 iOS/Android platform scaffold가 포함되어 있습니다. 실행 가능한 기기나 시뮬레이터가 연결된 상태에서 아래 명령으로 대상 기기를 확인하고 앱을 실행합니다.
+
+```bash
+flutter devices
+flutter run -d <device-id>
+```
+
+Linux CI 환경에서는 iOS 빌드/실행을 수행할 수 없으므로, macOS에서 iPhone Simulator 또는 실제 iPhone으로 별도 확인합니다.
 
 ## 테스트
 

@@ -8,8 +8,15 @@
 scripts/bootstrap_flutter.sh
 export PATH="$PWD/.tool/flutter/bin:$PATH"
 flutter pub get
+flutter devices
 flutter run
 ```
+
+## 0. 실제 기기/시뮬레이터 실행 확인
+
+- [ ] `flutter devices`에서 iPhone Simulator, Android Emulator 또는 실제 기기가 표시된다.
+- [ ] `flutter run -d <device-id>`로 앱이 실행된다.
+- [ ] 앱을 종료 후 다시 실행해도 첫 화면이 정상 표시된다.
 
 ## 1. 실험 노트 기본 흐름
 
