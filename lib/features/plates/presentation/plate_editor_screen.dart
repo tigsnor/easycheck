@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../shared/models/well_position.dart';
 import '../../dilution/domain/dilution_direction.dart';
@@ -8,6 +9,7 @@ import '../data/file_plate_repository.dart';
 import '../data/plate_repository.dart';
 import '../domain/plate.dart';
 import '../domain/plate_dilution_service.dart';
+import '../domain/plate_export_service.dart';
 import '../domain/well.dart';
 import '../domain/well_group.dart';
 import '../domain/well_role.dart';
@@ -39,6 +41,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
 
   final _dilutionService = const DilutionService();
   final _plateDilutionService = const PlateDilutionService();
+  final _plateExportService = const PlateExportService();
   late final List<double> _demoConcentrations;
   Plate? _plate;
   WellPosition? _selectedPosition;
@@ -79,6 +82,11 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
             tooltip: '희석 계산 적용',
             onPressed: plate == null ? null : _openDilutionBuilder,
             icon: const Icon(Icons.water_drop_outlined),
+          ),
+          IconButton(
+            tooltip: 'Plate 내보내기',
+            onPressed: plate == null ? null : _showPlateExport,
+            icon: const Icon(Icons.ios_share_outlined),
           ),
         ],
       ),
@@ -282,6 +290,21 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         yield WellPosition(rowIndex: row, columnIndex: column);
       }
     }
+  }
+
+  Future<void> _showPlateExport() async {
+    final plate = _plate;
+    if (plate == null) {
+      return;
+    }
+
+    final exportText = _plateExportService.buildTsv(plate);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _PlateExportSheet(exportText: exportText),
+    );
   }
 
   Future<void> _openDilutionBuilder() async {
@@ -714,6 +737,66 @@ class _WellCell extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _PlateExportSheet extends StatelessWidget {
+  const _PlateExportSheet({required this.exportText});
+
+  final String exportText;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Plate 내보내기',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          const Text('아래 TSV 텍스트를 복사해서 메모, 엑셀, 구글시트에 붙여넣을 수 있습니다.'),
+          const SizedBox(height: 12),
+          Container(
+            constraints: const BoxConstraints(maxHeight: 280),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF2F2F7),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: SingleChildScrollView(
+              child: SelectableText(
+                exportText,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: exportText));
+                if (!context.mounted) {
+                  return;
+                }
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Plate 내보내기 텍스트를 복사했습니다.')),
+                );
+              },
+              icon: const Icon(Icons.copy_outlined),
+              label: const Text('복사하기'),
+            ),
+          ),
+        ],
       ),
     );
   }

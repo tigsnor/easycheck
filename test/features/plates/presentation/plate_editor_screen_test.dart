@@ -102,4 +102,25 @@ void main() {
     expect(repository.plate!.wells[1].concentrationValue, 30);
     expect(repository.plate!.wells[2].concentrationValue, isNull);
   });
+
+  testWidgets('opens a plate export sheet with TSV text', (tester) async {
+    final repository = FakePlateRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlateEditorScreen(
+          experimentId: 'experiment-1',
+          repository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Plate 내보내기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Plate 내보내기'), findsOneWidget);
+    expect(find.textContaining('EasyCheck plate export'), findsOneWidget);
+    expect(find.text('복사하기'), findsOneWidget);
+  });
 }
