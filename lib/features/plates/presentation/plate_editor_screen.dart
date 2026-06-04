@@ -14,11 +14,13 @@ class PlateEditorScreen extends StatefulWidget {
   const PlateEditorScreen({
     required this.experimentId,
     this.experimentTitle = 'CCK-8 2배 희석 실험 초안',
+    PlateRepository? repository,
     super.key,
-  });
+  }) : repository = repository ?? const FilePlateRepository();
 
   final String experimentId;
   final String experimentTitle;
+  final PlateRepository repository;
 
   @override
   State<PlateEditorScreen> createState() => _PlateEditorScreenState();
@@ -33,7 +35,6 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     Color(0xFFFFF2CC),
   ];
 
-  final PlateRepository _repository = const FilePlateRepository();
   final _dilutionService = const DilutionService();
   late final List<double> _demoConcentrations;
   Plate? _plate;
@@ -94,7 +95,9 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                       Expanded(
                         child: Text(
                           plate.name,
-                          style: Theme.of(context).textTheme.titleLarge
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                       ),
@@ -121,7 +124,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                     onStartRange: _selectedPosition == null
                         ? null
                         : () =>
-                              setState(() => _rangeAnchor = _selectedPosition),
+                            setState(() => _rangeAnchor = _selectedPosition),
                     onAssignGroup: _selectedPositions.isEmpty
                         ? null
                         : _assignGroupToSelection,
@@ -154,17 +157,17 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       return null;
     }
     return plate.groups.cast<WellGroup?>().firstWhere(
-      (group) => group?.id == groupId,
-      orElse: () => null,
-    );
+          (group) => group?.id == groupId,
+          orElse: () => null,
+        );
   }
 
   Future<void> _loadPlate() async {
     try {
-      final stored = await _repository.loadPlate(widget.experimentId);
+      final stored = await widget.repository.loadPlate(widget.experimentId);
       final plate = stored ?? _buildDefaultPlate();
       if (stored == null) {
-        await _repository.savePlate(plate);
+        await widget.repository.savePlate(plate);
       }
 
       if (!mounted) {
@@ -257,12 +260,10 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     WellPosition start,
     WellPosition end,
   ) sync* {
-    final rowStart = start.rowIndex < end.rowIndex
-        ? start.rowIndex
-        : end.rowIndex;
-    final rowEnd = start.rowIndex > end.rowIndex
-        ? start.rowIndex
-        : end.rowIndex;
+    final rowStart =
+        start.rowIndex < end.rowIndex ? start.rowIndex : end.rowIndex;
+    final rowEnd =
+        start.rowIndex > end.rowIndex ? start.rowIndex : end.rowIndex;
     final columnStart = start.columnIndex < end.columnIndex
         ? start.columnIndex
         : end.columnIndex;
@@ -421,8 +422,8 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                         role: concentration == null
                             ? WellRole.empty
                             : concentration == 0
-                            ? WellRole.vehicleControl
-                            : WellRole.treatment,
+                                ? WellRole.vehicleControl
+                                : WellRole.treatment,
                       ),
                     );
                   },
@@ -453,7 +454,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   }
 
   Future<void> _savePlate(Plate plate) async {
-    await _repository.savePlate(plate);
+    await widget.repository.savePlate(plate);
     if (!mounted) {
       return;
     }
@@ -549,14 +550,18 @@ class _PlateGrid extends StatelessWidget {
             if (row == 0) {
               final columnIndex = column - 1;
               return _HeaderCell(
+                key: ValueKey('column-header-${columnIndex + 1}'),
                 label: '${columnIndex + 1}',
                 onTap: () => onColumnSelected(columnIndex),
               );
             }
             if (column == 0) {
               final rowIndex = row - 1;
+              final rowLabel =
+                  String.fromCharCode('A'.codeUnitAt(0) + rowIndex);
               return _HeaderCell(
-                label: String.fromCharCode('A'.codeUnitAt(0) + rowIndex),
+                key: ValueKey('row-header-$rowLabel'),
+                label: rowLabel,
                 onTap: () => onRowSelected(rowIndex),
               );
             }
@@ -569,11 +574,12 @@ class _PlateGrid extends StatelessWidget {
             final group = well.groupId == null
                 ? null
                 : plate.groups.cast<WellGroup?>().firstWhere(
-                    (candidate) => candidate?.id == well.groupId,
-                    orElse: () => null,
-                  );
+                      (candidate) => candidate?.id == well.groupId,
+                      orElse: () => null,
+                    );
 
             return _WellCell(
+              key: ValueKey('well-${well.label}'),
               well: well,
               group: group,
               selected: selectedPositions.contains(position),
@@ -588,7 +594,7 @@ class _PlateGrid extends StatelessWidget {
 }
 
 class _HeaderCell extends StatelessWidget {
-  const _HeaderCell({required this.label, required this.onTap});
+  const _HeaderCell({required this.label, required this.onTap, super.key});
 
   final String label;
   final VoidCallback onTap;
@@ -620,6 +626,7 @@ class _WellCell extends StatelessWidget {
     required this.selected,
     required this.onTap,
     required this.onLongPress,
+    super.key,
   });
 
   final Well well;
@@ -631,8 +638,7 @@ class _WellCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasDose = well.concentrationValue != null;
-    final background =
-        group?.color ??
+    final background = group?.color ??
         (hasDose ? const Color(0xFFE6D9FF) : const Color(0xFFF2F2F7));
     final borderColor = selected ? Colors.black : Colors.transparent;
     final label = group?.shortLabel.isNotEmpty == true ? group!.shortLabel : '';
@@ -655,8 +661,8 @@ class _WellCell extends StatelessWidget {
             hasDose
                 ? '${label.isEmpty ? '' : '$label\n'}${_formatDose(well.concentrationValue!)}'
                 : label.isEmpty
-                ? well.label
-                : label,
+                    ? well.label
+                    : label,
             maxLines: 2,
             overflow: TextOverflow.fade,
             textAlign: TextAlign.center,
@@ -764,8 +770,8 @@ class _WellDetailCard extends StatelessWidget {
               selected == null
                   ? 'plate에서 well을 선택하면 농도와 실험군 정보를 아래에서 확인합니다.'
                   : selected.concentrationValue == null
-                  ? '${group?.name ?? '그룹 없음'} · 농도 미지정'
-                  : '${group?.name ?? selected.role.label} · ${_formatDose(selected.concentrationValue!)} ${selected.concentrationUnit ?? ''}',
+                      ? '${group?.name ?? '그룹 없음'} · 농도 미지정'
+                      : '${group?.name ?? selected.role.label} · ${_formatDose(selected.concentrationValue!)} ${selected.concentrationUnit ?? ''}',
             ),
             if (selected != null) ...[
               const SizedBox(height: 12),

@@ -8,7 +8,10 @@ import '../domain/experiment.dart';
 import 'experiment_detail_screen.dart';
 
 class ExperimentsHomeScreen extends StatefulWidget {
-  const ExperimentsHomeScreen({super.key});
+  const ExperimentsHomeScreen({ExperimentRepository? repository, super.key})
+      : repository = repository ?? const FileExperimentRepository();
+
+  final ExperimentRepository repository;
 
   @override
   State<ExperimentsHomeScreen> createState() => _ExperimentsHomeScreenState();
@@ -18,7 +21,6 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   static const _uuid = Uuid();
 
   final _searchController = TextEditingController();
-  final ExperimentRepository _repository = const FileExperimentRepository();
   List<Experiment> _experiments = const [];
   String _query = '';
   bool _isLoading = true;
@@ -140,7 +142,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final experiments = await _repository.loadExperiments();
+      final experiments = await widget.repository.loadExperiments();
       if (!mounted) {
         return;
       }
@@ -181,7 +183,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
 
   Future<void> _saveExperiment(Experiment experiment) async {
     final saved = experiment.copyWith(updatedAt: DateTime.now());
-    await _repository.saveExperiment(saved);
+    await widget.repository.saveExperiment(saved);
     if (!mounted) {
       return;
     }
@@ -202,14 +204,13 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   }
 
   Future<void> _deleteExperiment(Experiment experiment) async {
-    await _repository.deleteExperiment(experiment.id);
+    await widget.repository.deleteExperiment(experiment.id);
     if (!mounted) {
       return;
     }
     setState(() {
-      _experiments = _experiments
-          .where((item) => item.id != experiment.id)
-          .toList();
+      _experiments =
+          _experiments.where((item) => item.id != experiment.id).toList();
     });
   }
 
@@ -332,13 +333,17 @@ class _ExperimentCard extends StatelessWidget {
                       children: [
                         Text(
                           experiment.title,
-                          style: Theme.of(context).textTheme.titleMedium
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           '${experiment.experimentType} · ${experiment.status.label}',
-                          style: Theme.of(context).textTheme.bodySmall
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
                               ?.copyWith(color: Colors.black54),
                         ),
                       ],

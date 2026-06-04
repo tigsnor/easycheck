@@ -1,7 +1,7 @@
 class WellPosition {
   const WellPosition({required this.rowIndex, required this.columnIndex})
-    : assert(rowIndex >= 0),
-      assert(columnIndex >= 0);
+      : assert(rowIndex >= 0),
+        assert(columnIndex >= 0);
 
   factory WellPosition.fromLabel(String label) {
     final trimmed = label.trim().toUpperCase();
