@@ -36,6 +36,14 @@ void main() {
     expect(find.text('Drug A CCK-8'), findsOneWidget);
     expect(find.text('96-well Plate'), findsOneWidget);
     expect(find.textContaining('1000'), findsWidgets);
+    await tester.scrollUntilVisible(
+      find.text('실험군 · 농도 요약'),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('실험군 · 농도 요약'), findsOneWidget);
+    expect(find.text('Drug A (A)'), findsOneWidget);
     expect(repository.plate, isNotNull);
     expect(repository.plate!.wells.length, 96);
   });

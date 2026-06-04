@@ -37,7 +37,12 @@ flutter run
 - [ ] 선택한 well의 농도를 편집하고 저장한다.
 - [ ] 앱을 재시작해도 plate layout과 그룹 정보가 유지된다.
 
-## 3. 자동 검증
+## 3. UI 직접 확인
+
+- [ ] [UI 확인 가이드](ui-screenshots.md)를 보고 실험 노트 홈, 실험 상세, plate editor, plate 요약, 희석 계산 Builder 화면을 직접 확인한다.
+- [ ] 필요한 경우 로컬에서 임시 스크린샷을 캡처해 PR 코멘트나 이슈에 첨부한다. 이미지 파일은 저장소에 커밋하지 않는다.
+
+## 4. 자동 검증
 
 ```bash
 dart format --set-exit-if-changed .

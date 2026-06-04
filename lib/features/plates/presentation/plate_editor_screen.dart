@@ -121,6 +121,8 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                     onColumnSelected: _selectColumn,
                   ),
                   const SizedBox(height: 18),
+                  _PlateSummaryCard(plate: plate),
+                  const SizedBox(height: 12),
                   _SelectionSummaryCard(
                     selectedCount: _selectedPositions.length,
                     rangeAnchor: _rangeAnchor,
@@ -715,6 +717,139 @@ class _WellCell extends StatelessWidget {
       ),
     );
   }
+}
+
+class _PlateSummaryCard extends StatelessWidget {
+  const _PlateSummaryCard({required this.plate});
+
+  final Plate plate;
+
+  @override
+  Widget build(BuildContext context) {
+    final summaries = _buildSummaries();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '실험군 · 농도 요약',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            if (summaries.isEmpty)
+              const Text('아직 지정된 실험군이 없습니다. 그룹 지정 또는 희석 계산을 먼저 적용하세요.')
+            else
+              for (final summary in summaries) ...[
+                _GroupSummaryRow(summary: summary),
+                if (summary != summaries.last) const Divider(height: 20),
+              ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<_GroupSummary> _buildSummaries() {
+    return [
+      for (final group in plate.groups)
+        _GroupSummary.from(
+          group: group,
+          wells: plate.wells.where((well) => well.groupId == group.id).toList(),
+        ),
+    ].where((summary) => summary.wellCount > 0).toList();
+  }
+}
+
+class _GroupSummaryRow extends StatelessWidget {
+  const _GroupSummaryRow({required this.summary});
+
+  final _GroupSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 14,
+          height: 14,
+          margin: const EdgeInsets.only(top: 3),
+          decoration: BoxDecoration(
+            color: summary.color,
+            borderRadius: BorderRadius.circular(99),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${summary.name} (${summary.shortLabel})',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 2),
+              Text('${summary.wellCount} wells · ${summary.role.label}'),
+              if (summary.concentrationLabels.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  summary.concentrationLabels.join(' → '),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _GroupSummary {
+  const _GroupSummary({
+    required this.name,
+    required this.shortLabel,
+    required this.color,
+    required this.role,
+    required this.wellCount,
+    required this.concentrationLabels,
+  });
+
+  factory _GroupSummary.from({
+    required WellGroup group,
+    required List<Well> wells,
+  }) {
+    final concentrations = wells
+        .map((well) => well.concentrationValue)
+        .nonNulls
+        .toSet()
+        .toList()
+      ..sort((a, b) => b.compareTo(a));
+    return _GroupSummary(
+      name: group.name,
+      shortLabel: group.shortLabel,
+      color: group.color,
+      role: group.role,
+      wellCount: wells.length,
+      concentrationLabels: [
+        for (final concentration in concentrations)
+          '${_formatDose(concentration)} ${group.concentrationUnit}',
+      ],
+    );
+  }
+
+  final String name;
+  final String shortLabel;
+  final Color color;
+  final WellRole role;
+  final int wellCount;
+  final List<String> concentrationLabels;
 }
 
 class _SelectionSummaryCard extends StatelessWidget {

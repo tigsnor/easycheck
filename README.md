@@ -7,6 +7,7 @@ EasyCheck는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 - [Flutter 개발 플랜](docs/flutter-development-plan.md)
 - [MVP 우선 개발 로드맵](docs/mvp-first-roadmap.md)
 - [수동 QA 체크리스트](docs/manual-qa-checklist.md)
+- [UI 확인 가이드](docs/ui-screenshots.md)
 
 ## 현재 구현 상태
 
