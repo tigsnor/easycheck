@@ -62,4 +62,36 @@ void main() {
     expect(find.text('12개 well 그룹 지정'), findsOneWidget);
     expect(find.widgetWithText(TextField, '그룹명'), findsOneWidget);
   });
+
+  testWidgets('applies a custom dilution builder plan to the plate', (
+    tester,
+  ) async {
+    final repository = FakePlateRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlateEditorScreen(
+          experimentId: 'experiment-1',
+          repository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('희석 계산 적용'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, '시작 농도'), '90');
+    await tester.enterText(find.widgetWithText(TextField, '희석 배수'), '3');
+    await tester.enterText(find.widgetWithText(TextField, '단계 수'), '2');
+    await tester.enterText(find.widgetWithText(TextField, '반복 well 수'), '1');
+    await tester.tap(find.byType(SwitchListTile));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('희석 적용'));
+    await tester.tap(find.text('희석 적용'));
+    await tester.pumpAndSettle();
+
+    expect(repository.plate!.wells[0].concentrationValue, 90);
+    expect(repository.plate!.wells[1].concentrationValue, 30);
+    expect(repository.plate!.wells[2].concentrationValue, isNull);
+  });
 }

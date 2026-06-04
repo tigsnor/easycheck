@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../../shared/models/well_position.dart';
+import '../../dilution/domain/dilution_direction.dart';
 import '../../dilution/domain/dilution_plan.dart';
 import '../../dilution/domain/dilution_service.dart';
 import '../data/file_plate_repository.dart';
 import '../data/plate_repository.dart';
 import '../domain/plate.dart';
+import '../domain/plate_dilution_service.dart';
 import '../domain/well.dart';
 import '../domain/well_group.dart';
 import '../domain/well_role.dart';
@@ -36,6 +38,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   ];
 
   final _dilutionService = const DilutionService();
+  final _plateDilutionService = const PlateDilutionService();
   late final List<double> _demoConcentrations;
   Plate? _plate;
   WellPosition? _selectedPosition;
@@ -73,8 +76,8 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
             icon: const Icon(Icons.palette_outlined),
           ),
           IconButton(
-            tooltip: '2배 희석 적용',
-            onPressed: plate == null ? null : _applyDemoDilution,
+            tooltip: '희석 계산 적용',
+            onPressed: plate == null ? null : _openDilutionBuilder,
             icon: const Icon(Icons.water_drop_outlined),
           ),
         ],
@@ -128,6 +131,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                     onAssignGroup: _selectedPositions.isEmpty
                         ? null
                         : _assignGroupToSelection,
+                    onApplyDilution: _openDilutionBuilder,
                   ),
                   const SizedBox(height: 12),
                   _WellDetailCard(
@@ -278,13 +282,42 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     }
   }
 
-  Future<void> _applyDemoDilution() async {
+  Future<void> _openDilutionBuilder() async {
     final plate = _plate;
     if (plate == null) {
       return;
     }
 
-    await _savePlate(_plateWithDemoDilution(plate));
+    final draft = await showModalBottomSheet<_DilutionDraft>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _DilutionBuilderSheet(
+        selectedCount: _selectedPositions.length,
+        suggestedColor: _groupColors[plate.groups.length % _groupColors.length],
+      ),
+    );
+
+    if (draft == null) {
+      return;
+    }
+
+    final group = WellGroup(
+      id: 'dilution-${DateTime.now().microsecondsSinceEpoch}',
+      name: draft.groupName,
+      shortLabel: draft.shortLabel,
+      color: draft.color,
+      role: WellRole.treatment,
+      concentrationUnit: draft.unit,
+    );
+    final updated = _plateDilutionService.applySeries(
+      plate: plate,
+      plan: draft.plan,
+      group: group,
+      replicateCount: draft.replicateCount,
+      selectedPositions: _selectedPositions,
+    );
+    await _savePlate(updated);
   }
 
   Plate _plateWithDemoDilution(Plate plate) {
@@ -557,8 +590,9 @@ class _PlateGrid extends StatelessWidget {
             }
             if (column == 0) {
               final rowIndex = row - 1;
-              final rowLabel =
-                  String.fromCharCode('A'.codeUnitAt(0) + rowIndex);
+              final rowLabel = String.fromCharCode(
+                'A'.codeUnitAt(0) + rowIndex,
+              );
               return _HeaderCell(
                 key: ValueKey('row-header-$rowLabel'),
                 label: rowLabel,
@@ -689,12 +723,14 @@ class _SelectionSummaryCard extends StatelessWidget {
     required this.rangeAnchor,
     required this.onStartRange,
     required this.onAssignGroup,
+    required this.onApplyDilution,
   });
 
   final int selectedCount;
   final WellPosition? rangeAnchor;
   final VoidCallback? onStartRange;
   final VoidCallback? onAssignGroup;
+  final VoidCallback onApplyDilution;
 
   @override
   Widget build(BuildContext context) {
@@ -729,6 +765,11 @@ class _SelectionSummaryCard extends StatelessWidget {
                   onPressed: onAssignGroup,
                   icon: const Icon(Icons.palette_outlined),
                   label: const Text('그룹 지정'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: onApplyDilution,
+                  icon: const Icon(Icons.water_drop_outlined),
+                  label: const Text('희석 계산'),
                 ),
               ],
             ),
@@ -789,6 +830,234 @@ class _WellDetailCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DilutionBuilderSheet extends StatefulWidget {
+  const _DilutionBuilderSheet({
+    required this.selectedCount,
+    required this.suggestedColor,
+  });
+
+  final int selectedCount;
+  final Color suggestedColor;
+
+  @override
+  State<_DilutionBuilderSheet> createState() => _DilutionBuilderSheetState();
+}
+
+class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
+  final _groupController = TextEditingController(text: 'Drug A');
+  final _labelController = TextEditingController(text: 'A');
+  final _startController = TextEditingController(text: '1000');
+  final _factorController = TextEditingController(text: '2');
+  final _stepsController = TextEditingController(text: '6');
+  final _replicateController = TextEditingController(text: '2');
+  final _unitController = TextEditingController(text: 'µM');
+  late Color _color = widget.suggestedColor;
+  bool _includeZeroControl = true;
+  DilutionDirection _direction = DilutionDirection.topToBottom;
+
+  @override
+  void dispose() {
+    _groupController.dispose();
+    _labelController.dispose();
+    _startController.dispose();
+    _factorController.dispose();
+    _stepsController.dispose();
+    _replicateController.dispose();
+    _unitController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '희석 계산 적용',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            widget.selectedCount == 0
+                ? '선택 영역이 없어서 plate 앞쪽 well부터 자동으로 채웁니다.'
+                : '${widget.selectedCount}개 선택 well에 순서대로 농도를 적용합니다.',
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _groupController,
+            decoration: const InputDecoration(labelText: '실험군/약물명'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _labelController,
+            maxLength: 3,
+            decoration: const InputDecoration(labelText: '짧은 라벨'),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _startController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: '시작 농도'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _unitController,
+                  decoration: const InputDecoration(labelText: '단위'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _factorController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: '희석 배수'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _stepsController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: '단계 수'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _replicateController,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: '반복 well 수'),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<DilutionDirection>(
+            initialValue: _direction,
+            decoration: const InputDecoration(labelText: '적용 방향'),
+            items: DilutionDirection.values
+                .map(
+                  (direction) => DropdownMenuItem(
+                    value: direction,
+                    child: Text(direction.label),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) => setState(
+              () => _direction = value ?? DilutionDirection.topToBottom,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('0 농도 control 포함'),
+            value: _includeZeroControl,
+            onChanged: (value) => setState(() => _includeZeroControl = value),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final color in _PlateEditorScreenState._groupColors)
+                ChoiceChip(
+                  label: const Text(''),
+                  selected: color == _color,
+                  onSelected: (_) => setState(() => _color = color),
+                  avatar: CircleAvatar(backgroundColor: color),
+                ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _save,
+              icon: const Icon(Icons.check),
+              label: const Text('희석 적용'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _save() {
+    final groupName = _groupController.text.trim();
+    final startConcentration = double.tryParse(_startController.text.trim());
+    final dilutionFactor = double.tryParse(_factorController.text.trim());
+    final steps = int.tryParse(_stepsController.text.trim());
+    final replicateCount = int.tryParse(_replicateController.text.trim());
+    final unit = _unitController.text.trim().isEmpty
+        ? 'µM'
+        : _unitController.text.trim();
+
+    if (groupName.isEmpty ||
+        startConcentration == null ||
+        dilutionFactor == null ||
+        steps == null ||
+        replicateCount == null ||
+        startConcentration < 0 ||
+        dilutionFactor <= 0 ||
+        steps <= 0 ||
+        replicateCount <= 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('희석 계산 값을 확인해주세요.')));
+      return;
+    }
+
+    Navigator.of(context).pop(
+      _DilutionDraft(
+        groupName: groupName,
+        shortLabel: _labelController.text.trim().isEmpty
+            ? groupName.characters.first
+            : _labelController.text.trim(),
+        color: _color,
+        unit: unit,
+        replicateCount: replicateCount,
+        plan: DilutionPlan(
+          startConcentration: startConcentration,
+          dilutionFactor: dilutionFactor,
+          steps: steps,
+          includeZeroControl: _includeZeroControl,
+          direction: _direction,
+        ),
+      ),
+    );
+  }
+}
+
+class _DilutionDraft {
+  const _DilutionDraft({
+    required this.groupName,
+    required this.shortLabel,
+    required this.color,
+    required this.unit,
+    required this.replicateCount,
+    required this.plan,
+  });
+
+  final String groupName;
+  final String shortLabel;
+  final Color color;
+  final String unit;
+  final int replicateCount;
+  final DilutionPlan plan;
 }
 
 class _GroupEditorSheet extends StatefulWidget {
@@ -965,6 +1234,21 @@ extension _WellRoleLabel on WellRole {
         return 'Untreated control';
       case WellRole.standard:
         return 'Standard';
+    }
+  }
+}
+
+extension _DilutionDirectionLabel on DilutionDirection {
+  String get label {
+    switch (this) {
+      case DilutionDirection.topToBottom:
+        return '위 → 아래';
+      case DilutionDirection.bottomToTop:
+        return '아래 → 위';
+      case DilutionDirection.leftToRight:
+        return '왼쪽 → 오른쪽';
+      case DilutionDirection.rightToLeft:
+        return '오른쪽 → 왼쪽';
     }
   }
 }
