@@ -425,78 +425,12 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       return;
     }
 
-    final concentrationController = TextEditingController(
-      text: well.concentrationValue == null
-          ? ''
-          : _formatDose(well.concentrationValue!),
-    );
-    final unitController = TextEditingController(
-      text: well.concentrationUnit ?? 'µM',
-    );
-
     final updated = await showModalBottomSheet<Well>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (context) {
-        final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-        return Padding(
-          padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${well.label} well 편집',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: concentrationController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '농도'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: unitController,
-                decoration: const InputDecoration(labelText: '단위'),
-              ),
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () {
-                    final concentration = double.tryParse(
-                      concentrationController.text.trim(),
-                    );
-                    Navigator.of(context).pop(
-                      well.copyWith(
-                        concentrationValue: concentration,
-                        concentrationUnit: unitController.text.trim().isEmpty
-                            ? 'µM'
-                            : unitController.text.trim(),
-                        role: concentration == null
-                            ? WellRole.empty
-                            : concentration == 0
-                                ? WellRole.vehicleControl
-                                : WellRole.treatment,
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.check),
-                  label: const Text('저장'),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+      builder: (context) => _WellRecordSheet(well: well),
     );
-
-    concentrationController.dispose();
-    unitController.dispose();
 
     if (updated == null) {
       return;
@@ -998,6 +932,205 @@ class _SelectionSummaryCard extends StatelessWidget {
   }
 }
 
+class _WellRecordSheet extends StatefulWidget {
+  const _WellRecordSheet({required this.well});
+
+  final Well well;
+
+  @override
+  State<_WellRecordSheet> createState() => _WellRecordSheetState();
+}
+
+class _WellRecordSheetState extends State<_WellRecordSheet> {
+  late final TextEditingController _concentrationController;
+  late final TextEditingController _concentrationUnitController;
+  late final TextEditingController _resultController;
+  late final TextEditingController _resultUnitController;
+  late final TextEditingController _noteController;
+  late bool _excluded;
+
+  @override
+  void initState() {
+    super.initState();
+    final well = widget.well;
+    _concentrationController = TextEditingController(
+      text: well.concentrationValue == null
+          ? ''
+          : _formatDose(well.concentrationValue!),
+    );
+    _concentrationUnitController = TextEditingController(
+      text: well.concentrationUnit ?? 'µM',
+    );
+    _resultController = TextEditingController(
+      text: well.resultValue == null ? '' : _formatDose(well.resultValue!),
+    );
+    _resultUnitController = TextEditingController(
+      text: well.resultUnit ?? 'OD450',
+    );
+    _noteController = TextEditingController(text: well.note);
+    _excluded = well.excluded;
+  }
+
+  @override
+  void dispose() {
+    _concentrationController.dispose();
+    _concentrationUnitController.dispose();
+    _resultController.dispose();
+    _resultUnitController.dispose();
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final well = widget.well;
+    final concentration = double.tryParse(_concentrationController.text.trim());
+    final result = double.tryParse(_resultController.text.trim());
+    final concentrationUnit = _concentrationUnitController.text.trim();
+    final resultUnit = _resultUnitController.text.trim();
+    final nextRole = concentration == 0
+        ? WellRole.vehicleControl
+        : well.role == WellRole.empty && concentration != null
+            ? WellRole.treatment
+            : well.role;
+
+    Navigator.of(context).pop(
+      well.copyWith(
+        concentrationValue: concentration,
+        concentrationUnit: concentrationUnit.isEmpty ? null : concentrationUnit,
+        role: nextRole,
+        resultValue: result,
+        resultUnit: result == null || resultUnit.isEmpty ? null : resultUnit,
+        note: _noteController.text.trim(),
+        excluded: _excluded,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${widget.well.label} well 기록',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '처리 농도와 측정 결과를 함께 기록합니다.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 18),
+          Text(
+            '처리 조건',
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: _concentrationController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(labelText: '농도'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _concentrationUnitController,
+                  decoration: const InputDecoration(labelText: '단위'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Text(
+            '측정 결과',
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  key: const ValueKey('well-result-value-field'),
+                  controller: _resultController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: '결과값',
+                    hintText: '예: 0.82',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  key: const ValueKey('well-result-unit-field'),
+                  controller: _resultUnitController,
+                  decoration: const InputDecoration(
+                    labelText: '결과 단위',
+                    hintText: 'OD450',
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const ValueKey('well-note-field'),
+            controller: _noteController,
+            minLines: 2,
+            maxLines: 4,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              labelText: 'Well 메모',
+              hintText: '침전, 기포, 오염 의심 등',
+              alignLabelWithHint: true,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SwitchListTile.adaptive(
+            key: const ValueKey('well-excluded-switch'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('분석에서 제외'),
+            subtitle: const Text('이상치나 실험 오류가 있는 well을 표시합니다.'),
+            value: _excluded,
+            onChanged: (value) => setState(() => _excluded = value),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              key: const ValueKey('save-well-record-button'),
+              onPressed: _save,
+              icon: const Icon(Icons.check),
+              label: const Text('Well 기록 저장'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _WellDetailCard extends StatelessWidget {
   const _WellDetailCard({
     required this.well,
@@ -1027,19 +1160,45 @@ class _WellDetailCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               selected == null
-                  ? 'plate에서 well을 선택하면 농도와 실험군 정보를 아래에서 확인합니다.'
+                  ? 'plate에서 well을 선택하면 처리 조건과 측정 결과를 확인합니다.'
                   : selected.concentrationValue == null
                       ? '${group?.name ?? '그룹 없음'} · 농도 미지정'
                       : '${group?.name ?? selected.role.label} · ${_formatDose(selected.concentrationValue!)} ${selected.concentrationUnit ?? ''}',
             ),
             if (selected != null) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
+              Text(
+                selected.resultValue == null
+                    ? '측정 결과 미입력'
+                    : '결과 · ${_formatDose(selected.resultValue!)} ${selected.resultUnit ?? ''}',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: selected.resultValue == null
+                          ? FontWeight.w400
+                          : FontWeight.w700,
+                    ),
+              ),
+              if (selected.note.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  '메모 · ${selected.note}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              if (selected.excluded) ...[
+                const SizedBox(height: 8),
+                const Chip(
+                  avatar: Icon(Icons.remove_circle_outline, size: 18),
+                  label: Text('분석 제외'),
+                ),
+              ],
+              const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton.icon(
                   onPressed: onEdit,
-                  icon: const Icon(Icons.edit_outlined),
-                  label: const Text('농도 편집'),
+                  icon: const Icon(Icons.edit_note_outlined),
+                  label: const Text('농도 · 결과 편집'),
                 ),
               ),
             ],

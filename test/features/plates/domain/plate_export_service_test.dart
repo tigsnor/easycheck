@@ -33,6 +33,10 @@ void main() {
           concentrationValue: 100,
           concentrationUnit: 'µM',
           replicateIndex: 1,
+          resultValue: 0.82,
+          resultUnit: 'OD450',
+          note: '기포 확인',
+          excluded: true,
         );
       }
       return well;
@@ -42,6 +46,11 @@ void main() {
     expect(export, contains('EasyCheck plate export'));
     expect(export, contains('group_id\tname\tlabel\trole\tunit\twell_count'));
     expect(export, contains('drug-a\tDrug A\tA\ttreatment\tµM\t1\t100 µM'));
-    expect(export, contains('A1\tA\t1\tDrug A\ttreatment\t100\tµM\t1'));
+    expect(
+      export,
+      contains(
+        'A1\tA\t1\tDrug A\ttreatment\t100\tµM\t1\t\tµL\t0.82\tOD450\ttrue\t기포 확인',
+      ),
+    );
   });
 }

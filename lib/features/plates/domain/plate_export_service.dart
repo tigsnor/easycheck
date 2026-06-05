@@ -15,7 +15,8 @@ class PlateExportService {
       ..writeln()
       ..writeln('Groups')
       ..writeln(
-          'group_id\tname\tlabel\trole\tunit\twell_count\tconcentrations');
+        'group_id\tname\tlabel\trole\tunit\twell_count\tconcentrations',
+      );
 
     for (final group in plate.groups) {
       final wells =
@@ -40,7 +41,7 @@ class PlateExportService {
       ..writeln()
       ..writeln('Wells')
       ..writeln(
-        'well\trow\tcolumn\tgroup\trole\tconcentration\tunit\treplicate\tvolume\tvolume_unit\tnote',
+        'well\trow\tcolumn\tgroup\trole\tconcentration\tunit\treplicate\tvolume\tvolume_unit\tresult\tresult_unit\texcluded\tnote',
       );
 
     for (final well in plate.wells) {
@@ -68,6 +69,9 @@ class PlateExportService {
       well.replicateIndex?.toString() ?? '',
       well.volumeValue == null ? '' : _formatNumber(well.volumeValue!),
       well.volumeUnit,
+      well.resultValue == null ? '' : _formatNumber(well.resultValue!),
+      well.resultUnit ?? '',
+      well.excluded.toString(),
       well.note,
     ].map(_escape).join('\t');
   }

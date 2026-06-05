@@ -103,6 +103,59 @@ void main() {
     expect(repository.plate!.wells[2].concentrationValue, isNull);
   });
 
+  testWidgets('records a result, note, and exclusion flag for a well', (
+    tester,
+  ) async {
+    final repository = FakePlateRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlateEditorScreen(
+          experimentId: 'experiment-1',
+          repository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('well-A1')));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('농도 · 결과 편집'),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('농도 · 결과 편집'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('well-result-value-field')),
+      '0.82',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('well-result-unit-field')),
+      'OD450',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('well-note-field')),
+      '기포 확인',
+    );
+    await tester.tap(find.byKey(const ValueKey('well-excluded-switch')));
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('save-well-record-button')),
+    );
+    await tester.tap(find.byKey(const ValueKey('save-well-record-button')));
+    await tester.pumpAndSettle();
+
+    final savedWell = repository.plate!.wells.first;
+    expect(savedWell.resultValue, 0.82);
+    expect(savedWell.resultUnit, 'OD450');
+    expect(savedWell.note, '기포 확인');
+    expect(savedWell.excluded, isTrue);
+    expect(find.text('결과 · 0.82 OD450'), findsOneWidget);
+    expect(find.text('분석 제외'), findsOneWidget);
+  });
+
   testWidgets('opens a plate export sheet with TSV text', (tester) async {
     final repository = FakePlateRepository();
 
