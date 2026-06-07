@@ -10,6 +10,7 @@ import '../data/plate_repository.dart';
 import '../domain/plate.dart';
 import '../domain/plate_dilution_service.dart';
 import '../domain/plate_export_service.dart';
+import '../domain/plate_validation_service.dart';
 import '../domain/well.dart';
 import '../domain/well_group.dart';
 import '../domain/well_role.dart';
@@ -42,6 +43,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   final _dilutionService = const DilutionService();
   final _plateDilutionService = const PlateDilutionService();
   final _plateExportService = const PlateExportService();
+  final _plateValidationService = const PlateValidationService();
   late final List<double> _demoConcentrations;
   Plate? _plate;
   WellPosition? _selectedPosition;
@@ -130,6 +132,10 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                   ),
                   const SizedBox(height: 18),
                   _PlateSummaryCard(plate: plate),
+                  const SizedBox(height: 12),
+                  _PlateValidationCard(
+                    report: _plateValidationService.validate(plate),
+                  ),
                   const SizedBox(height: 12),
                   _SelectionSummaryCard(
                     selectedCount: _selectedPositions.length,
@@ -867,6 +873,115 @@ class _GroupSummary {
   final WellRole role;
   final int wellCount;
   final List<String> concentrationLabels;
+}
+
+class _PlateValidationCard extends StatelessWidget {
+  const _PlateValidationCard({required this.report});
+
+  final PlateValidationReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final hasWarnings = report.warningCount > 0;
+    return Card(
+      key: const ValueKey('plate-validation-card'),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  hasWarnings
+                      ? Icons.warning_amber_rounded
+                      : Icons.task_alt_rounded,
+                  color: hasWarnings ? colorScheme.error : Colors.green,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '실험 준비 점검',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ),
+                Text(
+                  hasWarnings ? '경고 ${report.warningCount}' : '필수 경고 없음',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: hasWarnings ? colorScheme.error : Colors.green,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (report.issues.isEmpty)
+              const Text('현재 layout에서 발견된 준비 오류가 없습니다.')
+            else
+              for (final issue in report.issues) ...[
+                _PlateValidationIssueRow(issue: issue),
+                if (issue != report.issues.last) const Divider(height: 20),
+              ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PlateValidationIssueRow extends StatelessWidget {
+  const _PlateValidationIssueRow({required this.issue});
+
+  final PlateValidationIssue issue;
+
+  @override
+  Widget build(BuildContext context) {
+    final isWarning = issue.severity == PlateValidationSeverity.warning;
+    final color = isWarning
+        ? Theme.of(context).colorScheme.error
+        : Theme.of(context).colorScheme.primary;
+    final labels = issue.wellLabels.take(8).join(', ');
+    final remaining = issue.wellLabels.length - 8;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isWarning ? Icons.error_outline : Icons.info_outline,
+            size: 20,
+            color: color,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  issue.title,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(issue.message),
+                if (labels.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    remaining > 0 ? '$labels 외 $remaining개' : labels,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SelectionSummaryCard extends StatelessWidget {

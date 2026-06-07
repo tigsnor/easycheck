@@ -44,6 +44,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('실험군 · 농도 요약'), findsOneWidget);
     expect(find.text('Drug A (A)'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('plate-validation-card')),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('실험 준비 점검'), findsOneWidget);
+    expect(find.text('Blank가 없습니다'), findsOneWidget);
+    expect(find.text('Control이 없습니다'), findsNothing);
     expect(repository.plate, isNotNull);
     expect(repository.plate!.wells.length, 96);
   });
@@ -125,6 +133,8 @@ void main() {
       400,
       scrollable: find.byType(Scrollable).first,
     );
+    await tester.ensureVisible(find.text('농도 · 결과 편집'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('농도 · 결과 편집'));
     await tester.pumpAndSettle();
 
