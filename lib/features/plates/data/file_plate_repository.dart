@@ -10,6 +10,14 @@ class FilePlateRepository implements PlateRepository {
   const FilePlateRepository();
 
   @override
+  Future<void> deletePlate(String experimentId) async {
+    final file = await _file(experimentId);
+    if (await file.exists()) {
+      await file.delete();
+    }
+  }
+
+  @override
   Future<Plate?> loadPlate(String experimentId) async {
     final file = await _file(experimentId);
     if (!await file.exists()) {

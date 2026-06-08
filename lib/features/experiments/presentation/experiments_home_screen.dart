@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../plates/data/file_plate_repository.dart';
+import '../../plates/data/plate_repository.dart';
+import '../../plates/domain/plate.dart';
 import '../../plates/presentation/plate_editor_screen.dart';
 import '../data/file_experiment_repository.dart';
 import '../data/experiment_repository.dart';
@@ -8,10 +11,15 @@ import '../domain/experiment.dart';
 import 'experiment_detail_screen.dart';
 
 class ExperimentsHomeScreen extends StatefulWidget {
-  const ExperimentsHomeScreen({ExperimentRepository? repository, super.key})
-      : repository = repository ?? const FileExperimentRepository();
+  const ExperimentsHomeScreen({
+    ExperimentRepository? repository,
+    PlateRepository? plateRepository,
+    super.key,
+  })  : repository = repository ?? const FileExperimentRepository(),
+        plateRepository = plateRepository ?? const FilePlateRepository();
 
   final ExperimentRepository repository;
+  final PlateRepository plateRepository;
 
   @override
   State<ExperimentsHomeScreen> createState() => _ExperimentsHomeScreenState();
@@ -176,6 +184,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
         builder: (_) => PlateEditorScreen(
           experimentId: experiment.id,
           experimentTitle: experiment.title,
+          repository: widget.plateRepository,
         ),
       ),
     );
@@ -204,7 +213,50 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   }
 
   Future<void> _deleteExperiment(Experiment experiment) async {
-    await widget.repository.deleteExperiment(experiment.id);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('실험을 삭제할까요?'),
+        content: Text(
+          '“${experiment.title}” 실험 노트와 연결된 Plate 데이터를 삭제합니다. 삭제 직후에는 실행 취소할 수 있습니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm-delete-experiment-button'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+
+    Plate? deletedPlate;
+    try {
+      deletedPlate = await widget.plateRepository.loadPlate(experiment.id);
+      await widget.repository.deleteExperiment(experiment.id);
+      await widget.plateRepository.deletePlate(experiment.id);
+    } on Object catch (error) {
+      try {
+        await widget.repository.saveExperiment(experiment);
+        if (deletedPlate != null) {
+          await widget.plateRepository.savePlate(deletedPlate);
+        }
+      } on Object {
+        // The original failure is shown below. Backup/export will provide a
+        // stronger recovery path in the next milestone.
+      }
+      if (mounted) {
+        _showError('실험을 삭제하지 못했습니다: $error');
+      }
+      return;
+    }
     if (!mounted) {
       return;
     }
@@ -212,6 +264,44 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
       _experiments =
           _experiments.where((item) => item.id != experiment.id).toList();
     });
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('“${experiment.title}”을 삭제했습니다.'),
+          action: SnackBarAction(
+            label: '실행 취소',
+            onPressed: () => _restoreDeletedExperiment(
+              experiment: experiment,
+              plate: deletedPlate,
+            ),
+          ),
+        ),
+      );
+  }
+
+  Future<void> _restoreDeletedExperiment({
+    required Experiment experiment,
+    required Plate? plate,
+  }) async {
+    try {
+      await widget.repository.saveExperiment(experiment);
+      if (plate != null) {
+        await widget.plateRepository.savePlate(plate);
+      }
+    } on Object catch (error) {
+      if (mounted) {
+        _showError('삭제를 취소하지 못했습니다: $error');
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() => _upsertLocalExperiment(experiment));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('실험과 Plate 데이터를 복원했습니다.')),
+    );
   }
 
   Future<void> _showCreateExperimentSheet() async {

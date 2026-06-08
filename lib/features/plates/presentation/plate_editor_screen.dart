@@ -52,6 +52,9 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   Set<WellPosition> _selectedPositions = const {};
   WellPosition? _rangeAnchor;
   bool _isLoading = true;
+  bool _isSaving = false;
+  DateTime? _lastSavedAt;
+  final List<Plate> _undoHistory = [];
 
   @override
   void initState() {
@@ -75,6 +78,12 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       appBar: AppBar(
         title: const Text('EasyCheck'),
         actions: [
+          IconButton(
+            tooltip: '마지막 Plate 변경 실행 취소',
+            onPressed:
+                _undoHistory.isEmpty || _isSaving ? null : _undoLastChange,
+            icon: const Icon(Icons.undo),
+          ),
           IconButton(
             tooltip: '선택 영역 그룹 지정',
             onPressed: plate == null || _selectedPositions.isEmpty
@@ -116,12 +125,22 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          plate.name,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              plate.name,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 2),
+                            _PlateSaveStatus(
+                              isSaving: _isSaving,
+                              lastSavedAt: _lastSavedAt,
+                            ),
+                          ],
                         ),
                       ),
                       if (_selectedPositions.isNotEmpty)
@@ -206,6 +225,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       setState(() {
         _plate = plate;
         _isLoading = false;
+        _lastSavedAt = DateTime.now();
       });
     } on Object catch (error) {
       if (!mounted) {
@@ -491,18 +511,65 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     await _savePlate(plate.copyWith(wells: updatedWells));
   }
 
-  Future<void> _savePlate(
+  Future<bool> _savePlate(
     Plate plate, {
     String successMessage = 'plate layout을 저장했습니다.',
+    bool recordHistory = true,
   }) async {
-    await widget.repository.savePlate(plate);
+    final previous = _plate;
+    setState(() => _isSaving = true);
+    try {
+      await widget.repository.savePlate(plate);
+    } on Object catch (error) {
+      if (!mounted) {
+        return false;
+      }
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Plate를 저장하지 못했습니다: $error')),
+      );
+      return false;
+    }
     if (!mounted) {
+      return false;
+    }
+    setState(() {
+      if (recordHistory && previous != null) {
+        _undoHistory.add(previous);
+        if (_undoHistory.length > 20) {
+          _undoHistory.removeAt(0);
+        }
+      }
+      _plate = plate;
+      _isSaving = false;
+      _lastSavedAt = DateTime.now();
+    });
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(successMessage),
+          action: recordHistory
+              ? SnackBarAction(label: '실행 취소', onPressed: _undoLastChange)
+              : null,
+        ),
+      );
+    return true;
+  }
+
+  Future<void> _undoLastChange() async {
+    if (_undoHistory.isEmpty || _isSaving) {
       return;
     }
-    setState(() => _plate = plate);
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(successMessage)));
+    final previous = _undoHistory.removeLast();
+    final restored = await _savePlate(
+      previous,
+      successMessage: '마지막 Plate 변경을 취소했습니다.',
+      recordHistory: false,
+    );
+    if (!restored && mounted) {
+      setState(() => _undoHistory.add(previous));
+    }
   }
 
   List<WellGroup> _upsertGroup(List<WellGroup> groups, WellGroup group) {
@@ -514,6 +581,44 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       updated[index] = group;
     }
     return updated;
+  }
+}
+
+class _PlateSaveStatus extends StatelessWidget {
+  const _PlateSaveStatus({
+    required this.isSaving,
+    required this.lastSavedAt,
+  });
+
+  final bool isSaving;
+  final DateTime? lastSavedAt;
+
+  @override
+  Widget build(BuildContext context) {
+    final time = lastSavedAt;
+    final label = isSaving
+        ? '저장 중…'
+        : time == null
+            ? '아직 저장되지 않음'
+            : '저장됨 ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          isSaving ? Icons.sync : Icons.cloud_done_outlined,
+          size: 14,
+          color: Colors.black54,
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          key: const ValueKey('plate-save-status'),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+        ),
+      ],
+    );
   }
 }
 

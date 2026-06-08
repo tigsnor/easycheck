@@ -15,8 +15,9 @@ EasyCheck는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 
 - Flutter 앱 진입점과 iOS 메모앱 느낌의 기본 테마
 - iOS/Android 로컬 실행을 위한 Flutter platform scaffold
-- 실험 노트 홈 화면, 검색, 생성, 수정, 복제, 삭제와 JSON 파일 기반 로컬 저장
+- 실험 노트 홈 화면, 검색, 생성, 수정, 복제, 삭제 확인/실행 취소와 JSON 파일 기반 로컬 저장
 - 실험별 96-well plate grid, 행/열/범위 선택, 그룹 색상 지정, JSON 파일 기반 plate layout 저장
+- Plate 저장 중/완료 상태 표시와 최근 20개 변경에 대한 실행 취소
 - 선택한 well의 농도, 측정 결과, 결과 단위, 메모, 분석 제외 여부를 기록하는 상세 카드
 - Excel/Plate reader의 A-H × 1-12 결과 행렬을 붙여넣어 여러 well에 일괄 입력
 - Plate layout과 well별 측정 결과를 메모/엑셀/구글시트에 붙여넣을 수 있는 TSV 내보내기

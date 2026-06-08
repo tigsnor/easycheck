@@ -8,6 +8,11 @@ class FakePlateRepository implements PlateRepository {
   Plate? plate;
 
   @override
+  Future<void> deletePlate(String experimentId) async {
+    plate = null;
+  }
+
+  @override
   Future<Plate?> loadPlate(String experimentId) async => plate;
 
   @override
@@ -201,6 +206,44 @@ void main() {
     expect(savedWell.excluded, isTrue);
     expect(find.text('결과 · 0.82 OD450'), findsOneWidget);
     expect(find.text('분석 제외'), findsOneWidget);
+  });
+
+  testWidgets('shows save status and undoes the last plate change', (
+    tester,
+  ) async {
+    final repository = FakePlateRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlateEditorScreen(
+          experimentId: 'experiment-1',
+          repository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('저장됨'), findsOneWidget);
+    final undoButton = find.widgetWithIcon(IconButton, Icons.undo);
+    expect(tester.widget<IconButton>(undoButton).onPressed, isNull);
+
+    await tester.tap(find.byTooltip('희석 계산 적용'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, '시작 농도'), '90');
+    await tester.enterText(find.widgetWithText(TextField, '희석 배수'), '3');
+    await tester.enterText(find.widgetWithText(TextField, '단계 수'), '2');
+    await tester.enterText(find.widgetWithText(TextField, '반복 well 수'), '1');
+    await tester.tap(find.byType(SwitchListTile));
+    await tester.ensureVisible(find.text('희석 적용'));
+    await tester.tap(find.text('희석 적용'));
+    await tester.pumpAndSettle();
+
+    expect(repository.plate!.wells[0].concentrationValue, 90);
+    await tester.tap(find.byTooltip('마지막 Plate 변경 실행 취소'));
+    await tester.pumpAndSettle();
+
+    expect(repository.plate!.wells[0].concentrationValue, 1000);
+    expect(find.text('마지막 Plate 변경을 취소했습니다.'), findsOneWidget);
   });
 
   testWidgets('opens a plate export sheet with TSV text', (tester) async {
