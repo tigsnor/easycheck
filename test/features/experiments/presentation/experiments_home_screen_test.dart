@@ -1,3 +1,4 @@
+import 'package:easycheck/features/backup/domain/easycheck_backup_service.dart';
 import 'package:easycheck/features/experiments/data/experiment_repository.dart';
 import 'package:easycheck/features/experiments/domain/experiment.dart';
 import 'package:easycheck/features/experiments/presentation/experiments_home_screen.dart';
@@ -125,6 +126,73 @@ void main() {
     expect(repository.experiments.single.id, experiment.id);
     expect(plateRepository.plate?.experimentId, experiment.id);
     expect(find.text('Delete safety test'), findsOneWidget);
+  });
+
+  testWidgets('exports and merges a full backup with connected plates', (
+    tester,
+  ) async {
+    final original = Experiment(
+      id: 'experiment-1',
+      title: 'Original experiment',
+      experimentType: 'CCK-8',
+      createdAt: DateTime.utc(2026, 6, 8),
+      updatedAt: DateTime.utc(2026, 6, 8),
+    );
+    final restored = Experiment(
+      id: 'experiment-2',
+      title: 'Restored experiment',
+      experimentType: 'ELISA',
+      createdAt: DateTime.utc(2026, 6, 8),
+      updatedAt: DateTime.utc(2026, 6, 8),
+    );
+    final restoredPlate = Plate(
+      id: 'plate-2',
+      experimentId: restored.id,
+      name: 'Restored Plate',
+    );
+    final repository = FakeExperimentRepository([original]);
+    final plateRepository = FakePlateRepository();
+    final backupText = const EasyCheckBackupService().encode(
+      experiments: [restored],
+      plates: [restoredPlate],
+      exportedAt: DateTime.utc(2026, 6, 8, 12),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ExperimentsHomeScreen(
+          repository: repository,
+          plateRepository: plateRepository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('전체 데이터 백업 및 복원'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('backup-export-text')), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey('backup-restore-field')),
+      backupText,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('실험 1 · Plate 1'), findsOneWidget);
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('restore-backup-button')),
+    );
+    await tester.tap(find.byKey(const ValueKey('restore-backup-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('백업을 복원할까요?'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('confirm-restore-backup-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(repository.experiments, hasLength(2));
+    expect(find.text('Original experiment'), findsOneWidget);
+    expect(find.text('Restored experiment'), findsOneWidget);
+    expect(plateRepository.plate?.name, 'Restored Plate');
   });
 
   testWidgets('creates a new experiment through the bottom sheet', (

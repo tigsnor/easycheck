@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../backup/domain/easycheck_backup_service.dart';
 import '../../plates/data/file_plate_repository.dart';
 import '../../plates/data/plate_repository.dart';
 import '../../plates/domain/plate.dart';
@@ -27,6 +29,7 @@ class ExperimentsHomeScreen extends StatefulWidget {
 
 class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   static const _uuid = Uuid();
+  static const _backupService = EasyCheckBackupService();
 
   final _searchController = TextEditingController();
   List<Experiment> _experiments = const [];
@@ -74,6 +77,11 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
       appBar: AppBar(
         title: const Text('EasyCheck'),
         actions: [
+          IconButton(
+            tooltip: '전체 데이터 백업 및 복원',
+            onPressed: _showBackupSheet,
+            icon: const Icon(Icons.settings_backup_restore),
+          ),
           IconButton(
             tooltip: '새 실험',
             onPressed: _showCreateExperimentSheet,
@@ -304,6 +312,93 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
     );
   }
 
+  Future<void> _showBackupSheet() async {
+    try {
+      final experiments = await widget.repository.loadExperiments();
+      final plates = <Plate>[];
+      for (final experiment in experiments) {
+        final plate = await widget.plateRepository.loadPlate(experiment.id);
+        if (plate != null) {
+          plates.add(plate);
+        }
+      }
+      final exportText = _backupService.encode(
+        experiments: experiments,
+        plates: plates,
+      );
+      if (!mounted) {
+        return;
+      }
+      final backup = await showModalBottomSheet<EasyCheckBackup>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (_) => _BackupRestoreSheet(
+          exportText: exportText,
+          service: _backupService,
+        ),
+      );
+      if (backup != null) {
+        await _confirmAndRestoreBackup(backup);
+      }
+    } on Object catch (error) {
+      if (mounted) {
+        _showError('백업 데이터를 준비하지 못했습니다: $error');
+      }
+    }
+  }
+
+  Future<void> _confirmAndRestoreBackup(EasyCheckBackup backup) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('백업을 복원할까요?'),
+        content: Text(
+          '실험 ${backup.experiments.length}개와 Plate ${backup.plates.length}개를 병합합니다. 같은 ID의 데이터는 백업 내용으로 덮어쓰고 다른 데이터는 유지합니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm-restore-backup-button'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('복원'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+
+    try {
+      for (final experiment in backup.experiments) {
+        await widget.repository.saveExperiment(experiment);
+      }
+      for (final plate in backup.plates) {
+        await widget.plateRepository.savePlate(plate);
+      }
+      await _loadExperiments();
+    } on Object catch (error) {
+      if (mounted) {
+        _showError('백업을 복원하지 못했습니다: $error');
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '실험 ${backup.experiments.length}개와 Plate ${backup.plates.length}개를 복원했습니다.',
+        ),
+      ),
+    );
+  }
+
   Future<void> _showCreateExperimentSheet() async {
     final created = await showModalBottomSheet<Experiment>(
       context: context,
@@ -337,6 +432,186 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+class _BackupRestoreSheet extends StatefulWidget {
+  const _BackupRestoreSheet({
+    required this.exportText,
+    required this.service,
+  });
+
+  final String exportText;
+  final EasyCheckBackupService service;
+
+  @override
+  State<_BackupRestoreSheet> createState() => _BackupRestoreSheetState();
+}
+
+class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
+  final _restoreController = TextEditingController();
+  EasyCheckBackup? _preview;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreController.addListener(_validateRestoreText);
+  }
+
+  @override
+  void dispose() {
+    _restoreController
+      ..removeListener(_validateRestoreText)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _validateRestoreText() {
+    final text = _restoreController.text;
+    if (text.trim().isEmpty) {
+      setState(() {
+        _preview = null;
+        _error = null;
+      });
+      return;
+    }
+    try {
+      final backup = widget.service.decode(text);
+      setState(() {
+        _preview = backup;
+        _error = null;
+      });
+    } on FormatException catch (error) {
+      setState(() {
+        _preview = null;
+        _error = error.message;
+      });
+    }
+  }
+
+  Future<void> _copyBackup() async {
+    await Clipboard.setData(ClipboardData(text: widget.exportText));
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('전체 백업 JSON을 복사했습니다.')),
+    );
+  }
+
+  Future<void> _pasteBackup() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted || data?.text == null) {
+      return;
+    }
+    _restoreController.text = data!.text!;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final preview = _preview;
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '전체 데이터 백업 · 복원',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          const Text('실험 노트와 연결 Plate를 하나의 버전형 JSON으로 보관합니다.'),
+          const SizedBox(height: 18),
+          Text(
+            '백업 내보내기',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            constraints: const BoxConstraints(maxHeight: 130),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF2F2F7),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: SingleChildScrollView(
+              child: SelectableText(
+                widget.exportText,
+                key: const ValueKey('backup-export-text'),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.tonalIcon(
+              onPressed: _copyBackup,
+              icon: const Icon(Icons.copy_all_outlined),
+              label: const Text('전체 백업 복사'),
+            ),
+          ),
+          const Divider(height: 32),
+          Text(
+            '백업 복원',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          const Text('기존 데이터는 유지하며 같은 ID만 백업 내용으로 덮어씁니다.'),
+          const SizedBox(height: 10),
+          TextField(
+            key: const ValueKey('backup-restore-field'),
+            controller: _restoreController,
+            minLines: 5,
+            maxLines: 9,
+            decoration: InputDecoration(
+              labelText: '백업 JSON',
+              alignLabelWithHint: true,
+              errorText: _error,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              TextButton.icon(
+                onPressed: _pasteBackup,
+                icon: const Icon(Icons.content_paste),
+                label: const Text('클립보드 붙여넣기'),
+              ),
+              const Spacer(),
+              if (preview != null)
+                Text(
+                  '실험 ${preview.experiments.length} · Plate ${preview.plates.length}',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              key: const ValueKey('restore-backup-button'),
+              onPressed: preview == null
+                  ? null
+                  : () => Navigator.of(context).pop(preview),
+              icon: const Icon(Icons.restore),
+              label: const Text('백업 병합 복원'),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
