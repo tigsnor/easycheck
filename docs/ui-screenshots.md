@@ -14,6 +14,8 @@ GitHub PR 화면에서는 PNG 같은 바이너리 파일 diff가 `Binary file no
    - plate grid 아래에서 실험군별 색상, well 수, 역할, 농도 series가 표시되는지 확인합니다.
 5. **희석 계산 Builder**
    - `희석 계산 적용`을 눌러 시작 농도, 희석 배수, 단계 수, 반복 well 수, 방향, 0 농도 control 포함 여부를 입력할 수 있는지 확인합니다.
+6. **Plate 결과 일괄 입력**
+   - `결과 일괄 입력`에서 Excel/Plate reader 행렬 붙여넣기, 좌표 미리보기, 오류와 덮어쓰기 안내가 표시되는지 확인합니다.
 
 ## 로컬에서 직접 UI 보는 방법
 

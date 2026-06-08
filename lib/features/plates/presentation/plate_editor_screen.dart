@@ -10,6 +10,7 @@ import '../data/plate_repository.dart';
 import '../domain/plate.dart';
 import '../domain/plate_dilution_service.dart';
 import '../domain/plate_export_service.dart';
+import '../domain/plate_result_import_service.dart';
 import '../domain/plate_validation_service.dart';
 import '../domain/well.dart';
 import '../domain/well_group.dart';
@@ -43,6 +44,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   final _dilutionService = const DilutionService();
   final _plateDilutionService = const PlateDilutionService();
   final _plateExportService = const PlateExportService();
+  final _plateResultImportService = const PlateResultImportService();
   final _plateValidationService = const PlateValidationService();
   late final List<double> _demoConcentrations;
   Plate? _plate;
@@ -92,11 +94,19 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
           ),
         ],
       ),
+      floatingActionButton: plate == null
+          ? null
+          : FloatingActionButton.extended(
+              key: const ValueKey('bulk-result-import-button'),
+              onPressed: _openBulkResultImport,
+              icon: const Icon(Icons.table_view_outlined),
+              label: const Text('결과 일괄 입력'),
+            ),
       body: SafeArea(
         child: _isLoading || plate == null
             ? const Center(child: CircularProgressIndicator())
             : ListView(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
                 children: [
                   _ExperimentHeaderCard(
                     title: widget.experimentTitle,
@@ -313,6 +323,36 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     );
   }
 
+  Future<void> _openBulkResultImport() async {
+    final plate = _plate;
+    if (plate == null) {
+      return;
+    }
+
+    final draft = await showModalBottomSheet<_BulkResultImportDraft>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _BulkResultImportSheet(
+        plate: plate,
+        service: _plateResultImportService,
+      ),
+    );
+    if (draft == null) {
+      return;
+    }
+
+    final updated = _plateResultImportService.apply(
+      plate: plate,
+      preview: draft.preview,
+      resultUnit: draft.resultUnit,
+    );
+    await _savePlate(
+      updated,
+      successMessage: '${draft.preview.valueCount}개 well 결과를 입력했습니다.',
+    );
+  }
+
   Future<void> _openDilutionBuilder() async {
     final plate = _plate;
     if (plate == null) {
@@ -451,7 +491,10 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     await _savePlate(plate.copyWith(wells: updatedWells));
   }
 
-  Future<void> _savePlate(Plate plate) async {
+  Future<void> _savePlate(
+    Plate plate, {
+    String successMessage = 'plate layout을 저장했습니다.',
+  }) async {
     await widget.repository.savePlate(plate);
     if (!mounted) {
       return;
@@ -459,7 +502,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     setState(() => _plate = plate);
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('plate layout을 저장했습니다.')));
+    ).showSnackBar(SnackBar(content: Text(successMessage)));
   }
 
   List<WellGroup> _upsertGroup(List<WellGroup> groups, WellGroup group) {
@@ -680,6 +723,212 @@ class _WellCell extends StatelessWidget {
       ),
     );
   }
+}
+
+class _BulkResultImportSheet extends StatefulWidget {
+  const _BulkResultImportSheet({
+    required this.plate,
+    required this.service,
+  });
+
+  final Plate plate;
+  final PlateResultImportService service;
+
+  @override
+  State<_BulkResultImportSheet> createState() => _BulkResultImportSheetState();
+}
+
+class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
+  final _matrixController = TextEditingController();
+  final _unitController = TextEditingController(text: 'OD450');
+  late PlateResultImportPreview _preview;
+
+  @override
+  void initState() {
+    super.initState();
+    _preview = widget.service.parseMatrix(text: '');
+    _matrixController.addListener(_updatePreview);
+  }
+
+  @override
+  void dispose() {
+    _matrixController
+      ..removeListener(_updatePreview)
+      ..dispose();
+    _unitController.dispose();
+    super.dispose();
+  }
+
+  void _updatePreview() {
+    setState(() {
+      _preview = widget.service.parseMatrix(
+        text: _matrixController.text,
+        rowCount: widget.plate.rowCount,
+        columnCount: widget.plate.columnCount,
+      );
+    });
+  }
+
+  Future<void> _pasteClipboard() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted || data?.text == null) {
+      return;
+    }
+    _matrixController.text = data!.text!;
+  }
+
+  int get _overwriteCount => _preview.values.keys
+      .where((position) => widget.plate.wellAt(position).resultValue != null)
+      .length;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Plate 결과 일괄 입력',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Excel이나 Plate reader에서 복사한 행렬을 붙여넣으세요. 첫 행의 1–12와 첫 열의 A–H 좌표는 자동으로 인식합니다.',
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            key: const ValueKey('bulk-result-matrix-field'),
+            controller: _matrixController,
+            minLines: 7,
+            maxLines: 12,
+            keyboardType: TextInputType.multiline,
+            decoration: const InputDecoration(
+              labelText: '결과 행렬',
+              alignLabelWithHint: true,
+              hintText: r'\t1\t2\t3\nA\t0.82\t0.79\t0.85\nB\t0.80\t0.81\t0.83',
+            ),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: _pasteClipboard,
+              icon: const Icon(Icons.content_paste),
+              label: const Text('클립보드 붙여넣기'),
+            ),
+          ),
+          TextField(
+            key: const ValueKey('bulk-result-unit-field'),
+            controller: _unitController,
+            decoration: const InputDecoration(
+              labelText: '결과 단위',
+              hintText: '예: OD450',
+            ),
+          ),
+          const SizedBox(height: 14),
+          _BulkResultImportPreviewCard(
+            preview: _preview,
+            overwriteCount: _overwriteCount,
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              key: const ValueKey('apply-bulk-results-button'),
+              onPressed: _preview.canApply
+                  ? () => Navigator.of(context).pop(
+                        _BulkResultImportDraft(
+                          preview: _preview,
+                          resultUnit: _unitController.text.trim(),
+                        ),
+                      )
+                  : null,
+              icon: const Icon(Icons.check),
+              label: Text('${_preview.valueCount}개 결과 적용'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BulkResultImportPreviewCard extends StatelessWidget {
+  const _BulkResultImportPreviewCard({
+    required this.preview,
+    required this.overwriteCount,
+  });
+
+  final PlateResultImportPreview preview;
+  final int overwriteCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasIssues = preview.issues.isNotEmpty;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: hasIssues
+            ? Theme.of(context).colorScheme.errorContainer
+            : const Color(0xFFF2F2F7),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            preview.valueCount == 0
+                ? '붙여넣을 데이터를 기다리고 있습니다.'
+                : '${preview.detectedRowCount}행 × ${preview.detectedColumnCount}열 · 숫자 ${preview.valueCount}개 인식',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          if (preview.values.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              preview.values.entries
+                  .take(6)
+                  .map(
+                    (entry) => '${entry.key.label}=${_formatDose(entry.value)}',
+                  )
+                  .join(' · '),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+          if (overwriteCount > 0) ...[
+            const SizedBox(height: 6),
+            Text('기존 결과 $overwriteCount개를 덮어씁니다.'),
+          ],
+          if (hasIssues) ...[
+            const SizedBox(height: 8),
+            for (final issue in preview.issues.take(4))
+              Text(
+                '${issue.rowNumber}행 ${issue.columnNumber}열 “${issue.value}”: ${issue.message}',
+              ),
+            if (preview.issues.length > 4)
+              Text('그 외 ${preview.issues.length - 4}개 오류'),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BulkResultImportDraft {
+  const _BulkResultImportDraft({
+    required this.preview,
+    required this.resultUnit,
+  });
+
+  final PlateResultImportPreview preview;
+  final String resultUnit;
 }
 
 class _PlateExportSheet extends StatelessWidget {

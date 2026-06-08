@@ -18,6 +18,7 @@ EasyCheck는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 - 실험 노트 홈 화면, 검색, 생성, 수정, 복제, 삭제와 JSON 파일 기반 로컬 저장
 - 실험별 96-well plate grid, 행/열/범위 선택, 그룹 색상 지정, JSON 파일 기반 plate layout 저장
 - 선택한 well의 농도, 측정 결과, 결과 단위, 메모, 분석 제외 여부를 기록하는 상세 카드
+- Excel/Plate reader의 A-H × 1-12 결과 행렬을 붙여넣어 여러 well에 일괄 입력
 - Plate layout과 well별 측정 결과를 메모/엑셀/구글시트에 붙여넣을 수 있는 TSV 내보내기
 - 시작 농도, 희석 배수, 단계 수, 반복 well 수, 방향을 입력해 plate에 적용하는 희석 계산 Builder
 - Blank/Control 누락, 반복 well 부족, 농도 단위 혼용, 일부 결과 누락을 알려주는 실험 준비 점검

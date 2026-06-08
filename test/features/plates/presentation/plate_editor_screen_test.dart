@@ -111,6 +111,43 @@ void main() {
     expect(repository.plate!.wells[2].concentrationValue, isNull);
   });
 
+  testWidgets('imports an Excel-style result matrix into wells', (
+    tester,
+  ) async {
+    final repository = FakePlateRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlateEditorScreen(
+          experimentId: 'experiment-1',
+          repository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('bulk-result-import-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('bulk-result-matrix-field')),
+      '\t1\t2\nA\t0.82\t0.79\nB\t0.75\t0.77',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('숫자 4개 인식'), findsOneWidget);
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('apply-bulk-results-button')),
+    );
+    await tester.tap(find.byKey(const ValueKey('apply-bulk-results-button')));
+    await tester.pumpAndSettle();
+
+    expect(repository.plate!.wells[0].resultValue, 0.82);
+    expect(repository.plate!.wells[1].resultValue, 0.79);
+    expect(repository.plate!.wells[12].resultValue, 0.75);
+    expect(repository.plate!.wells[13].resultValue, 0.77);
+    expect(repository.plate!.wells[0].resultUnit, 'OD450');
+  });
+
   testWidgets('records a result, note, and exclusion flag for a well', (
     tester,
   ) async {
