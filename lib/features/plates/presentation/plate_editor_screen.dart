@@ -60,6 +60,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   bool _isSaving = false;
   DateTime? _lastSavedAt;
   final List<Plate> _undoHistory = [];
+  double? _plateCellSize;
 
   @override
   void initState() {
@@ -159,6 +160,10 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                   _PlateGrid(
                     plate: plate,
                     selectedPositions: _selectedPositions,
+                    requestedCellSize: _plateCellSize,
+                    onZoomOut: _canZoomPlateOut ? _zoomPlateOut : null,
+                    onFit: _plateCellSize == null ? null : _fitPlateToScreen,
+                    onZoomIn: _canZoomPlateIn ? _zoomPlateIn : null,
                     onSelected: _selectSingleWell,
                     onRangeSelected: _selectRangeTo,
                     onRowSelected: _selectRow,
@@ -250,6 +255,28 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       name: '96-well Plate',
     );
     return _plateWithDemoDilution(emptyPlate);
+  }
+
+  bool get _canZoomPlateOut => _plateCellSize == null || _plateCellSize! > 32;
+
+  bool get _canZoomPlateIn => _plateCellSize == null || _plateCellSize! < 64;
+
+  void _zoomPlateOut() {
+    setState(() {
+      final current = _plateCellSize ?? 40;
+      _plateCellSize = (current - 8).clamp(32, 64).toDouble();
+    });
+  }
+
+  void _zoomPlateIn() {
+    setState(() {
+      final current = _plateCellSize ?? 32;
+      _plateCellSize = (current + 8).clamp(32, 64).toDouble();
+    });
+  }
+
+  void _fitPlateToScreen() {
+    setState(() => _plateCellSize = null);
   }
 
   void _selectSingleWell(WellPosition position) {
@@ -664,14 +691,25 @@ class _PlateGrid extends StatelessWidget {
   const _PlateGrid({
     required this.plate,
     required this.selectedPositions,
+    required this.requestedCellSize,
+    required this.onZoomOut,
+    required this.onFit,
+    required this.onZoomIn,
     required this.onSelected,
     required this.onRangeSelected,
     required this.onRowSelected,
     required this.onColumnSelected,
   });
 
+  static const _spacing = 6.0;
+  static const _cardPadding = 14.0;
+
   final Plate plate;
   final Set<WellPosition> selectedPositions;
+  final double? requestedCellSize;
+  final VoidCallback? onZoomOut;
+  final VoidCallback? onFit;
+  final VoidCallback? onZoomIn;
   final ValueChanged<WellPosition> onSelected;
   final ValueChanged<WellPosition> onRangeSelected;
   final ValueChanged<int> onRowSelected;
@@ -681,91 +719,174 @@ class _PlateGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: (plate.rowCount + 1) * (plate.columnCount + 1),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: plate.columnCount + 1,
-            mainAxisSpacing: 6,
-            crossAxisSpacing: 6,
-          ),
-          itemBuilder: (context, index) {
-            final gridColumnCount = plate.columnCount + 1;
-            final row = index ~/ gridColumnCount;
-            final column = index % gridColumnCount;
+        padding: const EdgeInsets.all(_cardPadding),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    requestedCellSize == null
+                        ? 'Plate 화면 맞춤'
+                        : 'Plate ${requestedCellSize!.round()}px',
+                    key: const ValueKey('plate-zoom-label'),
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ),
+                IconButton(
+                  key: const ValueKey('plate-zoom-out-button'),
+                  tooltip: 'Plate 축소',
+                  onPressed: onZoomOut,
+                  icon: const Icon(Icons.remove_circle_outline),
+                ),
+                IconButton(
+                  key: const ValueKey('plate-fit-button'),
+                  tooltip: 'Plate 화면 맞춤',
+                  onPressed: onFit,
+                  icon: const Icon(Icons.fit_screen_outlined),
+                ),
+                IconButton(
+                  key: const ValueKey('plate-zoom-in-button'),
+                  tooltip: 'Plate 확대',
+                  onPressed: onZoomIn,
+                  icon: const Icon(Icons.add_circle_outline),
+                ),
+              ],
+            ),
+            if (requestedCellSize != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  '좌우로 밀어 숨겨진 well을 확인하세요.',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                ),
+              ),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final gridColumnCount = plate.columnCount + 1;
+                final gridRowCount = plate.rowCount + 1;
+                final fitCellSize =
+                    (constraints.maxWidth - _spacing * (gridColumnCount - 1)) /
+                        gridColumnCount;
+                final cellSize = requestedCellSize ?? fitCellSize;
+                final gridWidth = cellSize * gridColumnCount +
+                    _spacing * (gridColumnCount - 1);
+                final gridHeight =
+                    cellSize * gridRowCount + _spacing * (gridRowCount - 1);
 
-            if (row == 0 && column == 0) {
-              return const SizedBox.shrink();
-            }
-            if (row == 0) {
-              final columnIndex = column - 1;
-              return _HeaderCell(
-                key: ValueKey('column-header-${columnIndex + 1}'),
-                label: '${columnIndex + 1}',
-                onTap: () => onColumnSelected(columnIndex),
-              );
-            }
-            if (column == 0) {
-              final rowIndex = row - 1;
-              final rowLabel = String.fromCharCode(
-                'A'.codeUnitAt(0) + rowIndex,
-              );
-              return _HeaderCell(
-                key: ValueKey('row-header-$rowLabel'),
-                label: rowLabel,
-                onTap: () => onRowSelected(rowIndex),
-              );
-            }
-
-            final position = WellPosition(
-              rowIndex: row - 1,
-              columnIndex: column - 1,
-            );
-            final well = plate.wellAt(position);
-            final group = well.groupId == null
-                ? null
-                : plate.groups.cast<WellGroup?>().firstWhere(
-                      (candidate) => candidate?.id == well.groupId,
-                      orElse: () => null,
-                    );
-
-            return _WellCell(
-              key: ValueKey('well-${well.label}'),
-              well: well,
-              group: group,
-              selected: selectedPositions.contains(position),
-              onTap: () => onSelected(position),
-              onLongPress: () => onRangeSelected(position),
-            );
-          },
+                return Scrollbar(
+                  child: SingleChildScrollView(
+                    key: const ValueKey('plate-horizontal-scroll'),
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: gridWidth,
+                      height: gridHeight,
+                      child: GridView.builder(
+                        key: const ValueKey('plate-grid'),
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: gridRowCount * gridColumnCount,
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: gridColumnCount,
+                          mainAxisSpacing: _spacing,
+                          crossAxisSpacing: _spacing,
+                        ),
+                        itemBuilder: (context, index) =>
+                            _buildCell(context, index, gridColumnCount),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildCell(BuildContext context, int index, int gridColumnCount) {
+    final row = index ~/ gridColumnCount;
+    final column = index % gridColumnCount;
+
+    if (row == 0 && column == 0) {
+      return const SizedBox.shrink();
+    }
+    if (row == 0) {
+      final columnIndex = column - 1;
+      return _HeaderCell(
+        key: ValueKey('column-header-${columnIndex + 1}'),
+        label: '${columnIndex + 1}',
+        semanticLabel: '${columnIndex + 1}열 전체 선택',
+        onTap: () => onColumnSelected(columnIndex),
+      );
+    }
+    if (column == 0) {
+      final rowIndex = row - 1;
+      final rowLabel = String.fromCharCode('A'.codeUnitAt(0) + rowIndex);
+      return _HeaderCell(
+        key: ValueKey('row-header-$rowLabel'),
+        label: rowLabel,
+        semanticLabel: '$rowLabel행 전체 선택',
+        onTap: () => onRowSelected(rowIndex),
+      );
+    }
+
+    final position = WellPosition(rowIndex: row - 1, columnIndex: column - 1);
+    final well = plate.wellAt(position);
+    final group = well.groupId == null
+        ? null
+        : plate.groups.cast<WellGroup?>().firstWhere(
+              (candidate) => candidate?.id == well.groupId,
+              orElse: () => null,
+            );
+
+    return _WellCell(
+      key: ValueKey('well-${well.label}'),
+      well: well,
+      group: group,
+      selected: selectedPositions.contains(position),
+      onTap: () => onSelected(position),
+      onLongPress: () => onRangeSelected(position),
     );
   }
 }
 
 class _HeaderCell extends StatelessWidget {
-  const _HeaderCell({required this.label, required this.onTap, super.key});
+  const _HeaderCell({
+    required this.label,
+    required this.semanticLabel,
+    required this.onTap,
+    super.key,
+  });
 
   final String label;
+  final String semanticLabel;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(10),
-      onTap: onTap,
-      child: Container(
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFF7D6),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+    return Semantics(
+      label: semanticLabel,
+      button: true,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Container(
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF7D6),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+          ),
         ),
       ),
     );
@@ -796,9 +917,16 @@ class _WellCell extends StatelessWidget {
     final borderColor = selected ? Colors.black : Colors.transparent;
     final label = group?.shortLabel.isNotEmpty == true ? group!.shortLabel : '';
 
+    final concentrationLabel = hasDose
+        ? ', 농도 ${_formatDose(well.concentrationValue!)} ${well.concentrationUnit}'
+        : '';
+    final groupLabel = group == null ? '' : ', 그룹 ${group!.name}';
+
     return Semantics(
-      label: '${well.label} well',
+      label: '${well.label} well$concentrationLabel$groupLabel',
+      hint: '탭하여 선택, 길게 눌러 범위 선택',
       button: true,
+      selected: selected,
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
         onTap: onTap,

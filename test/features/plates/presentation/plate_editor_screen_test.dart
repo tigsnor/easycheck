@@ -63,6 +63,87 @@ void main() {
     expect(repository.plate!.wells.length, 96);
   });
 
+  testWidgets('zooms the plate and restores screen fit', (tester) async {
+    final repository = FakePlateRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlateEditorScreen(
+          experimentId: 'experiment-1',
+          repository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Plate 화면 맞춤'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('plate-zoom-in-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Plate 40px'), findsOneWidget);
+    expect(find.text('좌우로 밀어 숨겨진 well을 확인하세요.'), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('well-A1'))).width,
+      closeTo(40, 0.1),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('plate-zoom-in-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('Plate 48px'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('plate-fit-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('Plate 화면 맞춤'), findsOneWidget);
+  });
+
+  testWidgets('keeps row selection while changing plate zoom', (tester) async {
+    final repository = FakePlateRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlateEditorScreen(
+          experimentId: 'experiment-1',
+          repository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('row-header-A')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('plate-zoom-in-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('선택 영역 그룹 지정'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('12개 well 그룹 지정'), findsOneWidget);
+  });
+
+  testWidgets('keeps plate controls usable on a narrow phone', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlateEditorScreen(
+          experimentId: 'experiment-1',
+          repository: FakePlateRepository(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('plate-zoom-in-button')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('plate-zoom-in-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('Plate 40px'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('selects a row and opens group assignment sheet', (tester) async {
     final repository = FakePlateRepository();
 
