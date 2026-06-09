@@ -14,6 +14,9 @@ flutter run
 
 ## 0. 실제 기기/시뮬레이터 실행 확인
 
+- [ ] GitHub Actions의 품질 검사, Android APK 빌드, iOS Simulator 빌드가 모두 성공한다.
+- [ ] Actions artifact에서 Android APK 또는 iOS Simulator 앱을 다운로드할 수 있다.
+- [ ] 테스트한 앱 버전, Actions run number, 기기와 OS 버전을 기록한다.
 - [ ] `flutter devices`에서 iPhone Simulator, Android Emulator 또는 실제 기기가 표시된다.
 - [ ] `flutter run -d <device-id>`로 앱이 실행된다.
 - [ ] 앱을 종료 후 다시 실행해도 첫 화면이 정상 표시된다.

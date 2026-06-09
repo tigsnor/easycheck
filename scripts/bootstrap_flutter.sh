@@ -14,18 +14,32 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FLUTTER_HOME="${FLUTTER_HOME:-$ROOT_DIR/.tool/flutter}"
 RELEASES_JSON_URL="https://storage.googleapis.com/flutter_infra_release/releases/releases_linux.json"
+VERSION_FILE="$ROOT_DIR/.fvmrc"
+REQUESTED_VERSION="${FLUTTER_VERSION:-$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["flutter"])' "$VERSION_FILE")}"
 ARCHIVE_BASE_URL="https://storage.googleapis.com/flutter_infra_release/releases"
 
-if command -v flutter >/dev/null 2>&1; then
-  echo "Flutter is already available: $(command -v flutter)"
+flutter_matches_requested_version() {
+  local flutter_binary="$1"
+  local version_output
+  version_output="$("$flutter_binary" --version 2>/dev/null)"
+  grep -q "Flutter $REQUESTED_VERSION " <<<"$version_output"
+}
+
+if command -v flutter >/dev/null 2>&1 && flutter_matches_requested_version "$(command -v flutter)"; then
+  echo "Flutter $REQUESTED_VERSION is already available: $(command -v flutter)"
   flutter --version
   exit 0
 fi
 
-if [ -x "$FLUTTER_HOME/bin/flutter" ]; then
-  echo "Using existing local Flutter SDK: $FLUTTER_HOME"
+if [ -x "$FLUTTER_HOME/bin/flutter" ] && flutter_matches_requested_version "$FLUTTER_HOME/bin/flutter"; then
+  echo "Using existing local Flutter $REQUESTED_VERSION SDK: $FLUTTER_HOME"
   "$FLUTTER_HOME/bin/flutter" --version
   exit 0
+fi
+
+if [ -d "$FLUTTER_HOME" ]; then
+  echo "Removing Flutter SDK that does not match $REQUESTED_VERSION: $FLUTTER_HOME"
+  rm -rf "$FLUTTER_HOME"
 fi
 
 mkdir -p "$(dirname "$FLUTTER_HOME")"
@@ -36,18 +50,21 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "Flutter was not found on PATH. Installing local SDK to $FLUTTER_HOME"
+echo "Flutter was not found on PATH. Installing Flutter $REQUESTED_VERSION to $FLUTTER_HOME"
 
 if curl -L --fail --retry 3 --connect-timeout 20 "$RELEASES_JSON_URL" -o "$TMP_DIR/releases_linux.json"; then
-  ARCHIVE_PATH="$(python3 - "$TMP_DIR/releases_linux.json" <<'PY'
+  ARCHIVE_PATH="$(python3 - "$TMP_DIR/releases_linux.json" "$REQUESTED_VERSION" <<'PY'
 import json
 import sys
 
 with open(sys.argv[1], encoding='utf-8') as fh:
     data = json.load(fh)
 
-stable_hash = data['current_release']['stable']
-release = next(item for item in data['releases'] if item['hash'] == stable_hash)
+requested_version = sys.argv[2]
+release = next(
+    item for item in data['releases']
+    if item.get('version') == requested_version and item.get('channel') == 'stable'
+)
 print(release['archive'])
 PY
 )"
@@ -57,7 +74,7 @@ PY
   tar -xf "$TMP_DIR/flutter.tar.xz" -C "$(dirname "$FLUTTER_HOME")"
 elif command -v git >/dev/null 2>&1; then
   echo "Release archive metadata was unavailable. Falling back to git clone of Flutter stable."
-  git clone --depth 1 -b stable https://github.com/flutter/flutter.git "$FLUTTER_HOME"
+  git clone --depth 1 -b "$REQUESTED_VERSION" https://github.com/flutter/flutter.git "$FLUTTER_HOME"
 else
   echo "Neither Flutter archive download nor git fallback is available." >&2
   exit 1

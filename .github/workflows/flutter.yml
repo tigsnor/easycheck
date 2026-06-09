@@ -6,10 +6,18 @@ on:
       - work
       - main
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flutter-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
-    name: Analyze and test Flutter app
+  quality:
+    name: Format, analyze, and test
     runs-on: ubuntu-latest
 
     steps:
@@ -20,6 +28,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version-file: .fvmrc
           cache: true
 
       - name: Show Flutter version
@@ -37,5 +46,90 @@ jobs:
       - name: Run tests
         run: flutter test
 
+  android-alpha:
+    name: Build Android alpha APK
+    needs: quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: .fvmrc
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
       - name: Build Android debug APK
         run: flutter build apk --debug
+
+      - name: Package Android alpha artifact
+        run: |
+          mkdir -p artifact/android
+          cp build/app/outputs/flutter-apk/app-debug.apk artifact/android/easycheck-android-alpha.apk
+          sha256sum artifact/android/easycheck-android-alpha.apk > artifact/android/SHA256SUMS.txt
+          printf 'version=%s\ncommit=%s\nrun=%s\n' \
+            "$(sed -n 's/^version: //p' pubspec.yaml)" \
+            "$GITHUB_SHA" \
+            "$GITHUB_RUN_NUMBER" > artifact/android/BUILD_INFO.txt
+
+      - name: Upload Android alpha APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: easycheck-android-alpha-${{ github.run_number }}
+          path: artifact/android
+          if-no-files-found: error
+          retention-days: 14
+
+  ios-simulator:
+    name: Build iOS Simulator app
+    needs: quality
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: .fvmrc
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build iOS Simulator app
+        run: flutter build ios --simulator --debug
+
+      - name: Package iOS Simulator artifact
+        run: |
+          mkdir -p artifact/ios
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/ios/iphonesimulator/Runner.app \
+            artifact/ios/easycheck-ios-simulator.zip
+          shasum -a 256 artifact/ios/easycheck-ios-simulator.zip > artifact/ios/SHA256SUMS.txt
+          printf 'version=%s\ncommit=%s\nrun=%s\n' \
+            "$(sed -n 's/^version: //p' pubspec.yaml)" \
+            "$GITHUB_SHA" \
+            "$GITHUB_RUN_NUMBER" > artifact/ios/BUILD_INFO.txt
+
+      - name: Upload iOS Simulator app
+        uses: actions/upload-artifact@v4
+        with:
+          name: easycheck-ios-simulator-${{ github.run_number }}
+          path: artifact/ios
+          if-no-files-found: error
+          retention-days: 14

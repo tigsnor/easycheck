@@ -197,9 +197,9 @@ EasyCheck는 처음부터 모든 고급 분석 기능을 넣기보다, 연구원
 
 현재 JSON 파일 기반 실험/Plate 저장, 범위 선택, 그룹 지정, 희석 계산, Well 결과 기록, TSV 복사·파일 공유, 실험 준비 점검, 결과 행렬 일괄 붙여넣기, 실행 취소와 전체 JSON 백업 파일 공유·선택 복원까지 구현했습니다.
 
-다음 코딩 작업은 `알파 배포 준비와 실제 기기 QA`를 추천합니다.
+다음 단계는 `GitHub Actions 알파 산출물 확인과 실제 기기 QA`입니다.
 
 이유:
 - 백업 JSON과 Plate TSV는 Files 앱, AirDrop, 메일로 전달할 수 있으며 백업 파일을 Files/iCloud에서 선택해 복원할 수 있습니다.
-- Android APK 및 iOS simulator build를 CI에서 확인하고 Bundle ID, 앱 버전, TestFlight 배포 절차를 확정해야 여자친구분이 자신의 iPhone에서 반복 테스트할 수 있습니다.
+- CI가 Android APK와 iOS Simulator 앱을 산출하며, 실제 iPhone 반복 테스트를 위해 Apple Developer 계정·고유 Bundle ID·TestFlight 서명을 연결해야 합니다.
 - 배포 이후 실제 사용 피드백을 바탕으로 Plate 확대/가로 모드와 기본 분석을 우선순위화합니다.

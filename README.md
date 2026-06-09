@@ -7,6 +7,8 @@ EasyCheck는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 - [Flutter 개발 플랜](docs/flutter-development-plan.md)
 - [MVP 우선 개발 로드맵](docs/mvp-first-roadmap.md)
 - [수동 QA 체크리스트](docs/manual-qa-checklist.md)
+- [알파 배포 및 실제 기기 테스트 가이드](docs/alpha-testing-guide.md)
+- [알파 피드백 템플릿](docs/alpha-feedback-template.md)
 - [UI 확인 가이드](docs/ui-screenshots.md)
 
 ## 현재 구현 상태
@@ -67,4 +69,4 @@ flutter test
 
 ## CI
 
-GitHub Actions의 [Flutter CI](.github/workflows/flutter.yml)는 push와 pull request에서 `flutter pub get`, `dart format --set-exit-if-changed .`, `flutter analyze`, `flutter test`를 실행합니다.
+GitHub Actions의 [Flutter CI](.github/workflows/flutter.yml)는 고정된 Flutter 버전으로 포맷, 정적 분석, 전체 테스트를 실행한 뒤 Android 알파 APK와 iOS Simulator 앱을 빌드해 14일간 artifact로 제공합니다. 실제 기기 설치 절차는 [알파 테스트 가이드](docs/alpha-testing-guide.md)를 확인합니다.
