@@ -76,11 +76,14 @@ class EasyCheckBackupService {
     }
 
     try {
-      final experiments = _mapList(decoded['experiments'], 'experiments')
-          .map(Experiment.fromJson)
-          .toList();
-      final plates =
-          _mapList(decoded['plates'], 'plates').map(Plate.fromJson).toList();
+      final experiments = _mapList(
+        decoded['experiments'],
+        'experiments',
+      ).map(Experiment.fromJson).toList();
+      final plates = _mapList(
+        decoded['plates'],
+        'plates',
+      ).map(Plate.fromJson).toList();
       final exportedAt = DateTime.parse(decoded['exportedAt'] as String);
       _validateUniqueIds(experiments, plates);
       _validatePlateReferences(experiments, plates);
@@ -105,16 +108,11 @@ class EasyCheckBackupService {
       if (item is! Map) {
         throw FormatException('$field 배열에 object가 아닌 값이 있습니다.');
       }
-      return item.map(
-        (key, value) => MapEntry(key.toString(), value),
-      );
+      return item.map((key, value) => MapEntry(key.toString(), value));
     }).toList();
   }
 
-  void _validateUniqueIds(
-    List<Experiment> experiments,
-    List<Plate> plates,
-  ) {
+  void _validateUniqueIds(List<Experiment> experiments, List<Plate> plates) {
     if (experiments.map((item) => item.id).toSet().length !=
         experiments.length) {
       throw const FormatException('중복된 실험 ID가 있습니다.');

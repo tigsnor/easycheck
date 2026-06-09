@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../shared/services/document_exchange_service.dart';
 import '../../backup/domain/easycheck_backup_service.dart';
 import '../../plates/data/file_plate_repository.dart';
 import '../../plates/data/plate_repository.dart';
@@ -16,12 +17,16 @@ class ExperimentsHomeScreen extends StatefulWidget {
   const ExperimentsHomeScreen({
     ExperimentRepository? repository,
     PlateRepository? plateRepository,
+    DocumentExchangeService? documentExchangeService,
     super.key,
   })  : repository = repository ?? const FileExperimentRepository(),
-        plateRepository = plateRepository ?? const FilePlateRepository();
+        plateRepository = plateRepository ?? const FilePlateRepository(),
+        documentExchangeService =
+            documentExchangeService ?? const PlatformDocumentExchangeService();
 
   final ExperimentRepository repository;
   final PlateRepository plateRepository;
+  final DocumentExchangeService documentExchangeService;
 
   @override
   State<ExperimentsHomeScreen> createState() => _ExperimentsHomeScreenState();
@@ -307,9 +312,9 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
       return;
     }
     setState(() => _upsertLocalExperiment(experiment));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('실험과 Plate 데이터를 복원했습니다.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('실험과 Plate 데이터를 복원했습니다.')));
   }
 
   Future<void> _showBackupSheet() async {
@@ -336,6 +341,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
         builder: (_) => _BackupRestoreSheet(
           exportText: exportText,
           service: _backupService,
+          documentExchangeService: widget.documentExchangeService,
         ),
       );
       if (backup != null) {
@@ -439,10 +445,12 @@ class _BackupRestoreSheet extends StatefulWidget {
   const _BackupRestoreSheet({
     required this.exportText,
     required this.service,
+    required this.documentExchangeService,
   });
 
   final String exportText;
   final EasyCheckBackupService service;
+  final DocumentExchangeService documentExchangeService;
 
   @override
   State<_BackupRestoreSheet> createState() => _BackupRestoreSheetState();
@@ -495,9 +503,9 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('전체 백업 JSON을 복사했습니다.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('전체 백업 JSON을 복사했습니다.')));
   }
 
   Future<void> _pasteBackup() async {
@@ -506,6 +514,57 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
       return;
     }
     _restoreController.text = data!.text!;
+  }
+
+  Future<void> _shareBackupFile(BuildContext shareContext) async {
+    try {
+      final status = await widget.documentExchangeService.shareTextDocument(
+        content: widget.exportText,
+        fileName: _backupFileName(DateTime.now()),
+        mimeType: 'application/json',
+        subject: 'EasyCheck 전체 데이터 백업',
+        sharePositionOrigin: _sharePositionOrigin(shareContext),
+      );
+      if (!mounted || status == DocumentShareStatus.dismissed) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            status == DocumentShareStatus.success
+                ? '백업 파일을 공유했습니다.'
+                : '이 기기에서는 파일 공유를 사용할 수 없습니다.',
+          ),
+        ),
+      );
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('백업 파일을 공유하지 못했습니다: $error')));
+      }
+    }
+  }
+
+  Future<void> _pickBackupFile() async {
+    try {
+      final document = await widget.documentExchangeService.pickTextDocument(
+        allowedExtensions: const ['json'],
+      );
+      if (!mounted || document == null) {
+        return;
+      }
+      _restoreController.text = document.content;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${document.name} 파일을 불러왔습니다.')));
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('백업 파일을 읽지 못했습니다: $error')));
+      }
+    }
   }
 
   @override
@@ -552,10 +611,25 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
           const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerRight,
-            child: FilledButton.tonalIcon(
-              onPressed: _copyBackup,
-              icon: const Icon(Icons.copy_all_outlined),
-              label: const Text('전체 백업 복사'),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.end,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _copyBackup,
+                  icon: const Icon(Icons.copy_all_outlined),
+                  label: const Text('JSON 복사'),
+                ),
+                Builder(
+                  builder: (shareContext) => FilledButton.tonalIcon(
+                    key: const ValueKey('share-backup-file-button'),
+                    onPressed: () => _shareBackupFile(shareContext),
+                    icon: const Icon(Icons.ios_share_outlined),
+                    label: const Text('파일 공유'),
+                  ),
+                ),
+              ],
             ),
           ),
           const Divider(height: 32),
@@ -567,6 +641,13 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
           ),
           const SizedBox(height: 6),
           const Text('기존 데이터는 유지하며 같은 ID만 백업 내용으로 덮어씁니다.'),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            key: const ValueKey('pick-backup-file-button'),
+            onPressed: _pickBackupFile,
+            icon: const Icon(Icons.file_open_outlined),
+            label: const Text('백업 파일 선택'),
+          ),
           const SizedBox(height: 10),
           TextField(
             key: const ValueKey('backup-restore-field'),
@@ -968,4 +1049,17 @@ extension _ExperimentStatusLabel on ExperimentStatus {
         return '보관됨';
     }
   }
+}
+
+String _backupFileName(DateTime value) {
+  String twoDigits(int number) => number.toString().padLeft(2, '0');
+  return 'easycheck-backup-${value.year}${twoDigits(value.month)}${twoDigits(value.day)}-${twoDigits(value.hour)}${twoDigits(value.minute)}.json';
+}
+
+Rect _sharePositionOrigin(BuildContext context) {
+  final box = context.findRenderObject();
+  if (box is RenderBox && box.hasSize) {
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+  return const Rect.fromLTWH(0, 0, 1, 1);
 }

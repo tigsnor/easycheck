@@ -46,10 +46,7 @@ void main() {
 }
 ''';
 
-    expect(
-      () => service.decode(source),
-      throwsA(isA<FormatException>()),
-    );
+    expect(() => service.decode(source), throwsA(isA<FormatException>()));
   });
 
   test('rejects orphan plates during restore', () {
@@ -66,9 +63,6 @@ void main() {
       'plates': [plate.toJson()],
     });
 
-    expect(
-      () => service.decode(source),
-      throwsA(isA<FormatException>()),
-    );
+    expect(() => service.decode(source), throwsA(isA<FormatException>()));
   });
 }

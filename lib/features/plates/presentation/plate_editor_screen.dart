@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../shared/models/well_position.dart';
+import '../../../shared/services/document_exchange_service.dart';
 import '../../dilution/domain/dilution_direction.dart';
 import '../../dilution/domain/dilution_plan.dart';
 import '../../dilution/domain/dilution_service.dart';
@@ -21,12 +22,16 @@ class PlateEditorScreen extends StatefulWidget {
     required this.experimentId,
     this.experimentTitle = 'CCK-8 2배 희석 실험 초안',
     PlateRepository? repository,
+    DocumentExchangeService? documentExchangeService,
     super.key,
-  }) : repository = repository ?? const FilePlateRepository();
+  })  : repository = repository ?? const FilePlateRepository(),
+        documentExchangeService =
+            documentExchangeService ?? const PlatformDocumentExchangeService();
 
   final String experimentId;
   final String experimentTitle;
   final PlateRepository repository;
+  final DocumentExchangeService documentExchangeService;
 
   @override
   State<PlateEditorScreen> createState() => _PlateEditorScreenState();
@@ -339,7 +344,11 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _PlateExportSheet(exportText: exportText),
+      builder: (_) => _PlateExportSheet(
+        exportText: exportText,
+        fileName: _plateExportFileName(plate.name),
+        documentExchangeService: widget.documentExchangeService,
+      ),
     );
   }
 
@@ -525,9 +534,9 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         return false;
       }
       setState(() => _isSaving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Plate를 저장하지 못했습니다: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Plate를 저장하지 못했습니다: $error')));
       return false;
     }
     if (!mounted) {
@@ -585,10 +594,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
 }
 
 class _PlateSaveStatus extends StatelessWidget {
-  const _PlateSaveStatus({
-    required this.isSaving,
-    required this.lastSavedAt,
-  });
+  const _PlateSaveStatus({required this.isSaving, required this.lastSavedAt});
 
   final bool isSaving;
   final DateTime? lastSavedAt;
@@ -831,10 +837,7 @@ class _WellCell extends StatelessWidget {
 }
 
 class _BulkResultImportSheet extends StatefulWidget {
-  const _BulkResultImportSheet({
-    required this.plate,
-    required this.service,
-  });
+  const _BulkResultImportSheet({required this.plate, required this.service});
 
   final Plate plate;
   final PlateResultImportService service;
@@ -1037,9 +1040,15 @@ class _BulkResultImportDraft {
 }
 
 class _PlateExportSheet extends StatelessWidget {
-  const _PlateExportSheet({required this.exportText});
+  const _PlateExportSheet({
+    required this.exportText,
+    required this.fileName,
+    required this.documentExchangeService,
+  });
 
   final String exportText;
+  final String fileName;
+  final DocumentExchangeService documentExchangeService;
 
   @override
   Widget build(BuildContext context) {
@@ -1057,7 +1066,7 @@ class _PlateExportSheet extends StatelessWidget {
             ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
-          const Text('아래 TSV 텍스트를 복사해서 메모, 엑셀, 구글시트에 붙여넣을 수 있습니다.'),
+          const Text('TSV를 복사하거나 파일로 공유해 메모, 엑셀, 구글시트에서 열 수 있습니다.'),
           const SizedBox(height: 12),
           Container(
             constraints: const BoxConstraints(maxHeight: 280),
@@ -1074,21 +1083,69 @@ class _PlateExportSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: exportText));
-                if (!context.mounted) {
-                  return;
-                }
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Plate 내보내기 텍스트를 복사했습니다.')),
-                );
-              },
-              icon: const Icon(Icons.copy_outlined),
-              label: const Text('복사하기'),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: exportText));
+                    if (!context.mounted) {
+                      return;
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Plate 내보내기 텍스트를 복사했습니다.')),
+                    );
+                  },
+                  icon: const Icon(Icons.copy_outlined),
+                  label: const Text('복사하기'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Builder(
+                  builder: (shareContext) => FilledButton.icon(
+                    key: const ValueKey('share-plate-file-button'),
+                    onPressed: () async {
+                      try {
+                        final status =
+                            await documentExchangeService.shareTextDocument(
+                          content: exportText,
+                          fileName: fileName,
+                          mimeType: 'text/tab-separated-values',
+                          subject: 'EasyCheck Plate 내보내기',
+                          sharePositionOrigin: _sharePositionOrigin(
+                            shareContext,
+                          ),
+                        );
+                        if (!context.mounted ||
+                            status == DocumentShareStatus.dismissed) {
+                          return;
+                        }
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              status == DocumentShareStatus.success
+                                  ? 'Plate TSV 파일을 공유했습니다.'
+                                  : '이 기기에서는 파일 공유를 사용할 수 없습니다.',
+                            ),
+                          ),
+                        );
+                      } on Object catch (error) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Plate 파일을 공유하지 못했습니다: $error'),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.ios_share_outlined),
+                    label: const Text('파일 공유'),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -2097,4 +2154,21 @@ extension _DilutionDirectionLabel on DilutionDirection {
         return '오른쪽 → 왼쪽';
     }
   }
+}
+
+Rect _sharePositionOrigin(BuildContext context) {
+  final box = context.findRenderObject();
+  if (box is RenderBox && box.hasSize) {
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+  return const Rect.fromLTWH(0, 0, 1, 1);
+}
+
+String _plateExportFileName(String plateName) {
+  final safeName = plateName
+      .trim()
+      .replaceAll(RegExp(r'[^A-Za-z0-9가-힣_-]+'), '-')
+      .replaceAll(RegExp(r'-+'), '-')
+      .replaceAll(RegExp(r'^-|-$'), '');
+  return '${safeName.isEmpty ? 'easycheck-plate' : safeName}.tsv';
 }

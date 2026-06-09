@@ -4,8 +4,11 @@ import 'package:easycheck/features/experiments/domain/experiment.dart';
 import 'package:easycheck/features/experiments/presentation/experiments_home_screen.dart';
 import 'package:easycheck/features/plates/data/plate_repository.dart';
 import 'package:easycheck/features/plates/domain/plate.dart';
+import 'package:easycheck/shared/services/document_exchange_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../../support/fake_document_exchange_service.dart';
 
 class FakeExperimentRepository implements ExperimentRepository {
   FakeExperimentRepository(this.experiments);
@@ -193,6 +196,54 @@ void main() {
     expect(find.text('Original experiment'), findsOneWidget);
     expect(find.text('Restored experiment'), findsOneWidget);
     expect(plateRepository.plate?.name, 'Restored Plate');
+  });
+
+  testWidgets('shares a backup file and loads a backup from Files', (
+    tester,
+  ) async {
+    final experiment = Experiment(
+      id: 'experiment-file',
+      title: 'File backup experiment',
+      createdAt: DateTime.utc(2026, 6, 9),
+      updatedAt: DateTime.utc(2026, 6, 9),
+    );
+    final backupText = const EasyCheckBackupService().encode(
+      experiments: [experiment],
+      plates: const [],
+      exportedAt: DateTime.utc(2026, 6, 9),
+    );
+    final exchange = FakeDocumentExchangeService()
+      ..documentToPick = ImportedTextDocument(
+        name: 'easycheck-backup.json',
+        content: backupText,
+      );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ExperimentsHomeScreen(
+          repository: FakeExperimentRepository([]),
+          plateRepository: FakePlateRepository(),
+          documentExchangeService: exchange,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('전체 데이터 백업 및 복원'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('share-backup-file-button')));
+    await tester.pumpAndSettle();
+
+    expect(exchange.shareCalls, 1);
+    expect(exchange.sharedFileName, endsWith('.json'));
+    expect(exchange.sharedMimeType, 'application/json');
+
+    await tester.tap(find.byKey(const ValueKey('pick-backup-file-button')));
+    await tester.pumpAndSettle();
+
+    expect(exchange.pickCalls, 1);
+    expect(exchange.pickedExtensions, ['json']);
+    expect(find.text('실험 1 · Plate 0'), findsOneWidget);
   });
 
   testWidgets('creates a new experiment through the bottom sheet', (

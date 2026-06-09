@@ -24,8 +24,10 @@ void main() {
   });
 
   test('reports invalid values and cells outside a 96-well plate', () {
-    final tooManyColumns =
-        List.generate(13, (index) => '${index + 1}').join('\t');
+    final tooManyColumns = List.generate(
+      13,
+      (index) => '${index + 1}',
+    ).join('\t');
     final preview = service.parseMatrix(text: 'A\tbad\t$tooManyColumns');
 
     expect(preview.canApply, isFalse);

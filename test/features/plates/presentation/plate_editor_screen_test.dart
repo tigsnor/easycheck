@@ -4,6 +4,8 @@ import 'package:easycheck/features/plates/presentation/plate_editor_screen.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../../support/fake_document_exchange_service.dart';
+
 class FakePlateRepository implements PlateRepository {
   Plate? plate;
 
@@ -246,14 +248,18 @@ void main() {
     expect(find.text('마지막 Plate 변경을 취소했습니다.'), findsOneWidget);
   });
 
-  testWidgets('opens a plate export sheet with TSV text', (tester) async {
+  testWidgets('opens a plate export sheet and shares a TSV file', (
+    tester,
+  ) async {
     final repository = FakePlateRepository();
+    final exchange = FakeDocumentExchangeService();
 
     await tester.pumpWidget(
       MaterialApp(
         home: PlateEditorScreen(
           experimentId: 'experiment-1',
           repository: repository,
+          documentExchangeService: exchange,
         ),
       ),
     );
@@ -265,5 +271,14 @@ void main() {
     expect(find.text('Plate 내보내기'), findsOneWidget);
     expect(find.textContaining('EasyCheck plate export'), findsOneWidget);
     expect(find.text('복사하기'), findsOneWidget);
+    expect(find.text('파일 공유'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('share-plate-file-button')));
+    await tester.pumpAndSettle();
+
+    expect(exchange.shareCalls, 1);
+    expect(exchange.sharedFileName, '96-well-Plate.tsv');
+    expect(exchange.sharedMimeType, 'text/tab-separated-values');
+    expect(exchange.sharedContent, contains('EasyCheck plate export'));
   });
 }
