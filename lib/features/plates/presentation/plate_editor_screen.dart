@@ -9,6 +9,7 @@ import '../../dilution/domain/dilution_service.dart';
 import '../data/file_plate_repository.dart';
 import '../data/plate_repository.dart';
 import '../domain/plate.dart';
+import '../domain/plate_analysis_service.dart';
 import '../domain/plate_dilution_service.dart';
 import '../domain/plate_export_service.dart';
 import '../domain/plate_result_import_service.dart';
@@ -51,6 +52,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   final _plateExportService = const PlateExportService();
   final _plateResultImportService = const PlateResultImportService();
   final _plateValidationService = const PlateValidationService();
+  final _plateAnalysisService = const PlateAnalysisService();
   late final List<double> _demoConcentrations;
   Plate? _plate;
   WellPosition? _selectedPosition;
@@ -174,6 +176,10 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                   const SizedBox(height: 12),
                   _PlateValidationCard(
                     report: _plateValidationService.validate(plate),
+                  ),
+                  const SizedBox(height: 12),
+                  _PlateAnalysisCard(
+                    report: _plateAnalysisService.analyze(plate),
                   ),
                   const SizedBox(height: 12),
                   _SelectionSummaryCard(
@@ -1412,6 +1418,214 @@ class _GroupSummary {
   final WellRole role;
   final int wellCount;
   final List<String> concentrationLabels;
+}
+
+class _PlateAnalysisCard extends StatelessWidget {
+  const _PlateAnalysisCard({required this.report});
+
+  final PlateAnalysisReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: const ValueKey('plate-analysis-card'),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.analytics_outlined),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '기본 결과 분석',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ),
+                if (report.hasResults)
+                  Text(
+                    '사용 ${report.includedWellCount} · 제외 ${report.excludedWellCount}',
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (!report.hasResults)
+              const Text('측정 결과를 입력하면 실험군·농도별 평균과 반복 오차를 계산합니다.')
+            else ...[
+              Text(
+                '분석 제외 well은 계산에서 빼고, 같은 실험군·농도·결과 단위를 반복 측정으로 묶습니다. 정규화 기준은 Vehicle → Untreated → Negative control 순으로 선택합니다.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 10),
+              _AnalysisReferenceSummary(report: report),
+              const SizedBox(height: 12),
+              for (final series in report.series) ...[
+                _AnalysisSeriesRow(series: series),
+                if (series != report.series.last) const Divider(height: 20),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AnalysisReferenceSummary extends StatelessWidget {
+  const _AnalysisReferenceSummary({required this.report});
+
+  final PlateAnalysisReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final units = {
+      ...report.blankMeanByUnit.keys,
+      ...report.controlByUnit.keys,
+    }.toList()
+      ..sort();
+    if (units.isEmpty) {
+      return Text(
+        'Blank 또는 normalization control이 없어 raw 결과만 표시합니다.',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.error,
+            ),
+      );
+    }
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final unit in units)
+          Chip(
+            label: Text(_referenceLabel(unit)),
+            visualDensity: VisualDensity.compact,
+          ),
+      ],
+    );
+  }
+
+  String _referenceLabel(String unit) {
+    final blank = report.blankMeanByUnit[unit];
+    final control = report.controlByUnit[unit];
+    final parts = <String>[
+      unit,
+      if (blank != null) 'Blank ${_formatAnalysisNumber(blank)}',
+      if (control != null)
+        '${control.role.label} ${_formatAnalysisNumber(control.rawMean)}',
+    ];
+    return parts.join(' · ');
+  }
+}
+
+class _AnalysisSeriesRow extends StatelessWidget {
+  const _AnalysisSeriesRow({required this.series});
+
+  final PlateAnalysisSeries series;
+
+  @override
+  Widget build(BuildContext context) {
+    final concentration = series.concentrationValue == null
+        ? '농도 미지정'
+        : '${_formatDose(series.concentrationValue!)} ${series.concentrationUnit ?? ''}';
+    return Column(
+      key: ValueKey(
+        'analysis-${series.label}-${series.concentrationValue}-${series.resultUnit}',
+      ),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${series.label} · $concentration',
+          style: Theme.of(
+            context,
+          ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          '${series.resultUnit} · n=${series.replicateCount} · ${series.includedWellLabels.join(', ')}',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _AnalysisMetric(
+              label: '평균',
+              value: _formatAnalysisNumber(series.rawMean),
+            ),
+            _AnalysisMetric(
+              label: 'Blank 보정',
+              value: _formatAnalysisNumber(series.blankCorrectedMean),
+            ),
+            _AnalysisMetric(
+              label: 'SD',
+              value: series.standardDeviation == null
+                  ? 'n 부족'
+                  : _formatAnalysisNumber(series.standardDeviation!),
+            ),
+            _AnalysisMetric(
+              label: 'CV',
+              value: series.coefficientOfVariation == null
+                  ? '계산 불가'
+                  : '${_formatAnalysisNumber(series.coefficientOfVariation!)}%',
+            ),
+            _AnalysisMetric(
+              label: 'Control 대비',
+              value: series.normalizedPercent == null
+                  ? '기준 없음'
+                  : '${_formatAnalysisNumber(series.normalizedPercent!)}%',
+            ),
+          ],
+        ),
+        if (series.excludedCount > 0) ...[
+          const SizedBox(height: 6),
+          Text(
+            '분석 제외 ${series.excludedCount}개 · ${series.excludedWellLabels.join(', ')}',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.error,
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _AnalysisMetric extends StatelessWidget {
+  const _AnalysisMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF2F2F7),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text('$label · $value'),
+    );
+  }
+}
+
+String _formatAnalysisNumber(double value) {
+  if (!value.isFinite) {
+    return '-';
+  }
+  final absolute = value.abs();
+  if (absolute != 0 && (absolute >= 10000 || absolute < 0.001)) {
+    return value.toStringAsExponential(3);
+  }
+  final fixed = value.toStringAsFixed(3);
+  return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
 }
 
 class _PlateValidationCard extends StatelessWidget {

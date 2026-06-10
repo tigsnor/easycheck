@@ -9,6 +9,7 @@ EasyCheck는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 - [수동 QA 체크리스트](docs/manual-qa-checklist.md)
 - [알파 배포 및 실제 기기 테스트 가이드](docs/alpha-testing-guide.md)
 - [알파 피드백 템플릿](docs/alpha-feedback-template.md)
+- [기본 결과 분석 계산 기준](docs/basic-analysis-method.md)
 - [UI 확인 가이드](docs/ui-screenshots.md)
 
 ## 현재 구현 상태
@@ -26,6 +27,7 @@ EasyCheck는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 - Plate layout과 well별 측정 결과를 메모/엑셀/구글시트에 붙여넣거나 파일로 공유할 수 있는 TSV 내보내기
 - 시작 농도, 희석 배수, 단계 수, 반복 well 수, 방향을 입력해 plate에 적용하는 희석 계산 Builder
 - Blank/Control 누락, 반복 well 부족, 농도 단위 혼용, 일부 결과 누락을 알려주는 실험 준비 점검
+- 분석 제외 well을 반영한 농도별 평균·표본 표준편차·CV·blank 보정·control 대비 정규화
 - 실험, plate, well, well group 도메인 모델 초안
 
 ## 로컬 실행

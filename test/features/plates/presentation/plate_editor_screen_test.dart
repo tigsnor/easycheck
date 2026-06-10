@@ -1,5 +1,9 @@
 import 'package:easycheck/features/plates/data/plate_repository.dart';
 import 'package:easycheck/features/plates/domain/plate.dart';
+import 'package:easycheck/features/plates/domain/well.dart';
+import 'package:easycheck/features/plates/domain/well_group.dart';
+import 'package:easycheck/features/plates/domain/well_role.dart';
+import 'package:easycheck/shared/models/well_position.dart';
 import 'package:easycheck/features/plates/presentation/plate_editor_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -120,9 +124,7 @@ void main() {
     expect(find.text('12개 well 그룹 지정'), findsOneWidget);
   });
 
-  testWidgets('keeps plate controls usable on a narrow phone', (
-    tester,
-  ) async {
+  testWidgets('keeps plate controls usable on a narrow phone', (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -327,6 +329,95 @@ void main() {
 
     expect(repository.plate!.wells[0].concentrationValue, 1000);
     expect(find.text('마지막 Plate 변경을 취소했습니다.'), findsOneWidget);
+  });
+
+  testWidgets('shows blank-corrected group analysis and exclusions', (
+    tester,
+  ) async {
+    const group = WellGroup(
+      id: 'drug-a',
+      name: 'Drug A',
+      shortLabel: 'A',
+      color: Colors.purple,
+    );
+    final repository = FakePlateRepository();
+    final base = Plate(
+      id: 'plate-1',
+      experimentId: 'experiment-1',
+      name: '96-well Plate',
+      groups: const [group],
+    );
+    final replacements = <WellPosition, Well>{
+      const WellPosition(rowIndex: 0, columnIndex: 0): const Well(
+        position: WellPosition(rowIndex: 0, columnIndex: 0),
+        role: WellRole.blank,
+        resultValue: 0.1,
+        resultUnit: 'OD450',
+      ),
+      const WellPosition(rowIndex: 0, columnIndex: 1): const Well(
+        position: WellPosition(rowIndex: 0, columnIndex: 1),
+        role: WellRole.vehicleControl,
+        resultValue: 1.1,
+        resultUnit: 'OD450',
+      ),
+      const WellPosition(rowIndex: 1, columnIndex: 0): const Well(
+        position: WellPosition(rowIndex: 1, columnIndex: 0),
+        groupId: 'drug-a',
+        role: WellRole.treatment,
+        concentrationValue: 100,
+        concentrationUnit: 'µM',
+        resultValue: 0.6,
+        resultUnit: 'OD450',
+      ),
+      const WellPosition(rowIndex: 1, columnIndex: 1): const Well(
+        position: WellPosition(rowIndex: 1, columnIndex: 1),
+        groupId: 'drug-a',
+        role: WellRole.treatment,
+        concentrationValue: 100,
+        concentrationUnit: 'µM',
+        resultValue: 0.8,
+        resultUnit: 'OD450',
+      ),
+      const WellPosition(rowIndex: 1, columnIndex: 2): const Well(
+        position: WellPosition(rowIndex: 1, columnIndex: 2),
+        groupId: 'drug-a',
+        role: WellRole.treatment,
+        concentrationValue: 100,
+        concentrationUnit: 'µM',
+        resultValue: 99,
+        resultUnit: 'OD450',
+        excluded: true,
+      ),
+    };
+    repository.plate = base.copyWith(
+      wells: [
+        for (final well in base.wells) replacements[well.position] ?? well,
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlateEditorScreen(
+          experimentId: 'experiment-1',
+          repository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('plate-analysis-card')),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('기본 결과 분석'), findsOneWidget);
+    expect(find.text('사용 4 · 제외 1'), findsOneWidget);
+    expect(find.text('Drug A · 100 µM'), findsOneWidget);
+    expect(find.text('평균 · 0.7'), findsOneWidget);
+    expect(find.text('Blank 보정 · 0.6'), findsOneWidget);
+    expect(find.text('Control 대비 · 60%'), findsOneWidget);
+    expect(find.text('분석 제외 1개 · B3'), findsOneWidget);
   });
 
   testWidgets('opens a plate export sheet and shares a TSV file', (
