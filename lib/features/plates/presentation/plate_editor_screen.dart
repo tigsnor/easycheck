@@ -9,6 +9,7 @@ import '../../dilution/domain/dilution_service.dart';
 import '../data/file_plate_repository.dart';
 import '../data/plate_repository.dart';
 import '../domain/plate.dart';
+import '../domain/plate_analysis_export_service.dart';
 import '../domain/plate_analysis_service.dart';
 import '../domain/plate_dilution_service.dart';
 import '../domain/plate_export_service.dart';
@@ -53,6 +54,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   final _plateResultImportService = const PlateResultImportService();
   final _plateValidationService = const PlateValidationService();
   final _plateAnalysisService = const PlateAnalysisService();
+  final _plateAnalysisExportService = const PlateAnalysisExportService();
   late final List<double> _demoConcentrations;
   Plate? _plate;
   WellPosition? _selectedPosition;
@@ -180,6 +182,9 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                   const SizedBox(height: 12),
                   _PlateAnalysisCard(
                     report: _plateAnalysisService.analyze(plate),
+                    onCopy: () => _copyAnalysisExport(plate),
+                    onShare: (shareContext) =>
+                        _shareAnalysisExport(plate, shareContext),
                   ),
                   const SizedBox(height: 12),
                   _SelectionSummaryCard(
@@ -383,6 +388,42 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         documentExchangeService: widget.documentExchangeService,
       ),
     );
+  }
+
+  Future<void> _copyAnalysisExport(Plate plate) async {
+    final report = _plateAnalysisService.analyze(plate);
+    final exportText = _plateAnalysisExportService.buildTsv(plate, report);
+    await Clipboard.setData(ClipboardData(text: exportText));
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('분석 TSV를 클립보드에 복사했습니다.')));
+  }
+
+  Future<void> _shareAnalysisExport(
+    Plate plate,
+    BuildContext shareContext,
+  ) async {
+    final report = _plateAnalysisService.analyze(plate);
+    final exportText = _plateAnalysisExportService.buildTsv(plate, report);
+    final status = await widget.documentExchangeService.shareTextDocument(
+      content: exportText,
+      fileName: _plateAnalysisFileName(plate.name),
+      mimeType: 'text/tab-separated-values',
+      subject: '${plate.name} 기본 분석',
+      sharePositionOrigin: _sharePositionOrigin(shareContext),
+    );
+    if (!mounted || status == DocumentShareStatus.dismissed) {
+      return;
+    }
+    final message = status == DocumentShareStatus.success
+        ? '분석 TSV 공유를 완료했습니다.'
+        : '이 기기에서는 파일 공유를 사용할 수 없습니다.';
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _openBulkResultImport() async {
@@ -1421,9 +1462,15 @@ class _GroupSummary {
 }
 
 class _PlateAnalysisCard extends StatelessWidget {
-  const _PlateAnalysisCard({required this.report});
+  const _PlateAnalysisCard({
+    required this.report,
+    required this.onCopy,
+    required this.onShare,
+  });
 
   final PlateAnalysisReport report;
+  final Future<void> Function() onCopy;
+  final Future<void> Function(BuildContext context) onShare;
 
   @override
   Widget build(BuildContext context) {
@@ -1464,14 +1511,242 @@ class _PlateAnalysisCard extends StatelessWidget {
               const SizedBox(height: 10),
               _AnalysisReferenceSummary(report: report),
               const SizedBox(height: 12),
+              _AnalysisConcentrationCharts(report: report),
+              const SizedBox(height: 12),
               for (final series in report.series) ...[
                 _AnalysisSeriesRow(series: series),
                 if (series != report.series.last) const Divider(height: 20),
               ],
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    key: const ValueKey('copy-analysis-tsv-button'),
+                    onPressed: onCopy,
+                    icon: const Icon(Icons.copy_all_outlined),
+                    label: const Text('분석 TSV 복사'),
+                  ),
+                  Builder(
+                    builder: (shareContext) => FilledButton.icon(
+                      key: const ValueKey('share-analysis-file-button'),
+                      onPressed: () => onShare(shareContext),
+                      icon: const Icon(Icons.ios_share_outlined),
+                      label: const Text('분석 파일 공유'),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AnalysisConcentrationCharts extends StatelessWidget {
+  const _AnalysisConcentrationCharts({required this.report});
+
+  final PlateAnalysisReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = <String, List<PlateAnalysisSeries>>{};
+    for (final series in report.series.where(_isChartSeries)) {
+      final key = [
+        series.label,
+        series.concentrationUnit ?? '',
+        series.resultUnit,
+      ].join('\u0000');
+      groups.putIfAbsent(key, () => []).add(series);
+    }
+    if (groups.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '농도별 차트',
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '기초 확인용 기술 통계입니다. 곡선 적합이나 IC50 계산은 포함하지 않습니다.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 10),
+        for (final entry in groups.entries) ...[
+          _AnalysisConcentrationChart(series: entry.value),
+          if (entry.key != groups.keys.last) const SizedBox(height: 12),
+        ],
+      ],
+    );
+  }
+
+  static bool _isChartSeries(PlateAnalysisSeries series) {
+    return series.concentrationValue != null &&
+        switch (series.role) {
+          WellRole.treatment || WellRole.sample || WellRole.standard => true,
+          _ => false,
+        };
+  }
+}
+
+class _AnalysisConcentrationChart extends StatelessWidget {
+  const _AnalysisConcentrationChart({required this.series});
+
+  final List<PlateAnalysisSeries> series;
+
+  @override
+  Widget build(BuildContext context) {
+    final points = [...series]
+      ..sort((a, b) => a.concentrationValue!.compareTo(b.concentrationValue!));
+    final useNormalized = points.every(
+      (point) => point.normalizedPercent != null,
+    );
+    final values = [
+      for (final point in points)
+        useNormalized ? point.normalizedPercent! : point.blankCorrectedMean,
+    ];
+    final minimum = values.fold<double>(
+      0,
+      (current, value) => value < current ? value : current,
+    );
+    final maximum = values.fold<double>(
+      0,
+      (current, value) => value > current ? value : current,
+    );
+    final range = maximum - minimum;
+    final zeroFraction = range == 0 ? 0.0 : (0 - minimum) / range;
+    final first = points.first;
+    final unit = first.concentrationUnit ?? '';
+
+    return Container(
+      key: ValueKey('analysis-chart-${first.label}-${first.resultUnit}'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F8FA),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${first.label} · ${first.resultUnit}',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            useNormalized ? 'Control 대비 (%)' : 'Blank 보정 결과',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
+          for (var index = 0; index < points.length; index++) ...[
+            _AnalysisBarRow(
+              label: '${_formatDose(points[index].concentrationValue!)} $unit',
+              value: values[index],
+              minimum: minimum,
+              maximum: maximum,
+              zeroFraction: zeroFraction,
+            ),
+            if (index != points.length - 1) const SizedBox(height: 6),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AnalysisBarRow extends StatelessWidget {
+  const _AnalysisBarRow({
+    required this.label,
+    required this.value,
+    required this.minimum,
+    required this.maximum,
+    required this.zeroFraction,
+  });
+
+  final String label;
+  final double value;
+  final double minimum;
+  final double maximum;
+  final double zeroFraction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 70,
+          child: Text(label, style: Theme.of(context).textTheme.labelMedium),
+        ),
+        Expanded(
+          child: SizedBox(
+            height: 22,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth;
+                final range = maximum - minimum;
+                final valueFraction =
+                    range == 0 ? 0.0 : (value - minimum) / range;
+                final zeroX = width * zeroFraction;
+                final valueX = width * valueFraction;
+                return Stack(
+                  children: [
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: zeroX.clamp(0, width),
+                      top: 0,
+                      bottom: 0,
+                      child: Container(width: 1, color: Colors.black26),
+                    ),
+                    Positioned(
+                      left: valueX < zeroX ? valueX : zeroX,
+                      width: (valueX - zeroX).abs().clamp(2, width),
+                      top: 3,
+                      bottom: 3,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: value < 0
+                              ? Theme.of(context).colorScheme.error
+                              : Theme.of(context).colorScheme.primary,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 54,
+          child: Text(
+            _formatAnalysisNumber(value),
+            textAlign: TextAlign.end,
+            style: Theme.of(
+              context,
+            ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -2504,6 +2779,11 @@ Rect _sharePositionOrigin(BuildContext context) {
     return box.localToGlobal(Offset.zero) & box.size;
   }
   return const Rect.fromLTWH(0, 0, 1, 1);
+}
+
+String _plateAnalysisFileName(String plateName) {
+  final plateFileName = _plateExportFileName(plateName);
+  return '${plateFileName.substring(0, plateFileName.length - 4)}-analysis.tsv';
 }
 
 String _plateExportFileName(String plateName) {

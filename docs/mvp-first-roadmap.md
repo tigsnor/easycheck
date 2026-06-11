@@ -197,7 +197,7 @@ EasyCheck는 처음부터 모든 고급 분석 기능을 넣기보다, 연구원
 
 현재 JSON 파일 기반 실험/Plate 저장, 화면 맞춤·단계별 확대와 가로 스크롤, 범위 선택, 그룹 지정, 희석 계산, Well 결과 기록, 결과 행렬 일괄 붙여넣기, 농도별 평균·SD·CV·blank 보정·control 정규화, TSV 파일 공유, 실행 취소와 전체 JSON 백업 파일 공유·선택 복원까지 구현했습니다.
 
-다음 단계는 `GitHub Actions 알파 산출물 확인과 실제 기기 QA`입니다.
+농도별 기초 차트와 분석 TSV 내보내기까지 구현한 다음 단계는 `GitHub Actions 알파 산출물 확인과 실제 기기 QA`입니다.
 
 이유:
 - 백업 JSON과 Plate TSV는 Files 앱, AirDrop, 메일로 전달할 수 있으며 백업 파일을 Files/iCloud에서 선택해 복원할 수 있습니다.

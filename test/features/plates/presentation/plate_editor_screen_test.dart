@@ -289,6 +289,12 @@ void main() {
     expect(savedWell.resultUnit, 'OD450');
     expect(savedWell.note, '기포 확인');
     expect(savedWell.excluded, isTrue);
+    await tester.scrollUntilVisible(
+      find.text('결과 · 0.82 OD450'),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('결과 · 0.82 OD450'), findsOneWidget);
     expect(find.text('분석 제외'), findsOneWidget);
   });
@@ -334,6 +340,7 @@ void main() {
   testWidgets('shows blank-corrected group analysis and exclusions', (
     tester,
   ) async {
+    final exchange = FakeDocumentExchangeService();
     const group = WellGroup(
       id: 'drug-a',
       name: 'Drug A',
@@ -400,6 +407,7 @@ void main() {
         home: PlateEditorScreen(
           experimentId: 'experiment-1',
           repository: repository,
+          documentExchangeService: exchange,
         ),
       ),
     );
@@ -418,6 +426,27 @@ void main() {
     expect(find.text('Blank 보정 · 0.6'), findsOneWidget);
     expect(find.text('Control 대비 · 60%'), findsOneWidget);
     expect(find.text('분석 제외 1개 · B3'), findsOneWidget);
+    expect(find.text('농도별 차트'), findsOneWidget);
+    expect(find.text('Control 대비 (%)'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('analysis-chart-Drug A-OD450')),
+      findsOneWidget,
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('share-analysis-file-button')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('share-analysis-file-button')));
+    await tester.pumpAndSettle();
+
+    expect(exchange.shareCalls, 1);
+    expect(exchange.sharedFileName, '96-well-Plate-analysis.tsv');
+    expect(exchange.sharedMimeType, 'text/tab-separated-values');
+    expect(exchange.sharedContent, contains('EasyCheck analysis export'));
+    expect(exchange.sharedContent, contains('Drug A\ttreatment\t100'));
   });
 
   testWidgets('opens a plate export sheet and shares a TSV file', (

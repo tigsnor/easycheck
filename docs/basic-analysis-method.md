@@ -56,6 +56,12 @@ raw 평균이 0이거나 SD를 계산할 수 없으면 CV도 표시하지 않습
 
 control이 없거나 blank 보정 control 평균이 0이면 정규화 비율을 계산하지 않습니다.
 
+## 차트와 분석 TSV
+
+농도가 지정된 Treatment, Sample, Standard series는 농도 오름차순 막대 차트로 표시합니다. 같은 차트의 모든 지점에 control 정규화값이 있으면 control 대비 비율을 사용하고, 그렇지 않으면 blank 보정 평균을 사용합니다. 이 차트는 기술 통계 확인용이며 곡선 적합이나 IC50 계산을 의미하지 않습니다.
+
+분석 TSV에는 plate 식별 정보, blank/control reference, 포함·제외 well, raw/blank 보정 평균, 표본 SD, CV, control 대비 비율을 기록합니다. 원본 plate TSV와 별도 파일이므로 분석값을 외부 도구에서 재검산할 수 있습니다.
+
 ## 해석 시 주의사항
 
 - 계산 결과는 입력값과 well 역할 설정의 정확성에 의존합니다.

@@ -28,6 +28,7 @@ EasyCheck는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 - 시작 농도, 희석 배수, 단계 수, 반복 well 수, 방향을 입력해 plate에 적용하는 희석 계산 Builder
 - Blank/Control 누락, 반복 well 부족, 농도 단위 혼용, 일부 결과 누락을 알려주는 실험 준비 점검
 - 분석 제외 well을 반영한 농도별 평균·표본 표준편차·CV·blank 보정·control 대비 정규화
+- 농도별 기초 차트와 분석 reference/series를 포함한 TSV 복사·파일 공유
 - 실험, plate, well, well group 도메인 모델 초안
 
 ## 로컬 실행
