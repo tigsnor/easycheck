@@ -34,6 +34,8 @@ void main() {
       ),
       group: group,
       replicateCount: 2,
+      volumePerWell: 100,
+      volumeUnit: 'µL',
     );
 
     expect(updated.groups.single.id, 'drug-a');
@@ -43,6 +45,8 @@ void main() {
     );
     expect(updated.wells[6].role, WellRole.vehicleControl);
     expect(updated.wells[7].replicateIndex, 2);
+    expect(updated.wells[0].volumeValue, 100);
+    expect(updated.wells[0].volumeUnit, 'µL');
   });
 
   test(

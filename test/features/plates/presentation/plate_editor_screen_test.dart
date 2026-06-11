@@ -186,6 +186,9 @@ void main() {
 
     await tester.tap(find.byTooltip('희석 계산 적용'));
     await tester.pumpAndSettle();
+    expect(find.text('피펫팅 계획'), findsOneWidget);
+    expect(find.text('Master mix 미리보기'), findsOneWidget);
+    expect(find.textContaining('Stock 22 + 희석액 198 µL'), findsOneWidget);
     await tester.enterText(find.widgetWithText(TextField, '시작 농도'), '90');
     await tester.enterText(find.widgetWithText(TextField, '희석 배수'), '3');
     await tester.enterText(find.widgetWithText(TextField, '단계 수'), '2');
@@ -198,7 +201,39 @@ void main() {
 
     expect(repository.plate!.wells[0].concentrationValue, 90);
     expect(repository.plate!.wells[1].concentrationValue, 30);
+    expect(repository.plate!.wells[0].volumeValue, 100);
+    expect(repository.plate!.wells[0].volumeUnit, 'µL');
     expect(repository.plate!.wells[2].concentrationValue, isNull);
+  });
+
+  testWidgets('blocks dilution when selected wells are insufficient', (
+    tester,
+  ) async {
+    final repository = FakePlateRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlateEditorScreen(
+          experimentId: 'experiment-1',
+          repository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('well-A1')));
+    await tester.tap(find.byTooltip('희석 계산 적용'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('희석 적용'),
+      400,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.tap(find.text('희석 적용'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('사용 가능한 well이 부족합니다.'), findsOneWidget);
+    expect(find.text('희석 계산 적용'), findsOneWidget);
   });
 
   testWidgets('imports an Excel-style result matrix into wells', (

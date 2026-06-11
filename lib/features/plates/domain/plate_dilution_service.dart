@@ -16,6 +16,8 @@ class PlateDilutionService {
     required DilutionPlan plan,
     required WellGroup group,
     required int replicateCount,
+    double? volumePerWell,
+    String volumeUnit = 'µL',
     Set<WellPosition> selectedPositions = const {},
   }) {
     assert(replicateCount > 0);
@@ -41,6 +43,8 @@ class PlateDilutionService {
         concentrationValue: concentration,
         concentrationUnit: group.concentrationUnit,
         replicateIndex: (targetIndex % replicateCount) + 1,
+        volumeValue: volumePerWell,
+        volumeUnit: volumeUnit,
       );
     }).toList();
 

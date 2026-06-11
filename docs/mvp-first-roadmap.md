@@ -133,12 +133,13 @@ EasyCheck는 처음부터 모든 고급 분석 기능을 넣기보다, 연구원
 
 ### Pipetting plan
 
-- stock concentration 입력
-- final concentration 입력
-- final volume per well 입력
-- well별 stock/diluent volume 계산
-- master mix 계산
-- 체크리스트 UI
+- [x] stock concentration 입력
+- [x] final concentration series 연결
+- [x] final volume per well 입력
+- [x] well별 stock/diluent volume 계산
+- [x] master mix 및 overage 계산
+- [x] 저용량·선택 well 부족 경고
+- [ ] 단계별 실행 체크리스트와 serial transfer 계산
 
 ## 3차 목표: 분석 앱으로 확장
 

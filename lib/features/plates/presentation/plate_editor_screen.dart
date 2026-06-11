@@ -6,6 +6,7 @@ import '../../../shared/services/document_exchange_service.dart';
 import '../../dilution/domain/dilution_direction.dart';
 import '../../dilution/domain/dilution_plan.dart';
 import '../../dilution/domain/dilution_service.dart';
+import '../../dilution/domain/pipetting_plan_service.dart';
 import '../data/file_plate_repository.dart';
 import '../data/plate_repository.dart';
 import '../domain/plate.dart';
@@ -489,6 +490,8 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       plan: draft.plan,
       group: group,
       replicateCount: draft.replicateCount,
+      volumePerWell: draft.volumePerWell,
+      volumeUnit: draft.volumeUnit,
       selectedPositions: _selectedPositions,
     );
     await _savePlate(updated);
@@ -2373,9 +2376,37 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
   final _stepsController = TextEditingController(text: '6');
   final _replicateController = TextEditingController(text: '2');
   final _unitController = TextEditingController(text: 'µM');
+  final _stockController = TextEditingController(text: '10000');
+  final _volumeController = TextEditingController(text: '100');
+  final _overageController = TextEditingController(text: '10');
+  final _dilutionService = const DilutionService();
+  final _pipettingPlanService = const PipettingPlanService();
   late Color _color = widget.suggestedColor;
   bool _includeZeroControl = true;
   DilutionDirection _direction = DilutionDirection.topToBottom;
+
+  @override
+  void initState() {
+    super.initState();
+    for (final controller in [
+      _startController,
+      _factorController,
+      _stepsController,
+      _replicateController,
+      _unitController,
+      _stockController,
+      _volumeController,
+      _overageController,
+    ]) {
+      controller.addListener(_refreshPreview);
+    }
+  }
+
+  void _refreshPreview() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
   @override
   void dispose() {
@@ -2386,6 +2417,9 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
     _stepsController.dispose();
     _replicateController.dispose();
     _unitController.dispose();
+    _stockController.dispose();
+    _volumeController.dispose();
+    _overageController.dispose();
     super.dispose();
   }
 
@@ -2427,7 +2461,8 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
               Expanded(
                 child: TextField(
                   controller: _startController,
-                  keyboardType: TextInputType.number,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   decoration: const InputDecoration(labelText: '시작 농도'),
                 ),
               ),
@@ -2446,7 +2481,8 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
               Expanded(
                 child: TextField(
                   controller: _factorController,
-                  keyboardType: TextInputType.number,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   decoration: const InputDecoration(labelText: '희석 배수'),
                 ),
               ),
@@ -2490,6 +2526,65 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
             onChanged: (value) => setState(() => _includeZeroControl = value),
           ),
           const SizedBox(height: 8),
+          Text(
+            '피펫팅 계획',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '각 농도를 stock에서 직접 희석하는 master mix 기준입니다.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const ValueKey('pipetting-stock-field'),
+                  controller: _stockController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Stock 농도'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  key: const ValueKey('pipetting-volume-field'),
+                  controller: _volumeController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Well당 최종 부피',
+                    suffixText: 'µL',
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const ValueKey('pipetting-overage-field'),
+                  controller: _overageController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: '여유분 (%)'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _PipettingPlanPreview(
+            plan: _pipettingPlan,
+            requiredWellCount: _requiredWellCount,
+            selectedCount: widget.selectedCount,
+          ),
+          const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             children: [
@@ -2516,12 +2611,70 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
     );
   }
 
+  int? get _requiredWellCount {
+    final steps = int.tryParse(_stepsController.text.trim());
+    final replicates = int.tryParse(_replicateController.text.trim());
+    if (steps == null || steps <= 0 || replicates == null || replicates <= 0) {
+      return null;
+    }
+    return (steps + (_includeZeroControl ? 1 : 0)) * replicates;
+  }
+
+  PipettingPlan? get _pipettingPlan {
+    final start = double.tryParse(_startController.text.trim());
+    final factor = double.tryParse(_factorController.text.trim());
+    final steps = int.tryParse(_stepsController.text.trim());
+    final replicates = int.tryParse(_replicateController.text.trim());
+    final stock = double.tryParse(_stockController.text.trim());
+    final volume = double.tryParse(_volumeController.text.trim());
+    final overage = double.tryParse(_overageController.text.trim());
+    if (start == null ||
+        factor == null ||
+        steps == null ||
+        replicates == null ||
+        stock == null ||
+        volume == null ||
+        overage == null ||
+        start < 0 ||
+        factor <= 0 ||
+        steps <= 0 ||
+        replicates <= 0) {
+      return null;
+    }
+    try {
+      final concentrations = _dilutionService.buildSeries(
+        DilutionPlan(
+          startConcentration: start,
+          dilutionFactor: factor,
+          steps: steps,
+          includeZeroControl: _includeZeroControl,
+          direction: _direction,
+        ),
+      );
+      return _pipettingPlanService.buildDirectDilutionPlan(
+        stockConcentration: stock,
+        concentrationUnit: _unitController.text.trim().isEmpty
+            ? 'µM'
+            : _unitController.text.trim(),
+        concentrations: concentrations,
+        volumePerWell: volume,
+        volumeUnit: 'µL',
+        replicateCount: replicates,
+        overagePercent: overage,
+      );
+    } on ArgumentError {
+      return null;
+    }
+  }
+
   void _save() {
     final groupName = _groupController.text.trim();
     final startConcentration = double.tryParse(_startController.text.trim());
     final dilutionFactor = double.tryParse(_factorController.text.trim());
     final steps = int.tryParse(_stepsController.text.trim());
     final replicateCount = int.tryParse(_replicateController.text.trim());
+    final volumePerWell = double.tryParse(_volumeController.text.trim());
+    final pipettingPlan = _pipettingPlan;
     final unit = _unitController.text.trim().isEmpty
         ? 'µM'
         : _unitController.text.trim();
@@ -2531,13 +2684,30 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
         dilutionFactor == null ||
         steps == null ||
         replicateCount == null ||
+        volumePerWell == null ||
+        pipettingPlan == null ||
         startConcentration < 0 ||
         dilutionFactor <= 0 ||
         steps <= 0 ||
-        replicateCount <= 0) {
+        replicateCount <= 0 ||
+        volumePerWell <= 0) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('희석 계산 값을 확인해주세요.')));
+      return;
+    }
+
+    final requiredWellCount = _requiredWellCount!;
+    final availableWellCount =
+        widget.selectedCount == 0 ? 96 : widget.selectedCount;
+    if (availableWellCount < requiredWellCount) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '사용 가능한 well이 부족합니다. $requiredWellCount개가 필요하지만 $availableWellCount개만 사용할 수 있습니다.',
+          ),
+        ),
+      );
       return;
     }
 
@@ -2550,6 +2720,8 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
         color: _color,
         unit: unit,
         replicateCount: replicateCount,
+        volumePerWell: volumePerWell,
+        volumeUnit: pipettingPlan.volumeUnit,
         plan: DilutionPlan(
           startConcentration: startConcentration,
           dilutionFactor: dilutionFactor,
@@ -2562,6 +2734,125 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
   }
 }
 
+class _PipettingPlanPreview extends StatelessWidget {
+  const _PipettingPlanPreview({
+    required this.plan,
+    required this.requiredWellCount,
+    required this.selectedCount,
+  });
+
+  final PipettingPlan? plan;
+  final int? requiredWellCount;
+  final int selectedCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final currentPlan = plan;
+    final required = requiredWellCount;
+    final availableWellCount = selectedCount == 0 ? 96 : selectedCount;
+    final insufficientSelection =
+        required != null && availableWellCount < required;
+    if (currentPlan == null) {
+      return Card(
+        key: const ValueKey('pipetting-plan-preview'),
+        color: Theme.of(context).colorScheme.errorContainer,
+        child: const Padding(
+          padding: EdgeInsets.all(12),
+          child: Text('Stock 농도는 시작 농도 이상이어야 하며 부피와 여유분을 확인해주세요.'),
+        ),
+      );
+    }
+
+    final hasLowVolume = currentPlan.steps.any(
+      (step) => step.hasLowStockVolume,
+    );
+    return Card(
+      key: const ValueKey('pipetting-plan-preview'),
+      color: const Color(0xFFF8F8FA),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Master mix 미리보기',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${currentPlan.replicateCount}반복 · well당 ${_formatPipettingNumber(currentPlan.volumePerWell)} ${currentPlan.volumeUnit} · 여유분 ${_formatPipettingNumber(currentPlan.overagePercent)}%',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            if (required != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                '필요 well $required개${selectedCount == 0 ? ' · plate 앞쪽부터 자동 배치' : ' · 선택 $selectedCount개'}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: insufficientSelection
+                          ? Theme.of(context).colorScheme.error
+                          : null,
+                      fontWeight:
+                          insufficientSelection ? FontWeight.w700 : null,
+                    ),
+              ),
+            ],
+            const Divider(height: 20),
+            for (final step in currentPlan.steps) ...[
+              Row(
+                key: ValueKey('pipetting-step-${step.concentration}'),
+                children: [
+                  SizedBox(
+                    width: 78,
+                    child: Text(
+                      '${_formatPipettingNumber(step.concentration)} ${currentPlan.concentrationUnit}',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      'Stock ${_formatPipettingNumber(step.stockVolume)} + 희석액 ${_formatPipettingNumber(step.diluentVolume)} ${currentPlan.volumeUnit}',
+                    ),
+                  ),
+                  if (step.hasLowStockVolume)
+                    Tooltip(
+                      message:
+                          '1 ${currentPlan.volumeUnit} 미만입니다. 중간 희석액 사용을 검토하세요.',
+                      child: Icon(
+                        Icons.warning_amber_rounded,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                ],
+              ),
+              if (step != currentPlan.steps.last) const SizedBox(height: 8),
+            ],
+            if (hasLowVolume) ...[
+              const SizedBox(height: 10),
+              Text(
+                '경고: 1 ${currentPlan.volumeUnit} 미만 stock 분주가 있습니다. 실제 피펫 범위를 확인하고 필요하면 중간 희석액을 준비하세요.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.error,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _formatPipettingNumber(double value) {
+  if (value == value.roundToDouble()) {
+    return value.toInt().toString();
+  }
+  return value.toStringAsFixed(3).replaceFirst(RegExp(r'\.?0+$'), '');
+}
+
 class _DilutionDraft {
   const _DilutionDraft({
     required this.groupName,
@@ -2569,6 +2860,8 @@ class _DilutionDraft {
     required this.color,
     required this.unit,
     required this.replicateCount,
+    required this.volumePerWell,
+    required this.volumeUnit,
     required this.plan,
   });
 
@@ -2577,6 +2870,8 @@ class _DilutionDraft {
   final Color color;
   final String unit;
   final int replicateCount;
+  final double volumePerWell;
+  final String volumeUnit;
   final DilutionPlan plan;
 }
 
