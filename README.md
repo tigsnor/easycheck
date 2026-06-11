@@ -2,9 +2,12 @@
 
 EasyCheck는 생명과학 연구원이 96-well plate 실험 설계, 농도 계산, 실험 노트, 결과 관리를 모바일에서 수행할 수 있도록 만드는 Flutter 앱 프로젝트입니다.
 
+현재 제품 우선순위는 **한 명의 연구자가 한 기기에서 오프라인으로 안정적으로 사용할 수 있는 버전**입니다. Cloud sync, 협업, 계정과 고급 제품 기능은 단일 사용자 버전이 실제 실험에서 검증된 뒤로 미룹니다.
+
 ## 문서
 
 - [Flutter 개발 플랜](docs/flutter-development-plan.md)
+- [단일 사용자 우선 출시 계획](docs/single-user-release-plan.md)
 - [MVP 우선 개발 로드맵](docs/mvp-first-roadmap.md)
 - [수동 QA 체크리스트](docs/manual-qa-checklist.md)
 - [알파 배포 및 실제 기기 테스트 가이드](docs/alpha-testing-guide.md)
@@ -32,6 +35,18 @@ EasyCheck는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 - 분석 제외 well을 반영한 농도별 평균·표본 표준편차·CV·blank 보정·control 대비 정규화
 - 농도별 기초 차트와 분석 reference/series를 포함한 TSV 복사·파일 공유
 - 실험, plate, well, well group 도메인 모델 초안
+
+## 현재 개발 우선순위
+
+1. 실제 기기에서 전체 수동 QA 수행
+2. 로컬 저장의 atomic write, 자동 복구와 schema migration
+3. 실험 사진·파일 첨부
+4. Plate 템플릿
+5. CSV 결과 파일 import
+6. 단계별 피펫팅·실험 실행 체크리스트
+7. Android internal testing과 iOS TestFlight 배포
+
+진행률은 개발자 검증, 실제 기기 알파 테스트, 단일 사용자 MVP, 단일 사용자 실험실 사용 가능도의 네 단계로 관리합니다. 세부 완료 기준은 [단일 사용자 우선 출시 계획](docs/single-user-release-plan.md)을 따릅니다.
 
 ## 로컬 실행
 

@@ -2,6 +2,12 @@
 
 ## 방향성
 
+### 현재 우선순위 원칙
+
+이 문서의 구현 세부사항보다 [단일 사용자 우선 출시 계획](single-user-release-plan.md)을 우선 적용합니다. 현재 목표는 계정·클라우드·협업 플랫폼이 아니라, 한 명의 연구자가 한 기기에서 데이터를 안전하게 기록하고 복구할 수 있는 앱입니다.
+
+단일 사용자 버전이 실제 실험에서 검증될 때까지 cloud sync, 팀 권한, 결제, 고급 IC50 자동화는 개발 순서에서 제외합니다.
+
 EasyCheck는 처음부터 모든 고급 분석 기능을 넣기보다, 연구원이 실제 실험 중 바로 사용할 수 있는 기본 앱을 먼저 완성한 뒤 단계적으로 고도화합니다.
 
 우선 목표는 다음 흐름이 끊기지 않게 만드는 것입니다.
@@ -178,29 +184,25 @@ EasyCheck는 처음부터 모든 고급 분석 기능을 넣기보다, 연구원
 - 사용자가 명시적으로 켠 경우에만 sync
 - 연구 데이터 보호 정책 정리
 
-## 추천 구현 순서
+## 단일 사용자 기준 추천 구현 순서
 
-1. GitHub Actions로 Flutter CI 안정화
-2. 로컬 DB와 Experiment repository 구현
-3. 실험 노트 CRUD를 DB 기반으로 변경
-4. Plate/Well/Group 저장 구조 구현
-5. Plate editor를 저장 가능한 편집기로 변경
-6. 범위 선택과 group 지정 구현
-7. Dilution Builder UI 구현
-8. CSV/PDF export 구현
-9. 사진 첨부 추가
-10. 템플릿과 validation 추가
-11. Pipetting plan 추가
-12. 결과 import와 기본 분석 추가
-13. IC50, cloud sync 같은 고급 기능 추가
+현재까지 실험 CRUD, Plate 저장·편집, 희석, 직접 stock 희석 피펫팅 계획, 결과 입력, 기본 분석, TSV 내보내기와 JSON 백업이 구현되어 있습니다. 다음 순서에서는 기능 수보다 실제 기기 안정성과 데이터 복구를 우선합니다.
 
-## 현재 구현 기준 다음 작업
+1. GitHub Actions artifact로 실제 기기 알파 QA 수행
+2. 알파 테스트에서 발견된 P0/P1 사용성 문제 수정
+3. Atomic write, 마지막 정상본 보관, 손상 감지와 schema migration
+4. 사진·파일 첨부와 첨부파일 백업
+5. Plate 템플릿 저장·적용
+6. CSV 결과 파일 선택·preview·import 이력
+7. Serial transfer와 단계별 실행 체크리스트
+8. Android internal testing과 iOS TestFlight 배포
 
-현재 JSON 파일 기반 실험/Plate 저장, 화면 맞춤·단계별 확대와 가로 스크롤, 범위 선택, 그룹 지정, 희석 계산, Well 결과 기록, 결과 행렬 일괄 붙여넣기, 농도별 평균·SD·CV·blank 보정·control 정규화, TSV 파일 공유, 실행 취소와 전체 JSON 백업 파일 공유·선택 복원까지 구현했습니다.
+## 명시적으로 연기하는 범위
 
-농도별 기초 차트와 분석 TSV 내보내기까지 구현한 다음 단계는 `GitHub Actions 알파 산출물 확인과 실제 기기 QA`입니다.
+- 사용자 계정과 로그인
+- Cloud sync와 여러 사용자 협업
+- 팀·연구실 권한 관리
+- 서버 기반 공유와 결제
+- 고급 dose-response fitting과 IC50 자동화
 
-이유:
-- 백업 JSON과 Plate TSV는 Files 앱, AirDrop, 메일로 전달할 수 있으며 백업 파일을 Files/iCloud에서 선택해 복원할 수 있습니다.
-- CI가 Android APK와 iOS Simulator 앱을 산출하며, 실제 iPhone 반복 테스트를 위해 Apple Developer 계정·고유 Bundle ID·TestFlight 서명을 연결해야 합니다.
-- 배포 이후 실제 사용 피드백을 바탕으로 가로 모드 세부 조정, 분석 결과 내보내기와 농도별 chart를 우선순위화합니다.
+이 범위는 단일 사용자 버전이 최소 2주 실제 실험에서 안정적으로 사용된 뒤 다시 평가합니다.
