@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:easycheck/shared/data/local_data_recovery_events.dart';
 import 'package:easycheck/shared/data/safe_json_file_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -51,6 +52,23 @@ void main() {
     expect(jsonDecode(await File('${file.path}.bak').readAsString()), {
       'value': 1,
     });
+  });
+
+  test('reports an automatic recovery event', () async {
+    LocalDataRecoveryEvent? recoveryEvent;
+    final reportingStore = SafeJsonFileStore(
+      recoverySink: (event) => recoveryEvent = event,
+    );
+    await reportingStore.write(file, {'value': 1});
+    await reportingStore.write(file, {'value': 2});
+    await file.writeAsString('{broken', flush: true);
+
+    await reportingStore.read(file);
+
+    expect(recoveryEvent, isNotNull);
+    expect(recoveryEvent!.filePath, file.path);
+    expect(recoveryEvent!.backupPath, '${file.path}.bak');
+    expect(recoveryEvent!.fileName, 'data.json');
   });
 
   test('reports corruption when primary and backup are unusable', () async {

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'local_data_recovery_events.dart';
+
 class JsonFileCorruptionException implements IOException {
   const JsonFileCorruptionException({
     required this.filePath,
@@ -24,8 +26,12 @@ class JsonFileCorruptionException implements IOException {
   }
 }
 
+typedef LocalDataRecoverySink = void Function(LocalDataRecoveryEvent event);
+
 class SafeJsonFileStore {
-  const SafeJsonFileStore();
+  const SafeJsonFileStore({this.recoverySink});
+
+  final LocalDataRecoverySink? recoverySink;
 
   Future<Object?> read(
     File file, {
@@ -43,6 +49,12 @@ class SafeJsonFileStore {
         try {
           final decoded = await _decodeAndValidate(backup, validator);
           await _restorePrimary(file, await backup.readAsString());
+          final event = LocalDataRecoveryEvent(
+            filePath: file.path,
+            backupPath: backup.path,
+            recoveredAt: DateTime.now().toUtc(),
+          );
+          _reportRecovery(event);
           return decoded;
         } on Object catch (backupError) {
           throw JsonFileCorruptionException(
@@ -58,6 +70,14 @@ class SafeJsonFileStore {
         backupPath: backup.path,
         primaryError: primaryError,
       );
+    }
+  }
+
+  void _reportRecovery(LocalDataRecoveryEvent event) {
+    try {
+      (recoverySink ?? LocalDataRecoveryEvents.instance.publish)(event);
+    } on Object {
+      // Recovery must remain successful even if a UI/reporting listener fails.
     }
   }
 
