@@ -4,6 +4,10 @@ import 'package:easycheck/features/experiments/domain/experiment.dart';
 import 'package:easycheck/features/experiments/presentation/experiments_home_screen.dart';
 import 'package:easycheck/features/plates/data/plate_repository.dart';
 import 'package:easycheck/features/plates/domain/plate.dart';
+import 'package:easycheck/features/plates/domain/well_role.dart';
+import 'package:easycheck/features/plates/templates/data/plate_template_repository.dart';
+import 'package:easycheck/features/plates/templates/domain/plate_template.dart';
+import 'package:easycheck/shared/models/well_position.dart';
 import 'package:easycheck/shared/services/document_exchange_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -36,6 +40,7 @@ class FakeExperimentRepository implements ExperimentRepository {
 
 class FakePlateRepository implements PlateRepository {
   Plate? plate;
+  bool failNextSave = false;
 
   @override
   Future<void> deletePlate(String experimentId) async {
@@ -47,7 +52,31 @@ class FakePlateRepository implements PlateRepository {
 
   @override
   Future<void> savePlate(Plate plate) async {
+    if (failNextSave) {
+      failNextSave = false;
+      throw StateError('simulated Plate save failure');
+    }
     this.plate = plate;
+  }
+}
+
+class FakePlateTemplateRepository implements PlateTemplateRepository {
+  FakePlateTemplateRepository([List<PlateTemplate> templates = const []])
+      : templates = [...templates];
+
+  final List<PlateTemplate> templates;
+
+  @override
+  Future<void> deleteTemplate(String id) async {
+    templates.removeWhere((template) => template.id == id);
+  }
+
+  @override
+  Future<List<PlateTemplate>> loadTemplates() async => [...templates];
+
+  @override
+  Future<void> saveTemplate(PlateTemplate template) async {
+    templates.add(template);
   }
 }
 
@@ -252,7 +281,12 @@ void main() {
     final repository = FakeExperimentRepository([]);
 
     await tester.pumpWidget(
-      MaterialApp(home: ExperimentsHomeScreen(repository: repository)),
+      MaterialApp(
+        home: ExperimentsHomeScreen(
+          repository: repository,
+          plateTemplateRepository: FakePlateTemplateRepository(),
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -264,5 +298,113 @@ void main() {
 
     expect(repository.experiments.single.title, 'MTT test');
     expect(find.text('MTT test'), findsOneWidget);
+  });
+
+  testWidgets('creates a new experiment with a selected Plate template', (
+    tester,
+  ) async {
+    final repository = FakeExperimentRepository([]);
+    final plateRepository = FakePlateRepository();
+    final sourcePlate = Plate(
+      id: 'source-plate',
+      experimentId: 'source-experiment',
+      name: 'Source',
+    );
+    final template = PlateTemplate.fromPlate(
+      id: 'template-1',
+      name: 'CCK-8 3반복',
+      createdAt: DateTime.utc(2026, 6, 12),
+      plate: sourcePlate.copyWith(
+        wells: sourcePlate.wells.map((well) {
+          if (well.position ==
+              const WellPosition(rowIndex: 0, columnIndex: 0)) {
+            return well.copyWith(
+              role: WellRole.treatment,
+              concentrationValue: 10,
+              resultValue: 2.4,
+            );
+          }
+          return well;
+        }).toList(),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ExperimentsHomeScreen(
+          repository: repository,
+          plateRepository: plateRepository,
+          plateTemplateRepository: FakePlateTemplateRepository([template]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('첫 실험 만들기'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, '실험 제목'), 'Repeat');
+    await tester.tap(
+      find.byKey(const ValueKey('new-experiment-template-field')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('CCK-8 3반복').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('생성'));
+    await tester.pumpAndSettle();
+
+    expect(repository.experiments.single.title, 'Repeat');
+    expect(plateRepository.plate, isNotNull);
+    expect(
+      plateRepository.plate!
+          .wellAt(const WellPosition(rowIndex: 0, columnIndex: 0))
+          .concentrationValue,
+      10,
+    );
+    expect(
+      plateRepository.plate!
+          .wellAt(const WellPosition(rowIndex: 0, columnIndex: 0))
+          .resultValue,
+      isNull,
+    );
+    expect(find.textContaining('템플릿을 적용했습니다'), findsOneWidget);
+  });
+
+  testWidgets('removes a new experiment when template Plate creation fails', (
+    tester,
+  ) async {
+    final repository = FakeExperimentRepository([]);
+    final plateRepository = FakePlateRepository()..failNextSave = true;
+    final template = PlateTemplate.fromPlate(
+      id: 'template-failure',
+      name: 'Failure template',
+      createdAt: DateTime.utc(2026, 6, 12),
+      plate: Plate(id: 'source', experimentId: 'source', name: 'Source'),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ExperimentsHomeScreen(
+          repository: repository,
+          plateRepository: plateRepository,
+          plateTemplateRepository: FakePlateTemplateRepository([template]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('첫 실험 만들기'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, '실험 제목'), 'Fail');
+    await tester
+        .tap(find.byKey(const ValueKey('new-experiment-template-field')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Failure template').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('생성'));
+    await tester.pumpAndSettle();
+
+    expect(repository.experiments, isEmpty);
+    expect(plateRepository.plate, isNull);
+    expect(find.textContaining('실험을 생성하지 못했습니다'), findsOneWidget);
   });
 }

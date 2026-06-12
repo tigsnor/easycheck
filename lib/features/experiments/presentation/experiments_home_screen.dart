@@ -9,6 +9,9 @@ import '../../plates/data/file_plate_repository.dart';
 import '../../plates/data/plate_repository.dart';
 import '../../plates/domain/plate.dart';
 import '../../plates/presentation/plate_editor_screen.dart';
+import '../../plates/templates/data/file_plate_template_repository.dart';
+import '../../plates/templates/data/plate_template_repository.dart';
+import '../../plates/templates/domain/plate_template.dart';
 import '../data/file_experiment_repository.dart';
 import '../data/experiment_repository.dart';
 import '../domain/experiment.dart';
@@ -19,15 +22,19 @@ class ExperimentsHomeScreen extends StatefulWidget {
     ExperimentRepository? repository,
     PlateRepository? plateRepository,
     DocumentExchangeService? documentExchangeService,
+    PlateTemplateRepository? plateTemplateRepository,
     super.key,
   })  : repository = repository ?? const FileExperimentRepository(),
         plateRepository = plateRepository ?? const FilePlateRepository(),
         documentExchangeService =
-            documentExchangeService ?? const PlatformDocumentExchangeService();
+            documentExchangeService ?? const PlatformDocumentExchangeService(),
+        plateTemplateRepository =
+            plateTemplateRepository ?? const FilePlateTemplateRepository();
 
   final ExperimentRepository repository;
   final PlateRepository plateRepository;
   final DocumentExchangeService documentExchangeService;
+  final PlateTemplateRepository plateTemplateRepository;
 
   @override
   State<ExperimentsHomeScreen> createState() => _ExperimentsHomeScreenState();
@@ -199,6 +206,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
           experimentId: experiment.id,
           experimentTitle: experiment.title,
           repository: widget.plateRepository,
+          templateRepository: widget.plateTemplateRepository,
         ),
       ),
     );
@@ -406,18 +414,69 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   }
 
   Future<void> _showCreateExperimentSheet() async {
-    final created = await showModalBottomSheet<Experiment>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => const _CreateExperimentSheet(),
-    );
-
-    if (created == null) {
+    final List<PlateTemplate> templates;
+    try {
+      templates = await widget.plateTemplateRepository.loadTemplates();
+    } on Object catch (error) {
+      if (mounted) {
+        _showError('Plate 템플릿을 불러오지 못했습니다: $error');
+      }
+      return;
+    }
+    if (!mounted) {
       return;
     }
 
-    await _saveExperiment(created);
+    final draft = await showModalBottomSheet<_CreateExperimentDraft>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _CreateExperimentSheet(templates: templates),
+    );
+
+    if (draft == null) {
+      return;
+    }
+
+    await _createExperiment(draft);
+  }
+
+  Future<void> _createExperiment(_CreateExperimentDraft draft) async {
+    final experiment = draft.experiment.copyWith(updatedAt: DateTime.now());
+    try {
+      await widget.repository.saveExperiment(experiment);
+      final template = draft.template;
+      if (template != null) {
+        await widget.plateRepository.savePlate(
+          template.instantiate(
+            plateId: 'plate-${experiment.id}',
+            experimentId: experiment.id,
+          ),
+        );
+      }
+    } on Object catch (error) {
+      try {
+        await widget.plateRepository.deletePlate(experiment.id);
+        await widget.repository.deleteExperiment(experiment.id);
+      } on Object {
+        // Preserve the original creation error for the user.
+      }
+      if (mounted) {
+        _showError('실험을 생성하지 못했습니다: $error');
+      }
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() => _upsertLocalExperiment(experiment));
+    final message = draft.template == null
+        ? '새 실험을 생성했습니다.'
+        : '새 실험에 “${draft.template!.name}” 템플릿을 적용했습니다.';
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _upsertLocalExperiment(Experiment experiment) {
@@ -910,8 +969,17 @@ class _EmptyExperimentCard extends StatelessWidget {
   }
 }
 
+class _CreateExperimentDraft {
+  const _CreateExperimentDraft({required this.experiment, this.template});
+
+  final Experiment experiment;
+  final PlateTemplate? template;
+}
+
 class _CreateExperimentSheet extends StatefulWidget {
-  const _CreateExperimentSheet();
+  const _CreateExperimentSheet({required this.templates});
+
+  final List<PlateTemplate> templates;
 
   @override
   State<_CreateExperimentSheet> createState() => _CreateExperimentSheetState();
@@ -924,6 +992,7 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
   final _projectController = TextEditingController(text: 'Cell viability');
   final _notesController = TextEditingController();
   String _experimentType = 'CCK-8';
+  String? _templateId;
 
   @override
   void dispose() {
@@ -990,6 +1059,27 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
               hintText: '세포주, 처리 시간, 주의사항 등을 적어두세요.',
             ),
           ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String?>(
+            key: const ValueKey('new-experiment-template-field'),
+            initialValue: _templateId,
+            decoration: const InputDecoration(
+              labelText: 'Plate 템플릿',
+              helperText: '선택하면 실험 생성과 동시에 Plate 설정을 적용합니다.',
+            ),
+            items: [
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('사용하지 않음'),
+              ),
+              for (final template in widget.templates)
+                DropdownMenuItem<String?>(
+                  value: template.id,
+                  child: Text(template.name),
+                ),
+            ],
+            onChanged: (value) => setState(() => _templateId = value),
+          ),
           const SizedBox(height: 18),
           SizedBox(
             width: double.infinity,
@@ -1014,19 +1104,29 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
     }
 
     final now = DateTime.now();
+    PlateTemplate? selectedTemplate;
+    for (final template in widget.templates) {
+      if (template.id == _templateId) {
+        selectedTemplate = template;
+        break;
+      }
+    }
     Navigator.of(context).pop(
-      Experiment(
-        id: _uuid.v4(),
-        title: title,
-        projectName: _projectController.text.trim().isEmpty
-            ? null
-            : _projectController.text.trim(),
-        experimentType: _experimentType,
-        status: ExperimentStatus.draft,
-        createdAt: now,
-        updatedAt: now,
-        notes: _notesController.text.trim(),
-        tags: [_experimentType.replaceAll('-', '')],
+      _CreateExperimentDraft(
+        experiment: Experiment(
+          id: _uuid.v4(),
+          title: title,
+          projectName: _projectController.text.trim().isEmpty
+              ? null
+              : _projectController.text.trim(),
+          experimentType: _experimentType,
+          status: ExperimentStatus.draft,
+          createdAt: now,
+          updatedAt: now,
+          notes: _notesController.text.trim(),
+          tags: [_experimentType.replaceAll('-', '')],
+        ),
+        template: selectedTemplate,
       ),
     );
   }
