@@ -19,6 +19,11 @@ import '../domain/plate_validation_service.dart';
 import '../domain/well.dart';
 import '../domain/well_group.dart';
 import '../domain/well_role.dart';
+import '../templates/data/file_plate_template_repository.dart';
+import '../templates/data/plate_template_repository.dart';
+import '../templates/domain/plate_template.dart';
+
+enum _TemplateAction { save, apply }
 
 class PlateEditorScreen extends StatefulWidget {
   const PlateEditorScreen({
@@ -26,8 +31,11 @@ class PlateEditorScreen extends StatefulWidget {
     this.experimentTitle = 'CCK-8 2배 희석 실험 초안',
     PlateRepository? repository,
     DocumentExchangeService? documentExchangeService,
+    PlateTemplateRepository? templateRepository,
     super.key,
   })  : repository = repository ?? const FilePlateRepository(),
+        templateRepository =
+            templateRepository ?? const FilePlateTemplateRepository(),
         documentExchangeService =
             documentExchangeService ?? const PlatformDocumentExchangeService();
 
@@ -35,6 +43,7 @@ class PlateEditorScreen extends StatefulWidget {
   final String experimentTitle;
   final PlateRepository repository;
   final DocumentExchangeService documentExchangeService;
+  final PlateTemplateRepository templateRepository;
 
   @override
   State<PlateEditorScreen> createState() => _PlateEditorScreenState();
@@ -111,6 +120,38 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
             tooltip: 'Plate 내보내기',
             onPressed: plate == null ? null : _showPlateExport,
             icon: const Icon(Icons.ios_share_outlined),
+          ),
+          PopupMenuButton<_TemplateAction>(
+            tooltip: 'Plate 템플릿',
+            enabled: plate != null && !_isSaving,
+            onSelected: (action) {
+              switch (action) {
+                case _TemplateAction.save:
+                  _saveCurrentPlateAsTemplate();
+                  return;
+                case _TemplateAction.apply:
+                  _chooseAndApplyTemplate();
+                  return;
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: _TemplateAction.save,
+                child: ListTile(
+                  leading: Icon(Icons.bookmark_add_outlined),
+                  title: Text('현재 Plate를 템플릿으로 저장'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: _TemplateAction.apply,
+                child: ListTile(
+                  leading: Icon(Icons.library_add_check_outlined),
+                  title: Text('저장된 템플릿 적용'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -369,6 +410,156 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       for (var column = columnStart; column <= columnEnd; column++) {
         yield WellPosition(rowIndex: row, columnIndex: column);
       }
+    }
+  }
+
+  Future<void> _saveCurrentPlateAsTemplate() async {
+    final plate = _plate;
+    if (plate == null) {
+      return;
+    }
+    var templateName = '${plate.name} 템플릿';
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Plate 템플릿 저장'),
+        content: TextFormField(
+          key: const ValueKey('plate-template-name-field'),
+          initialValue: templateName,
+          autofocus: true,
+          onChanged: (value) => templateName = value,
+          decoration: const InputDecoration(
+            labelText: '템플릿 이름',
+            hintText: '예: CCK-8 2배 희석 3반복',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm-save-plate-template'),
+            onPressed: () => Navigator.of(context).pop(templateName.trim()),
+            child: const Text('저장'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty) {
+      return;
+    }
+
+    final now = DateTime.now().toUtc();
+    final template = PlateTemplate.fromPlate(
+      id: 'template-${now.microsecondsSinceEpoch}',
+      name: name,
+      plate: plate,
+      createdAt: now,
+    );
+    try {
+      await widget.templateRepository.saveTemplate(template);
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('템플릿을 저장하지 못했습니다: $error')));
+      }
+      return;
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('“$name” 템플릿을 저장했습니다.')));
+    }
+  }
+
+  Future<void> _chooseAndApplyTemplate() async {
+    final plate = _plate;
+    if (plate == null) {
+      return;
+    }
+    final List<PlateTemplate> templates;
+    try {
+      templates = await widget.templateRepository.loadTemplates();
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('템플릿을 불러오지 못했습니다: $error')));
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    if (templates.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('저장된 Plate 템플릿이 없습니다.')));
+      return;
+    }
+
+    final selected = await showDialog<PlateTemplate>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('적용할 Plate 템플릿'),
+        children: [
+          for (final template in templates)
+            SimpleDialogOption(
+              key: ValueKey('plate-template-${template.id}'),
+              onPressed: () => Navigator.of(context).pop(template),
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.view_module_outlined),
+                title: Text(template.name),
+                subtitle: Text(
+                  '${template.rowCount} × ${template.columnCount} · 결과값은 포함하지 않음',
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+    if (selected == null || !mounted) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('“${selected.name}”을 적용할까요?'),
+        content: const Text(
+          '현재 Plate의 그룹, 농도, 역할, 부피와 메모가 템플릿 내용으로 교체됩니다. 측정 결과와 분석 제외 상태는 템플릿에 포함되지 않습니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm-apply-plate-template'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('적용'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+
+    final updated = selected.instantiate(
+      plateId: plate.id,
+      experimentId: plate.experimentId,
+      plateName: plate.name,
+    );
+    final saved = await _savePlate(
+      updated,
+      successMessage: '“${selected.name}” 템플릿을 적용했습니다.',
+    );
+    if (saved && mounted) {
+      _clearSelection();
     }
   }
 
@@ -2461,8 +2652,9 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
               Expanded(
                 child: TextField(
                   controller: _startController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: const InputDecoration(labelText: '시작 농도'),
                 ),
               ),
@@ -2481,8 +2673,9 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
               Expanded(
                 child: TextField(
                   controller: _factorController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: const InputDecoration(labelText: '희석 배수'),
                 ),
               ),
@@ -2544,8 +2737,9 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
                 child: TextField(
                   key: const ValueKey('pipetting-stock-field'),
                   controller: _stockController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: const InputDecoration(labelText: 'Stock 농도'),
                 ),
               ),
@@ -2554,8 +2748,9 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
                 child: TextField(
                   key: const ValueKey('pipetting-volume-field'),
                   controller: _volumeController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: const InputDecoration(
                     labelText: 'Well당 최종 부피',
                     suffixText: 'µL',
@@ -2571,8 +2766,9 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
                 child: TextField(
                   key: const ValueKey('pipetting-overage-field'),
                   controller: _overageController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: const InputDecoration(labelText: '여유분 (%)'),
                 ),
               ),

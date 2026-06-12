@@ -28,6 +28,7 @@ EasyCheck는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 - 모든 실험과 연결 Plate를 버전형 JSON으로 복사·파일 공유하고, Files/iCloud에서 선택해 사전 검증·실패 rollback과 함께 ID 기준 병합 복원하는 전체 백업
 - 실험별 96-well plate grid, 화면 맞춤·단계별 확대·가로 스크롤, 행/열/범위 선택, 그룹 색상 지정, JSON 파일 기반 plate layout 저장
 - Plate 저장 중/완료 상태 표시와 최근 20개 변경에 대한 실행 취소
+- 현재 Plate 설정을 결과값 없이 로컬 템플릿으로 저장하고 다른 실험 Plate에 재적용
 - 선택한 well의 농도, 측정 결과, 결과 단위, 메모, 분석 제외 여부를 기록하는 상세 카드
 - Excel/Plate reader의 A-H × 1-12 결과 행렬을 붙여넣어 여러 well에 일괄 입력
 - Plate layout과 well별 측정 결과를 메모/엑셀/구글시트에 붙여넣거나 파일로 공유할 수 있는 TSV 내보내기

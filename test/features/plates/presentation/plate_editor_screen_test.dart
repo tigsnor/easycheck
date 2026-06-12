@@ -3,6 +3,8 @@ import 'package:easycheck/features/plates/domain/plate.dart';
 import 'package:easycheck/features/plates/domain/well.dart';
 import 'package:easycheck/features/plates/domain/well_group.dart';
 import 'package:easycheck/features/plates/domain/well_role.dart';
+import 'package:easycheck/features/plates/templates/data/plate_template_repository.dart';
+import 'package:easycheck/features/plates/templates/domain/plate_template.dart';
 import 'package:easycheck/shared/models/well_position.dart';
 import 'package:easycheck/features/plates/presentation/plate_editor_screen.dart';
 import 'package:flutter/material.dart';
@@ -24,6 +26,28 @@ class FakePlateRepository implements PlateRepository {
   @override
   Future<void> savePlate(Plate plate) async {
     this.plate = plate;
+  }
+}
+
+class FakePlateTemplateRepository implements PlateTemplateRepository {
+  final List<PlateTemplate> templates = [];
+
+  @override
+  Future<void> deleteTemplate(String id) async {
+    templates.removeWhere((template) => template.id == id);
+  }
+
+  @override
+  Future<List<PlateTemplate>> loadTemplates() async => [...templates];
+
+  @override
+  Future<void> saveTemplate(PlateTemplate template) async {
+    final index = templates.indexWhere((item) => item.id == template.id);
+    if (index == -1) {
+      templates.add(template);
+    } else {
+      templates[index] = template;
+    }
   }
 }
 
@@ -516,5 +540,98 @@ void main() {
     expect(exchange.sharedFileName, '96-well-Plate.tsv');
     expect(exchange.sharedMimeType, 'text/tab-separated-values');
     expect(exchange.sharedContent, contains('EasyCheck plate export'));
+  });
+
+  testWidgets('saves the current plate as a reusable template', (tester) async {
+    final repository = FakePlateRepository();
+    final templateRepository = FakePlateTemplateRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlateEditorScreen(
+          experimentId: 'experiment-1',
+          repository: repository,
+          templateRepository: templateRepository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Plate 템플릿'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('현재 Plate를 템플릿으로 저장'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('plate-template-name-field')),
+      '반복 실험 템플릿',
+    );
+    await tester.tap(find.byKey(const ValueKey('confirm-save-plate-template')));
+    await tester.pumpAndSettle();
+
+    expect(templateRepository.templates.single.name, '반복 실험 템플릿');
+    expect(find.textContaining('템플릿을 저장했습니다'), findsOneWidget);
+  });
+
+  testWidgets('applies a template without copying measured results', (
+    tester,
+  ) async {
+    final repository = FakePlateRepository();
+    final templateRepository = FakePlateTemplateRepository()
+      ..templates.add(
+        PlateTemplate.fromPlate(
+          id: 'template-1',
+          name: '10 µM 처리군',
+          createdAt: DateTime.utc(2026, 6, 12),
+          plate: Plate(id: 'source', experimentId: 'source', name: 'Source')
+              .copyWith(
+            wells: Plate(
+              id: 'source-wells',
+              experimentId: 'source',
+              name: 'Source',
+            ).wells.map((well) {
+              if (well.position ==
+                  const WellPosition(rowIndex: 0, columnIndex: 0)) {
+                return well.copyWith(
+                  role: WellRole.treatment,
+                  concentrationValue: 10,
+                  resultValue: 9.9,
+                  excluded: true,
+                );
+              }
+              return well;
+            }).toList(),
+          ),
+        ),
+      );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlateEditorScreen(
+          experimentId: 'experiment-1',
+          repository: repository,
+          templateRepository: templateRepository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Plate 템플릿'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('저장된 템플릿 적용'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('10 µM 처리군'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('confirm-apply-plate-template')),
+    );
+    await tester.pumpAndSettle();
+
+    final applied = repository.plate!.wellAt(
+      const WellPosition(rowIndex: 0, columnIndex: 0),
+    );
+    expect(applied.concentrationValue, 10);
+    expect(applied.resultValue, isNull);
+    expect(applied.excluded, isFalse);
+    expect(find.textContaining('템플릿을 적용했습니다'), findsOneWidget);
   });
 }
