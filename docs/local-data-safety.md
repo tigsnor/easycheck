@@ -47,6 +47,10 @@ Experiment와 Plate 파일은 다음 envelope로 저장합니다.
 
 기존 버전에서 사용하던 최상위 Experiment List와 Plate Object도 계속 읽을 수 있습니다. Legacy 파일을 읽은 뒤 데이터를 저장하면 version 1 envelope로 변환됩니다. 현재 앱보다 높은 미래 version은 임의로 읽지 않고 backup 복구 또는 오류 처리 대상으로 봅니다.
 
+## 전체 백업 복원 안전성
+
+전체 백업은 저장을 시작하기 전에 중복 ID와 실험-Plate 연결 관계를 다시 검증합니다. 복원 도중 실험 또는 Plate 저장이 실패하면 이번 복원의 영향을 받는 기존 데이터를 snapshot으로 되돌리고, 새로 추가되던 데이터는 삭제합니다. Rollback 자체도 실패하면 원래 복원 오류와 rollback 오류를 함께 사용자에게 전달합니다.
+
 ## 남은 안전성 작업
 
 - 사용자가 손상 원본과 backup 정보를 확인하는 상세 복구 화면

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../shared/services/document_exchange_service.dart';
+import '../../backup/application/backup_restore_service.dart';
 import '../../backup/domain/easycheck_backup_service.dart';
 import '../../plates/data/file_plate_repository.dart';
 import '../../plates/data/plate_repository.dart';
@@ -360,7 +361,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
       builder: (context) => AlertDialog(
         title: const Text('백업을 복원할까요?'),
         content: Text(
-          '실험 ${backup.experiments.length}개와 Plate ${backup.plates.length}개를 병합합니다. 같은 ID의 데이터는 백업 내용으로 덮어쓰고 다른 데이터는 유지합니다.',
+          '실험 ${backup.experiments.length}개와 Plate ${backup.plates.length}개를 검증한 뒤 병합합니다. 같은 ID의 데이터는 백업 내용으로 덮어쓰고 다른 데이터는 유지합니다. 저장에 실패하면 복원 시작 전 상태로 되돌립니다.',
         ),
         actions: [
           TextButton(
@@ -380,12 +381,11 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
     }
 
     try {
-      for (final experiment in backup.experiments) {
-        await widget.repository.saveExperiment(experiment);
-      }
-      for (final plate in backup.plates) {
-        await widget.plateRepository.savePlate(plate);
-      }
+      final restoreService = BackupRestoreService(
+        experimentRepository: widget.repository,
+        plateRepository: widget.plateRepository,
+      );
+      await restoreService.restore(backup);
       await _loadExperiments();
     } on Object catch (error) {
       if (mounted) {
