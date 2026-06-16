@@ -83,6 +83,20 @@ class PlateTemplate {
     );
   }
 
+  PlateTemplate copyWith({String? name, DateTime? updatedAt}) {
+    return PlateTemplate(
+      id: id,
+      name: name ?? this.name,
+      createdAt: createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowCount: rowCount,
+      columnCount: columnCount,
+      wells: wells,
+      groups: groups,
+      notes: notes,
+    );
+  }
+
   Map<String, Object?> toJson() {
     return {
       'id': id,

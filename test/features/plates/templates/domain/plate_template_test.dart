@@ -46,4 +46,26 @@ void main() {
     expect(well.resultUnit, isNull);
     expect(well.excluded, isFalse);
   });
+
+  test('renames a template while preserving the captured plate setup', () {
+    final template = PlateTemplate.fromPlate(
+      id: 'template-rename',
+      name: 'Original name',
+      plate:
+          Plate(id: 'plate-source', experimentId: 'experiment', name: 'Plate'),
+      createdAt: DateTime.utc(2026, 6, 12),
+    );
+
+    final renamed = template.copyWith(
+      name: 'Renamed template',
+      updatedAt: DateTime.utc(2026, 6, 16),
+    );
+
+    expect(renamed.id, template.id);
+    expect(renamed.name, 'Renamed template');
+    expect(renamed.createdAt, template.createdAt);
+    expect(renamed.updatedAt, DateTime.utc(2026, 6, 16));
+    expect(renamed.wells, template.wells);
+    expect(renamed.groups, template.groups);
+  });
 }

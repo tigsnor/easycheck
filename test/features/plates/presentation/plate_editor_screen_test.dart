@@ -634,4 +634,85 @@ void main() {
     expect(applied.excluded, isFalse);
     expect(find.textContaining('템플릿을 적용했습니다'), findsOneWidget);
   });
+
+  testWidgets(
+    'renames and deletes saved plate templates from management dialog',
+    (tester) async {
+      final repository = FakePlateRepository();
+      final templateRepository = FakePlateTemplateRepository()
+        ..templates.add(
+          PlateTemplate.fromPlate(
+            id: 'template-1',
+            name: 'Old template',
+            createdAt: DateTime.utc(2026, 6, 12),
+            plate: Plate(id: 'source', experimentId: 'source', name: 'Source'),
+          ),
+        )
+        ..templates.add(
+          PlateTemplate.fromPlate(
+            id: 'template-2',
+            name: 'Delete me',
+            createdAt: DateTime.utc(2026, 6, 11),
+            plate: Plate(
+              id: 'source-2',
+              experimentId: 'source',
+              name: 'Source',
+            ),
+          ),
+        );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PlateEditorScreen(
+            experimentId: 'experiment-1',
+            repository: repository,
+            templateRepository: templateRepository,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Plate 템플릿'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('템플릿 관리'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey('rename-plate-template-template-1')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('rename-plate-template-name-field')),
+        'Renamed template',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('confirm-rename-plate-template')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        templateRepository.templates
+            .firstWhere((item) => item.id == 'template-1')
+            .name,
+        'Renamed template',
+      );
+      expect(find.text('Renamed template'), findsOneWidget);
+      expect(find.textContaining('이름을 변경했습니다'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey('delete-plate-template-template-2')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('confirm-delete-plate-template')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        templateRepository.templates.any((item) => item.id == 'template-2'),
+        isFalse,
+      );
+      expect(find.text('Delete me'), findsNothing);
+    },
+  );
 }

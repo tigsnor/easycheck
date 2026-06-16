@@ -23,7 +23,7 @@ import '../templates/data/file_plate_template_repository.dart';
 import '../templates/data/plate_template_repository.dart';
 import '../templates/domain/plate_template.dart';
 
-enum _TemplateAction { save, apply }
+enum _TemplateAction { save, apply, manage }
 
 class PlateEditorScreen extends StatefulWidget {
   const PlateEditorScreen({
@@ -132,6 +132,9 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                 case _TemplateAction.apply:
                   _chooseAndApplyTemplate();
                   return;
+                case _TemplateAction.manage:
+                  _managePlateTemplates();
+                  return;
               }
             },
             itemBuilder: (context) => const [
@@ -148,6 +151,14 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                 child: ListTile(
                   leading: Icon(Icons.library_add_check_outlined),
                   title: Text('저장된 템플릿 적용'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: _TemplateAction.manage,
+                child: ListTile(
+                  leading: Icon(Icons.tune_outlined),
+                  title: Text('템플릿 관리'),
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
@@ -560,6 +571,48 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     );
     if (saved && mounted) {
       _clearSelection();
+    }
+  }
+
+  Future<void> _managePlateTemplates() async {
+    final templates = await _loadPlateTemplatesForAction();
+    if (templates == null || !mounted) {
+      return;
+    }
+    if (templates.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('관리할 Plate 템플릿이 없습니다.')));
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => _PlateTemplateManagementDialog(
+        initialTemplates: templates,
+        repository: widget.templateRepository,
+        onMessage: (message) {
+          if (!mounted) {
+            return;
+          }
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(message)));
+        },
+      ),
+    );
+  }
+
+  Future<List<PlateTemplate>?> _loadPlateTemplatesForAction() async {
+    try {
+      return await widget.templateRepository.loadTemplates();
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('템플릿을 불러오지 못했습니다: $error')));
+      }
+      return null;
     }
   }
 
@@ -3215,6 +3268,193 @@ class _GroupDraft {
   final Color color;
   final WellRole role;
   final String concentrationUnit;
+}
+
+class _PlateTemplateManagementDialog extends StatefulWidget {
+  const _PlateTemplateManagementDialog({
+    required this.initialTemplates,
+    required this.repository,
+    required this.onMessage,
+  });
+
+  final List<PlateTemplate> initialTemplates;
+  final PlateTemplateRepository repository;
+  final ValueChanged<String> onMessage;
+
+  @override
+  State<_PlateTemplateManagementDialog> createState() =>
+      _PlateTemplateManagementDialogState();
+}
+
+class _PlateTemplateManagementDialogState
+    extends State<_PlateTemplateManagementDialog> {
+  late List<PlateTemplate> _templates = [...widget.initialTemplates];
+  bool _isBusy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Plate 템플릿 관리'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: _templates.isEmpty
+            ? const Text('저장된 Plate 템플릿이 없습니다.')
+            : ListView.separated(
+                shrinkWrap: true,
+                itemCount: _templates.length,
+                separatorBuilder: (context, index) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final template = _templates[index];
+                  return ListTile(
+                    key: ValueKey('manage-plate-template-${template.id}'),
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.view_module_outlined),
+                    title: Text(template.name),
+                    subtitle: Text(
+                      '${template.rowCount} × ${template.columnCount} · ${_formatTemplateDate(template.updatedAt)}',
+                    ),
+                    trailing: Wrap(
+                      spacing: 4,
+                      children: [
+                        IconButton(
+                          key: ValueKey('rename-plate-template-${template.id}'),
+                          tooltip: '템플릿 이름 변경',
+                          onPressed: _isBusy ? null : () => _rename(template),
+                          icon: const Icon(Icons.edit_outlined),
+                        ),
+                        IconButton(
+                          key: ValueKey('delete-plate-template-${template.id}'),
+                          tooltip: '템플릿 삭제',
+                          onPressed: _isBusy ? null : () => _delete(template),
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isBusy ? null : () => Navigator.of(context).pop(),
+          child: const Text('닫기'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _rename(PlateTemplate template) async {
+    var name = template.name;
+    final nextName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('템플릿 이름 변경'),
+        content: TextFormField(
+          key: const ValueKey('rename-plate-template-name-field'),
+          initialValue: template.name,
+          autofocus: true,
+          onChanged: (value) => name = value,
+          decoration: const InputDecoration(labelText: '템플릿 이름'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm-rename-plate-template'),
+            onPressed: () => Navigator.of(context).pop(name.trim()),
+            child: const Text('변경'),
+          ),
+        ],
+      ),
+    );
+    if (nextName == null || nextName.isEmpty || nextName == template.name) {
+      return;
+    }
+
+    await _runTemplateMutation(
+      successMessage: '“$nextName” 템플릿 이름을 변경했습니다.',
+      mutation: () async {
+        final updated = template.copyWith(
+          name: nextName,
+          updatedAt: DateTime.now().toUtc(),
+        );
+        await widget.repository.saveTemplate(updated);
+        _replaceLocal(updated);
+      },
+    );
+  }
+
+  Future<void> _delete(PlateTemplate template) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('“${template.name}” 템플릿을 삭제할까요?'),
+        content: const Text('삭제한 템플릿은 새 실험 생성과 Plate 적용 목록에서 사라집니다.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm-delete-plate-template'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+
+    await _runTemplateMutation(
+      successMessage: '“${template.name}” 템플릿을 삭제했습니다.',
+      mutation: () async {
+        await widget.repository.deleteTemplate(template.id);
+        setState(() {
+          _templates = _templates
+              .where((candidate) => candidate.id != template.id)
+              .toList();
+        });
+      },
+    );
+  }
+
+  Future<void> _runTemplateMutation({
+    required String successMessage,
+    required Future<void> Function() mutation,
+  }) async {
+    setState(() => _isBusy = true);
+    try {
+      await mutation();
+    } on Object catch (error) {
+      widget.onMessage('템플릿을 변경하지 못했습니다: $error');
+      if (mounted) {
+        setState(() => _isBusy = false);
+      }
+      return;
+    }
+    widget.onMessage(successMessage);
+    if (mounted) {
+      setState(() => _isBusy = false);
+    }
+  }
+
+  void _replaceLocal(PlateTemplate updated) {
+    setState(() {
+      _templates = _templates
+          .map((template) => template.id == updated.id ? updated : template)
+          .toList()
+        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    });
+  }
+}
+
+String _formatTemplateDate(DateTime date) {
+  final local = date.toLocal();
+  return '${local.year.toString().padLeft(4, '0')}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
 }
 
 String _formatDose(double value) {
