@@ -1,6 +1,7 @@
 import 'package:easycheck/features/plates/domain/plate.dart';
 import 'package:easycheck/features/plates/domain/well.dart';
 import 'package:easycheck/features/plates/domain/well_role.dart';
+import 'package:easycheck/features/plates/templates/domain/default_plate_templates.dart';
 import 'package:easycheck/features/plates/templates/domain/plate_template.dart';
 import 'package:easycheck/shared/models/well_position.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -67,5 +68,40 @@ void main() {
     expect(renamed.updatedAt, DateTime.utc(2026, 6, 16));
     expect(renamed.wells, template.wells);
     expect(renamed.groups, template.groups);
+  });
+
+  test('provides a CCK-8 default template with triplicate setup wells', () {
+    final template = DefaultPlateTemplates.all.single;
+    final plate = template.instantiate(
+      plateId: 'plate-default',
+      experimentId: 'experiment-default',
+    );
+
+    expect(template.name, contains('CCK-8'));
+    expect(template.groups.map((group) => group.shortLabel),
+        containsAll(['BLK', 'VC', 'A', 'B']));
+    expect(
+      plate
+          .wellAt(const WellPosition(rowIndex: 0, columnIndex: 6))
+          .concentrationValue,
+      100,
+    );
+    expect(
+      plate
+          .wellAt(const WellPosition(rowIndex: 7, columnIndex: 11))
+          .concentrationValue,
+      0,
+    );
+    expect(plate.wellAt(const WellPosition(rowIndex: 0, columnIndex: 0)).role,
+        WellRole.blank);
+  });
+
+  test('keeps saved templates before default examples and avoids duplicate ids',
+      () {
+    final saved = DefaultPlateTemplates.all.single.copyWith(name: '내 기본 템플릿');
+    final merged = DefaultPlateTemplates.mergeWithSaved([saved]);
+
+    expect(merged, hasLength(1));
+    expect(merged.single.name, '내 기본 템플릿');
   });
 }

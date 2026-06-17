@@ -11,6 +11,7 @@ import '../../plates/domain/plate.dart';
 import '../../plates/presentation/plate_editor_screen.dart';
 import '../../plates/templates/data/file_plate_template_repository.dart';
 import '../../plates/templates/data/plate_template_repository.dart';
+import '../../plates/templates/domain/default_plate_templates.dart';
 import '../../plates/templates/domain/plate_template.dart';
 import '../data/file_experiment_repository.dart';
 import '../data/experiment_repository.dart';
@@ -416,7 +417,9 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   Future<void> _showCreateExperimentSheet() async {
     final List<PlateTemplate> templates;
     try {
-      templates = await widget.plateTemplateRepository.loadTemplates();
+      templates = DefaultPlateTemplates.mergeWithSaved(
+        await widget.plateTemplateRepository.loadTemplates(),
+      );
     } on Object catch (error) {
       if (mounted) {
         _showError('Plate 템플릿을 불러오지 못했습니다: $error');

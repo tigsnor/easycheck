@@ -715,4 +715,47 @@ void main() {
       expect(find.text('Delete me'), findsNothing);
     },
   );
+
+  testWidgets('applies a built-in CCK-8 template when no saved template exists',
+      (
+    tester,
+  ) async {
+    final repository = FakePlateRepository();
+    final templateRepository = FakePlateTemplateRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlateEditorScreen(
+          experimentId: 'experiment-1',
+          repository: repository,
+          templateRepository: templateRepository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Plate 템플릿'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('저장된 템플릿 적용'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('기본 · CCK-8 2배 희석 3반복'));
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.byKey(const ValueKey('confirm-apply-plate-template')));
+    await tester.pumpAndSettle();
+
+    expect(
+      repository.plate!
+          .wellAt(const WellPosition(rowIndex: 0, columnIndex: 6))
+          .concentrationValue,
+      100,
+    );
+    expect(
+      repository.plate!
+          .wellAt(const WellPosition(rowIndex: 0, columnIndex: 0))
+          .role,
+      WellRole.blank,
+    );
+    expect(find.textContaining('템플릿을 적용했습니다'), findsOneWidget);
+  });
 }

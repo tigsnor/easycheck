@@ -21,6 +21,7 @@ import '../domain/well_group.dart';
 import '../domain/well_role.dart';
 import '../templates/data/file_plate_template_repository.dart';
 import '../templates/data/plate_template_repository.dart';
+import '../templates/domain/default_plate_templates.dart';
 import '../templates/domain/plate_template.dart';
 
 enum _TemplateAction { save, apply, manage }
@@ -490,15 +491,8 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     if (plate == null) {
       return;
     }
-    final List<PlateTemplate> templates;
-    try {
-      templates = await widget.templateRepository.loadTemplates();
-    } on Object catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('템플릿을 불러오지 못했습니다: $error')));
-      }
+    final templates = await _loadPlateTemplatesForAction();
+    if (templates == null) {
       return;
     }
     if (!mounted) {
@@ -605,7 +599,9 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
 
   Future<List<PlateTemplate>?> _loadPlateTemplatesForAction() async {
     try {
-      return await widget.templateRepository.loadTemplates();
+      return DefaultPlateTemplates.mergeWithSaved(
+        await widget.templateRepository.loadTemplates(),
+      );
     } on Object catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(
