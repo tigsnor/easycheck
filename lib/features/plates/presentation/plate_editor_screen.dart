@@ -687,10 +687,24 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       return;
     }
 
-    final updated = _plateResultImportService.apply(
+    final importedAt = DateTime.now().toUtc();
+    final updated = _plateResultImportService
+        .apply(
       plate: plate,
       preview: draft.preview,
       resultUnit: draft.resultUnit,
+    )
+        .copyWith(
+      importHistory: [
+        PlateResultImportRecord(
+          id: 'import-${importedAt.microsecondsSinceEpoch}',
+          sourceName: draft.sourceName,
+          importedAt: importedAt,
+          valueCount: draft.preview.valueCount,
+          resultUnit: draft.resultUnit,
+        ),
+        ...plate.importHistory,
+      ],
     );
     await _savePlate(
       updated,
@@ -1274,6 +1288,7 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
   final _matrixController = TextEditingController();
   final _unitController = TextEditingController(text: 'OD');
   final _wavelengthController = TextEditingController(text: '450');
+  String _sourceName = '클립보드';
   late PlateResultImportPreview _preview;
 
   @override
@@ -1318,6 +1333,7 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
     if (!mounted || data?.text == null) {
       return;
     }
+    _sourceName = '클립보드';
     _matrixController.text = data!.text!;
   }
 
@@ -1328,6 +1344,7 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
     if (!mounted || document == null) {
       return;
     }
+    _sourceName = document.name;
     _matrixController.text = document.content;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('“${document.name}” 결과 파일을 불러왔습니다.')),
@@ -1446,6 +1463,7 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
                         _BulkResultImportDraft(
                           preview: _preview,
                           resultUnit: _resolvedResultUnit,
+                          sourceName: _sourceName,
                         ),
                       )
                   : null,
@@ -1526,10 +1544,12 @@ class _BulkResultImportDraft {
   const _BulkResultImportDraft({
     required this.preview,
     required this.resultUnit,
+    required this.sourceName,
   });
 
   final PlateResultImportPreview preview;
   final String resultUnit;
+  final String sourceName;
 }
 
 class _PlateExportSheet extends StatelessWidget {
@@ -1674,6 +1694,20 @@ class _PlateSummaryCard extends StatelessWidget {
                 _GroupSummaryRow(summary: summary),
                 if (summary != summaries.last) const Divider(height: 20),
               ],
+            if (plate.importHistory.isNotEmpty) ...[
+              const Divider(height: 28),
+              Text(
+                '최근 결과 가져오기',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              for (final record in plate.importHistory.take(3))
+                Text(
+                  '${record.sourceName} · ${record.valueCount}개 · ${record.resultUnit}',
+                ),
+            ],
           ],
         ),
       ),

@@ -2,6 +2,42 @@ import '../../../shared/models/well_position.dart';
 import 'well.dart';
 import 'well_group.dart';
 
+class PlateResultImportRecord {
+  const PlateResultImportRecord({
+    required this.id,
+    required this.sourceName,
+    required this.importedAt,
+    required this.valueCount,
+    required this.resultUnit,
+  });
+
+  factory PlateResultImportRecord.fromJson(Map<String, Object?> json) {
+    return PlateResultImportRecord(
+      id: json['id'] as String,
+      sourceName: json['sourceName'] as String? ?? 'unknown',
+      importedAt: DateTime.parse(json['importedAt'] as String).toUtc(),
+      valueCount: json['valueCount'] as int? ?? 0,
+      resultUnit: json['resultUnit'] as String? ?? '',
+    );
+  }
+
+  final String id;
+  final String sourceName;
+  final DateTime importedAt;
+  final int valueCount;
+  final String resultUnit;
+
+  Map<String, Object?> toJson() {
+    return {
+      'id': id,
+      'sourceName': sourceName,
+      'importedAt': importedAt.toUtc().toIso8601String(),
+      'valueCount': valueCount,
+      'resultUnit': resultUnit,
+    };
+  }
+}
+
 class Plate {
   Plate({
     required this.id,
@@ -12,6 +48,7 @@ class Plate {
     List<Well>? wells,
     this.groups = const [],
     this.notes = '',
+    this.importHistory = const [],
   }) : wells = wells ?? _buildEmptyWells(rowCount, columnCount);
 
   factory Plate.fromJson(Map<String, Object?> json) {
@@ -30,6 +67,10 @@ class Plate {
           .map(WellGroup.fromJson)
           .toList(),
       notes: json['notes'] as String? ?? '',
+      importHistory: (json['importHistory'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, Object?>>()
+          .map(PlateResultImportRecord.fromJson)
+          .toList(),
     );
   }
 
@@ -41,6 +82,7 @@ class Plate {
   final List<Well> wells;
   final List<WellGroup> groups;
   final String notes;
+  final List<PlateResultImportRecord> importHistory;
 
   Map<String, Object?> toJson() {
     return {
@@ -52,6 +94,7 @@ class Plate {
       'wells': wells.map((well) => well.toJson()).toList(),
       'groups': groups.map((group) => group.toJson()).toList(),
       'notes': notes,
+      'importHistory': importHistory.map((record) => record.toJson()).toList(),
     };
   }
 
@@ -64,6 +107,7 @@ class Plate {
     List<Well>? wells,
     List<WellGroup>? groups,
     String? notes,
+    List<PlateResultImportRecord>? importHistory,
   }) {
     return Plate(
       id: id ?? this.id,
@@ -74,6 +118,7 @@ class Plate {
       wells: wells ?? this.wells,
       groups: groups ?? this.groups,
       notes: notes ?? this.notes,
+      importHistory: importHistory ?? this.importHistory,
     );
   }
 

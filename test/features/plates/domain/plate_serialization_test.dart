@@ -33,7 +33,18 @@ void main() {
       }).toList();
 
       final restored = Plate.fromJson(
-        plate.copyWith(wells: updatedWells).toJson(),
+        plate.copyWith(
+          wells: updatedWells,
+          importHistory: [
+            PlateResultImportRecord(
+              id: 'import-1',
+              sourceName: 'reader-results.tsv',
+              importedAt: DateTime.utc(2026, 6, 17, 12),
+              valueCount: 4,
+              resultUnit: 'OD450',
+            ),
+          ],
+        ).toJson(),
       );
       final a1 = restored.wellAt(
         const WellPosition(rowIndex: 0, columnIndex: 0),
@@ -49,6 +60,9 @@ void main() {
       expect(a1.concentrationValue, 1000);
       expect(a1.concentrationUnit, 'µM');
       expect(a1.role, WellRole.treatment);
+      expect(restored.importHistory.single.sourceName, 'reader-results.tsv');
+      expect(restored.importHistory.single.valueCount, 4);
+      expect(restored.importHistory.single.resultUnit, 'OD450');
     });
   });
 }

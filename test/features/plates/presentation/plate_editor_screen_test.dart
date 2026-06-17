@@ -296,6 +296,8 @@ void main() {
     expect(repository.plate!.wells[12].resultValue, 0.75);
     expect(repository.plate!.wells[13].resultValue, 0.77);
     expect(repository.plate!.wells[0].resultUnit, 'OD450');
+    expect(repository.plate!.importHistory.single.sourceName, '클립보드');
+    expect(repository.plate!.importHistory.single.valueCount, 4);
   });
 
   testWidgets('loads a result matrix from a picked CSV/TSV file', (
@@ -350,6 +352,9 @@ void main() {
     expect(repository.plate!.wells[12].resultValue, 0.98);
     expect(repository.plate!.wells[13].resultValue, 0.99);
     expect(repository.plate!.wells[0].resultUnit, 'OD570');
+    expect(repository.plate!.importHistory.single.sourceName,
+        'reader-results.tsv');
+    expect(repository.plate!.importHistory.single.resultUnit, 'OD570');
   });
 
   testWidgets('records a result, note, and exclusion flag for a well', (
