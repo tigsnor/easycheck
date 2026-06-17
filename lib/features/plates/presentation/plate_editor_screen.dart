@@ -680,6 +680,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       builder: (_) => _BulkResultImportSheet(
         plate: plate,
         service: _plateResultImportService,
+        documentExchangeService: widget.documentExchangeService,
       ),
     );
     if (draft == null) {
@@ -1255,10 +1256,15 @@ class _WellCell extends StatelessWidget {
 }
 
 class _BulkResultImportSheet extends StatefulWidget {
-  const _BulkResultImportSheet({required this.plate, required this.service});
+  const _BulkResultImportSheet({
+    required this.plate,
+    required this.service,
+    required this.documentExchangeService,
+  });
 
   final Plate plate;
   final PlateResultImportService service;
+  final DocumentExchangeService documentExchangeService;
 
   @override
   State<_BulkResultImportSheet> createState() => _BulkResultImportSheetState();
@@ -1303,6 +1309,19 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
     _matrixController.text = data!.text!;
   }
 
+  Future<void> _pickResultFile() async {
+    final document = await widget.documentExchangeService.pickTextDocument(
+      allowedExtensions: const ['csv', 'tsv', 'txt'],
+    );
+    if (!mounted || document == null) {
+      return;
+    }
+    _matrixController.text = document.content;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('“${document.name}” 결과 파일을 불러왔습니다.')),
+    );
+  }
+
   int get _overwriteCount => _preview.values.keys
       .where((position) => widget.plate.wellAt(position).resultValue != null)
       .length;
@@ -1324,7 +1343,7 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Excel이나 Plate reader에서 복사한 행렬을 붙여넣으세요. 첫 행의 1–12와 첫 열의 A–H 좌표는 자동으로 인식합니다.',
+            'Excel이나 Plate reader에서 복사한 행렬을 붙여넣거나 CSV/TSV/TXT 파일을 선택하세요. 첫 행의 1–12와 첫 열의 A–H 좌표는 자동으로 인식합니다.',
           ),
           const SizedBox(height: 16),
           TextField(
@@ -1340,13 +1359,23 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
             ),
           ),
           const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: _pasteClipboard,
-              icon: const Icon(Icons.content_paste),
-              label: const Text('클립보드 붙여넣기'),
-            ),
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              TextButton.icon(
+                key: const ValueKey('pick-bulk-result-file-button'),
+                onPressed: _pickResultFile,
+                icon: const Icon(Icons.upload_file_outlined),
+                label: const Text('파일 선택'),
+              ),
+              TextButton.icon(
+                onPressed: _pasteClipboard,
+                icon: const Icon(Icons.content_paste),
+                label: const Text('클립보드 붙여넣기'),
+              ),
+            ],
           ),
           TextField(
             key: const ValueKey('bulk-result-unit-field'),

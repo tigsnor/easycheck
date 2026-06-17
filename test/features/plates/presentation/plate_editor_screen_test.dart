@@ -6,6 +6,7 @@ import 'package:easycheck/features/plates/domain/well_role.dart';
 import 'package:easycheck/features/plates/templates/data/plate_template_repository.dart';
 import 'package:easycheck/features/plates/templates/domain/plate_template.dart';
 import 'package:easycheck/shared/models/well_position.dart';
+import 'package:easycheck/shared/services/document_exchange_service.dart';
 import 'package:easycheck/features/plates/presentation/plate_editor_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -295,6 +296,50 @@ void main() {
     expect(repository.plate!.wells[12].resultValue, 0.75);
     expect(repository.plate!.wells[13].resultValue, 0.77);
     expect(repository.plate!.wells[0].resultUnit, 'OD450');
+  });
+
+  testWidgets('loads a result matrix from a picked CSV/TSV file', (
+    tester,
+  ) async {
+    final repository = FakePlateRepository();
+    final exchange = FakeDocumentExchangeService()
+      ..documentToPick = const ImportedTextDocument(
+        name: 'reader-results.tsv',
+        content: '\t1\t2\nA\t1.02\t1.04\nB\t0.98\t0.99',
+      );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlateEditorScreen(
+          experimentId: 'experiment-1',
+          repository: repository,
+          documentExchangeService: exchange,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('bulk-result-import-button')));
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.byKey(const ValueKey('pick-bulk-result-file-button')));
+    await tester.pumpAndSettle();
+
+    expect(exchange.pickCalls, 1);
+    expect(exchange.pickedExtensions, ['csv', 'tsv', 'txt']);
+    expect(find.textContaining('reader-results.tsv'), findsOneWidget);
+    expect(find.textContaining('숫자 4개 인식'), findsOneWidget);
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('apply-bulk-results-button')),
+    );
+    await tester.tap(find.byKey(const ValueKey('apply-bulk-results-button')));
+    await tester.pumpAndSettle();
+
+    expect(repository.plate!.wells[0].resultValue, 1.02);
+    expect(repository.plate!.wells[1].resultValue, 1.04);
+    expect(repository.plate!.wells[12].resultValue, 0.98);
+    expect(repository.plate!.wells[13].resultValue, 0.99);
   });
 
   testWidgets('records a result, note, and exclusion flag for a well', (
