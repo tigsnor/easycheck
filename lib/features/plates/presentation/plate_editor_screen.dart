@@ -1272,7 +1272,8 @@ class _BulkResultImportSheet extends StatefulWidget {
 
 class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
   final _matrixController = TextEditingController();
-  final _unitController = TextEditingController(text: 'OD450');
+  final _unitController = TextEditingController(text: 'OD');
+  final _wavelengthController = TextEditingController(text: '450');
   late PlateResultImportPreview _preview;
 
   @override
@@ -1280,6 +1281,8 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
     super.initState();
     _preview = widget.service.parseMatrix(text: '');
     _matrixController.addListener(_updatePreview);
+    _unitController.addListener(_updateResultUnitPreview);
+    _wavelengthController.addListener(_updateResultUnitPreview);
   }
 
   @override
@@ -1287,7 +1290,12 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
     _matrixController
       ..removeListener(_updatePreview)
       ..dispose();
-    _unitController.dispose();
+    _unitController
+      ..removeListener(_updateResultUnitPreview)
+      ..dispose();
+    _wavelengthController
+      ..removeListener(_updateResultUnitPreview)
+      ..dispose();
     super.dispose();
   }
 
@@ -1299,6 +1307,10 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
         columnCount: widget.plate.columnCount,
       );
     });
+  }
+
+  void _updateResultUnitPreview() {
+    setState(() {});
   }
 
   Future<void> _pasteClipboard() async {
@@ -1325,6 +1337,18 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
   int get _overwriteCount => _preview.values.keys
       .where((position) => widget.plate.wellAt(position).resultValue != null)
       .length;
+
+  String get _resolvedResultUnit {
+    final unit = _unitController.text.trim();
+    final wavelength = _wavelengthController.text.trim();
+    if (unit.isEmpty) {
+      return wavelength.isEmpty ? '' : '${wavelength}nm';
+    }
+    if (wavelength.isEmpty || unit.contains(wavelength)) {
+      return unit;
+    }
+    return '$unit$wavelength';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1377,13 +1401,35 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
               ),
             ],
           ),
-          TextField(
-            key: const ValueKey('bulk-result-unit-field'),
-            controller: _unitController,
-            decoration: const InputDecoration(
-              labelText: '결과 단위',
-              hintText: '예: OD450',
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const ValueKey('bulk-result-unit-field'),
+                  controller: _unitController,
+                  decoration: const InputDecoration(
+                    labelText: '결과 단위',
+                    hintText: '예: OD',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  key: const ValueKey('bulk-result-wavelength-field'),
+                  controller: _wavelengthController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: '측정 파장 (nm)',
+                    hintText: '예: 450',
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '적용 단위: ${_resolvedResultUnit.isEmpty ? '없음' : _resolvedResultUnit}',
           ),
           const SizedBox(height: 14),
           _BulkResultImportPreviewCard(
@@ -1399,7 +1445,7 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
                   ? () => Navigator.of(context).pop(
                         _BulkResultImportDraft(
                           preview: _preview,
-                          resultUnit: _unitController.text.trim(),
+                          resultUnit: _resolvedResultUnit,
                         ),
                       )
                   : null,

@@ -105,7 +105,7 @@ EasyCheck의 현재 목표는 여러 연구실이 함께 쓰는 플랫폼이나 
 
 1. [x] CSV/TSV/TXT 파일 선택과 preview를 추가합니다.
 2. [x] Well 좌표와 header를 자동 감지합니다.
-3. 결과 단위와 wavelength를 확인한 뒤 적용합니다.
+3. [x] 결과 단위와 wavelength를 확인한 뒤 적용합니다.
 4. 원본 파일과 import 이력을 보존합니다.
 5. 중복 import와 덮어쓰기를 경고합니다.
 
