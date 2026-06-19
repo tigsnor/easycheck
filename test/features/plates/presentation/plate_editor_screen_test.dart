@@ -352,10 +352,105 @@ void main() {
     expect(repository.plate!.wells[12].resultValue, 0.98);
     expect(repository.plate!.wells[13].resultValue, 0.99);
     expect(repository.plate!.wells[0].resultUnit, 'OD570');
-    expect(repository.plate!.importHistory.single.sourceName,
-        'reader-results.tsv');
+    expect(
+      repository.plate!.importHistory.single.sourceName,
+      'reader-results.tsv',
+    );
     expect(repository.plate!.importHistory.single.resultUnit, 'OD570');
   });
+
+  testWidgets(
+    'confirms duplicate result files and overwrites before applying',
+    (tester) async {
+      final repository = FakePlateRepository();
+      final original = Plate(
+        id: 'plate-1',
+        experimentId: 'experiment-1',
+        name: '96-well Plate',
+      );
+      repository.plate = original.copyWith(
+        wells: original.wells.map((well) {
+          if (well.position ==
+              const WellPosition(rowIndex: 0, columnIndex: 0)) {
+            return well.copyWith(resultValue: 0.10, resultUnit: 'OD450');
+          }
+          if (well.position ==
+              const WellPosition(rowIndex: 0, columnIndex: 1)) {
+            return well.copyWith(resultValue: 0.20, resultUnit: 'OD450');
+          }
+          return well;
+        }).toList(),
+        importHistory: [
+          PlateResultImportRecord(
+            id: 'import-1',
+            sourceName: 'reader-results.tsv',
+            importedAt: DateTime.utc(2026, 6, 19, 9),
+            valueCount: 2,
+            resultUnit: 'OD450',
+          ),
+        ],
+      );
+      final exchange = FakeDocumentExchangeService()
+        ..documentToPick = const ImportedTextDocument(
+          name: 'reader-results.tsv',
+          content: '\t1\t2\nA\t1.02\t1.04\nB\t0.98\t0.99',
+        );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PlateEditorScreen(
+            experimentId: 'experiment-1',
+            repository: repository,
+            documentExchangeService: exchange,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('bulk-result-import-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('pick-bulk-result-file-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('“reader-results.tsv” 파일은 이미 가져온 이력이 있습니다.'),
+        findsOneWidget,
+      );
+      expect(find.text('기존 결과 2개를 덮어씁니다.'), findsOneWidget);
+
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('apply-bulk-results-button')),
+      );
+      await tester.tap(find.byKey(const ValueKey('apply-bulk-results-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('결과 가져오기 확인'), findsOneWidget);
+      expect(find.textContaining('이미 가져온 이력이 있습니다'), findsWidgets);
+      expect(find.textContaining('기존 결과 2개가 새 값으로 바뀝니다'), findsOneWidget);
+
+      await tester.tap(find.text('취소'));
+      await tester.pumpAndSettle();
+      expect(repository.plate!.wells[0].resultValue, 0.10);
+      expect(repository.plate!.importHistory.length, 1);
+
+      await tester.tap(find.byKey(const ValueKey('apply-bulk-results-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('덮어쓰기'));
+      await tester.pumpAndSettle();
+
+      expect(repository.plate!.wells[0].resultValue, 1.02);
+      expect(repository.plate!.wells[1].resultValue, 1.04);
+      expect(repository.plate!.wells[12].resultValue, 0.98);
+      expect(repository.plate!.wells[13].resultValue, 0.99);
+      expect(repository.plate!.importHistory.length, 2);
+      expect(
+        repository.plate!.importHistory.first.sourceName,
+        'reader-results.tsv',
+      );
+    },
+  );
 
   testWidgets('records a result, note, and exclusion flag for a well', (
     tester,

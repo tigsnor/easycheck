@@ -1355,6 +1355,60 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
       .where((position) => widget.plate.wellAt(position).resultValue != null)
       .length;
 
+  bool get _hasDuplicateSource =>
+      _sourceName != '클립보드' &&
+      widget.plate.importHistory.any(
+        (record) => record.sourceName == _sourceName,
+      );
+
+  Future<void> _confirmAndApply() async {
+    if (!_preview.canApply) {
+      return;
+    }
+    final shouldWarn = _overwriteCount > 0 || _hasDuplicateSource;
+    if (shouldWarn) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('결과 가져오기 확인'),
+          content: Text(_confirmationMessage()),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('덮어쓰기'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) {
+        return;
+      }
+    }
+    Navigator.of(context).pop(
+      _BulkResultImportDraft(
+        preview: _preview,
+        resultUnit: _resolvedResultUnit,
+        sourceName: _sourceName,
+      ),
+    );
+  }
+
+  String _confirmationMessage() {
+    final messages = <String>[];
+    if (_hasDuplicateSource) {
+      messages.add('“$_sourceName” 파일은 이미 가져온 이력이 있습니다.');
+    }
+    if (_overwriteCount > 0) {
+      messages.add('기존 결과 $_overwriteCount개가 새 값으로 바뀝니다.');
+    }
+    messages.add('계속 진행할까요?');
+    return messages.join('\n');
+  }
+
   String get _resolvedResultUnit {
     final unit = _unitController.text.trim();
     final wavelength = _wavelengthController.text.trim();
@@ -1452,21 +1506,15 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
           _BulkResultImportPreviewCard(
             preview: _preview,
             overwriteCount: _overwriteCount,
+            hasDuplicateSource: _hasDuplicateSource,
+            sourceName: _sourceName,
           ),
           const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
               key: const ValueKey('apply-bulk-results-button'),
-              onPressed: _preview.canApply
-                  ? () => Navigator.of(context).pop(
-                        _BulkResultImportDraft(
-                          preview: _preview,
-                          resultUnit: _resolvedResultUnit,
-                          sourceName: _sourceName,
-                        ),
-                      )
-                  : null,
+              onPressed: _preview.canApply ? _confirmAndApply : null,
               icon: const Icon(Icons.check),
               label: Text('${_preview.valueCount}개 결과 적용'),
             ),
@@ -1481,10 +1529,14 @@ class _BulkResultImportPreviewCard extends StatelessWidget {
   const _BulkResultImportPreviewCard({
     required this.preview,
     required this.overwriteCount,
+    required this.hasDuplicateSource,
+    required this.sourceName,
   });
 
   final PlateResultImportPreview preview;
   final int overwriteCount;
+  final bool hasDuplicateSource;
+  final String sourceName;
 
   @override
   Widget build(BuildContext context) {
@@ -1520,6 +1572,10 @@ class _BulkResultImportPreviewCard extends StatelessWidget {
                   .join(' · '),
               style: Theme.of(context).textTheme.bodySmall,
             ),
+          ],
+          if (hasDuplicateSource) ...[
+            const SizedBox(height: 6),
+            Text('“$sourceName” 파일은 이미 가져온 이력이 있습니다.'),
           ],
           if (overwriteCount > 0) ...[
             const SizedBox(height: 6),
