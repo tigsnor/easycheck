@@ -46,7 +46,7 @@ void main() {
 
     final tsv = service.buildTsv(plate, report);
 
-    expect(tsv, contains('EasyCheck analysis export'));
+    expect(tsv, contains('PlateNote analysis export'));
     expect(tsv, contains('Plate\tCCK-8 Plate'));
     expect(tsv, contains('OD450\t0.1\tvehicleControl\t1.1\t1\t1'));
     expect(

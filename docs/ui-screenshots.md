@@ -1,4 +1,4 @@
-# EasyCheck UI 확인 가이드
+# PlateNote UI 확인 가이드
 
 GitHub PR 화면에서는 PNG 같은 바이너리 파일 diff가 `Binary file not shown` 또는 `바이너리 파일 지원되지 않음`으로 표시됩니다. 따라서 저장소에는 스크린샷 이미지를 커밋하지 않고, UI를 보고 싶을 때 로컬에서 앱을 실행해 직접 확인하는 방식으로 관리합니다.
 

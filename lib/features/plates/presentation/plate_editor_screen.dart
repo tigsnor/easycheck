@@ -97,7 +97,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('EasyCheck'),
+        title: const Text('PlateNote'),
         actions: [
           IconButton(
             tooltip: '마지막 Plate 변경 실행 취소',
@@ -1681,7 +1681,7 @@ class _PlateExportSheet extends StatelessWidget {
                           content: exportText,
                           fileName: fileName,
                           mimeType: 'text/tab-separated-values',
-                          subject: 'EasyCheck Plate 내보내기',
+                          subject: 'PlateNote Plate 내보내기',
                           sharePositionOrigin: _sharePositionOrigin(
                             shareContext,
                           ),
@@ -3684,5 +3684,5 @@ String _plateExportFileName(String plateName) {
       .replaceAll(RegExp(r'[^A-Za-z0-9가-힣_-]+'), '-')
       .replaceAll(RegExp(r'-+'), '-')
       .replaceAll(RegExp(r'^-|-$'), '');
-  return '${safeName.isEmpty ? 'easycheck-plate' : safeName}.tsv';
+  return '${safeName.isEmpty ? 'platenote-plate' : safeName}.tsv';
 }

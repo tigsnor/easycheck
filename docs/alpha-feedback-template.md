@@ -1,4 +1,4 @@
-# EasyCheck 알파 피드백 템플릿
+# PlateNote 알파 피드백 템플릿
 
 ## 테스트 환경
 

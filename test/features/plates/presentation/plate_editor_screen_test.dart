@@ -659,7 +659,7 @@ void main() {
     expect(exchange.shareCalls, 1);
     expect(exchange.sharedFileName, '96-well-Plate-analysis.tsv');
     expect(exchange.sharedMimeType, 'text/tab-separated-values');
-    expect(exchange.sharedContent, contains('EasyCheck analysis export'));
+    expect(exchange.sharedContent, contains('PlateNote analysis export'));
     expect(exchange.sharedContent, contains('Drug A\ttreatment\t100'));
   });
 
@@ -684,7 +684,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Plate 내보내기'), findsOneWidget);
-    expect(find.textContaining('EasyCheck plate export'), findsOneWidget);
+    expect(find.textContaining('PlateNote plate export'), findsOneWidget);
     expect(find.text('복사하기'), findsOneWidget);
     expect(find.text('파일 공유'), findsOneWidget);
 
@@ -694,7 +694,7 @@ void main() {
     expect(exchange.shareCalls, 1);
     expect(exchange.sharedFileName, '96-well-Plate.tsv');
     expect(exchange.sharedMimeType, 'text/tab-separated-values');
-    expect(exchange.sharedContent, contains('EasyCheck plate export'));
+    expect(exchange.sharedContent, contains('PlateNote plate export'));
   });
 
   testWidgets('saves the current plate as a reusable template', (tester) async {

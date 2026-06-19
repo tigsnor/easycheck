@@ -89,7 +89,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('EasyCheck'),
+        title: const Text('PlateNote'),
         actions: [
           IconButton(
             tooltip: '전체 데이터 백업 및 복원',
@@ -584,7 +584,7 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
         content: widget.exportText,
         fileName: _backupFileName(DateTime.now()),
         mimeType: 'application/json',
-        subject: 'EasyCheck 전체 데이터 백업',
+        subject: 'PlateNote 전체 데이터 백업',
         sharePositionOrigin: _sharePositionOrigin(shareContext),
       );
       if (!mounted || status == DocumentShareStatus.dismissed) {
@@ -1156,7 +1156,7 @@ extension _ExperimentStatusLabel on ExperimentStatus {
 
 String _backupFileName(DateTime value) {
   String twoDigits(int number) => number.toString().padLeft(2, '0');
-  return 'easycheck-backup-${value.year}${twoDigits(value.month)}${twoDigits(value.day)}-${twoDigits(value.hour)}${twoDigits(value.minute)}.json';
+  return 'platenote-backup-${value.year}${twoDigits(value.month)}${twoDigits(value.day)}-${twoDigits(value.hour)}${twoDigits(value.minute)}.json';
 }
 
 Rect _sharePositionOrigin(BuildContext context) {

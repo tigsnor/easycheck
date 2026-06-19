@@ -6,7 +6,7 @@ class PlateAnalysisExportService {
 
   String buildTsv(Plate plate, PlateAnalysisReport report) {
     final buffer = StringBuffer()
-      ..writeln('EasyCheck analysis export')
+      ..writeln('PlateNote analysis export')
       ..writeln('Plate\t${_escape(plate.name)}')
       ..writeln('Experiment ID\t${_escape(plate.experimentId)}')
       ..writeln('Measured wells\t${report.measuredWellCount}')

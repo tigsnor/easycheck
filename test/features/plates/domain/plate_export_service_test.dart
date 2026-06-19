@@ -43,7 +43,7 @@ void main() {
     }).toList();
     final export = service.buildTsv(plate.copyWith(wells: updatedWells));
 
-    expect(export, contains('EasyCheck plate export'));
+    expect(export, contains('PlateNote plate export'));
     expect(export, contains('group_id\tname\tlabel\trole\tunit\twell_count'));
     expect(export, contains('drug-a\tDrug A\tA\ttreatment\tµM\t1\t100 µM'));
     expect(

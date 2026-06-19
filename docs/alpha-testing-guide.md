@@ -1,6 +1,6 @@
-# EasyCheck 알파 배포 및 실제 기기 테스트 가이드
+# PlateNote 알파 배포 및 실제 기기 테스트 가이드
 
-이 문서는 개발자 검증을 통과한 EasyCheck를 연구자가 실제 휴대폰에서 반복 테스트하기 위한 절차입니다.
+이 문서는 개발자 검증을 통과한 PlateNote를 연구자가 실제 휴대폰에서 반복 테스트하기 위한 절차입니다.
 
 ## 1. 알파 빌드 기준
 
@@ -19,8 +19,8 @@ PR 또는 `work`/`main` 브랜치 push가 발생하면 다음 작업이 실행�
 
 Actions 실행 화면의 `Artifacts`에서 다음 파일을 받을 수 있습니다.
 
-- `easycheck-android-alpha-<run number>`: Android 실제 기기 설치용 `easycheck-android-alpha.apk`
-- `easycheck-ios-simulator-<run number>`: macOS의 iPhone Simulator 확인용 ZIP
+- `platenote-android-alpha-<run number>`: Android 실제 기기 설치용 `platenote-android-alpha.apk`
+- `platenote-ios-simulator-<run number>`: macOS의 iPhone Simulator 확인용 ZIP
 
 각 artifact에는 앱 버전·commit·run number를 기록한 `BUILD_INFO.txt`와 파일 무결성을 확인하는 `SHA256SUMS.txt`가 포함됩니다.
 
@@ -30,7 +30,7 @@ Actions 실행 화면의 `Artifacts`에서 다음 파일을 받을 수 있습니
 
 1. GitHub Actions의 성공한 실행에서 Android alpha artifact를 다운로드하고 압축을 풉니다.
 2. Android 기기에서 테스트용 APK 설치를 허용합니다.
-3. `easycheck-android-alpha.apk`를 기기로 전송해 설치합니다.
+3. `platenote-android-alpha.apk`를 기기로 전송해 설치합니다.
 4. 기존 알파 버전 위에 설치하면 같은 application ID의 앱 데이터가 유지됩니다.
 5. 저장 형식 변경을 검증할 때는 먼저 전체 백업을 만든 후 삭제·재설치 테스트도 별도로 수행합니다.
 

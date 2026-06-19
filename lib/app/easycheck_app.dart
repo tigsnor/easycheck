@@ -10,7 +10,7 @@ class EasyCheckApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'EasyCheck',
+      title: 'PlateNote',
       debugShowCheckedModeBanner: false,
       theme: buildEasyCheckTheme(),
       home: const LocalDataRecoveryListener(child: ExperimentsHomeScreen()),

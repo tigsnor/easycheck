@@ -1,6 +1,6 @@
-# EasyCheck 피펫팅 계획 계산 기준
+# PlateNote 피펫팅 계획 계산 기준
 
-EasyCheck의 첫 피펫팅 계획은 각 목표 농도의 master mix를 하나의 stock에서 **직접 희석**하는 방식입니다. 단계 간 용액을 옮기는 serial transfer 방식은 아직 계산하지 않습니다.
+PlateNote의 첫 피펫팅 계획은 각 목표 농도의 master mix를 하나의 stock에서 **직접 희석**하는 방식입니다. 단계 간 용액을 옮기는 serial transfer 방식은 아직 계산하지 않습니다.
 
 ## 입력값
 

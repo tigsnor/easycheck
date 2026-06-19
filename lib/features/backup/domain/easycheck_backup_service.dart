@@ -62,7 +62,7 @@ class EasyCheckBackupService {
       throw const FormatException('백업의 최상위 값은 JSON object여야 합니다.');
     }
     if (decoded['format'] != 'easycheck-backup') {
-      throw const FormatException('EasyCheck 백업 파일이 아닙니다.');
+      throw const FormatException('PlateNote 백업 파일이 아닙니다.');
     }
 
     final schemaVersion = decoded['schemaVersion'];
