@@ -882,10 +882,10 @@ class _ExperimentCard extends StatelessWidget {
                   ),
                 ],
               ),
-              if (experiment.notes.isNotEmpty) ...[
+              if (experiment.notesWithoutCellCountLine.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 Text(
-                  experiment.notes,
+                  experiment.notesWithoutCellCountLine,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),

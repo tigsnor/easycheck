@@ -91,6 +91,8 @@ void main() {
         experimentType: 'CCK-8',
         createdAt: DateTime.utc(2026, 6, 4),
         updatedAt: DateTime.utc(2026, 6, 4),
+        cellCountLabel: 'hek293: 1×10^6/ml',
+        notes: 'passage 4\n세포수: hek293: 1×10^6/ml',
         tags: const ['CCK8'],
       ),
     ]);
@@ -101,6 +103,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('실험 노트'), findsOneWidget);
+    expect(find.text('Drug A CCK-8'), findsOneWidget);
+    expect(find.text('passage 4'), findsOneWidget);
+    expect(find.text('세포수 · hek293: 1×10^6/ml'), findsOneWidget);
+    expect(find.textContaining('세포수:'), findsNothing);
+
+    await tester.enterText(find.byType(SearchBar), 'hek293');
+    await tester.pumpAndSettle();
+
     expect(find.text('Drug A CCK-8'), findsOneWidget);
 
     await tester.enterText(find.byType(SearchBar), 'missing');

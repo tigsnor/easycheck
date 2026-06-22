@@ -49,6 +49,14 @@ class Experiment {
   final String? cellCountLabel;
   final List<String> tags;
 
+  String get notesWithoutCellCountLine {
+    return notes
+        .split('\n')
+        .where((line) => !line.trim().startsWith('세포수:'))
+        .join('\n')
+        .trim();
+  }
+
   Map<String, Object?> toJson() {
     return {
       'id': id,

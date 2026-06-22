@@ -35,7 +35,9 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     _cellCountController = TextEditingController(
       text: widget.experiment.cellCountLabel ?? '',
     );
-    _notesController = TextEditingController(text: widget.experiment.notes);
+    _notesController = TextEditingController(
+      text: widget.experiment.notesWithoutCellCountLine,
+    );
     _status = widget.experiment.status;
     _experimentType = widget.experiment.experimentType;
   }

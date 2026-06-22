@@ -55,6 +55,7 @@ void main() {
       });
 
       expect(restored.cellCountLabel, 'hek293: 1×10^6/ml');
+      expect(restored.notesWithoutCellCountLine, 'passage 4');
     });
   });
 }
