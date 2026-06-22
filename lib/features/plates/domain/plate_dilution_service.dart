@@ -4,7 +4,6 @@ import '../../dilution/domain/dilution_plan.dart';
 import '../../dilution/domain/dilution_service.dart';
 import 'plate.dart';
 import 'well_group.dart';
-import 'well_role.dart';
 
 class PlateDilutionService {
   const PlateDilutionService({this.dilutionService = const DilutionService()});
@@ -39,7 +38,7 @@ class PlateDilutionService {
       final concentration = series[targetIndex ~/ replicateCount];
       return well.copyWith(
         groupId: group.id,
-        role: concentration == 0 ? WellRole.vehicleControl : group.role,
+        role: group.role,
         concentrationValue: concentration,
         concentrationUnit: group.concentrationUnit,
         replicateIndex: (targetIndex % replicateCount) + 1,

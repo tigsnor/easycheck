@@ -293,10 +293,16 @@ void main() {
     await tester.tap(find.text('첫 실험 만들기'));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, '실험 제목'), 'MTT test');
+    await tester.enterText(find.widgetWithText(TextField, '세포 이름'), 'hek293');
+    await tester.enterText(find.widgetWithText(TextField, '세포수'), '1');
+    await tester.enterText(find.widgetWithText(TextField, '10^n'), '6');
+    await tester.ensureVisible(find.text('생성'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('생성'));
     await tester.pumpAndSettle();
 
     expect(repository.experiments.single.title, 'MTT test');
+    expect(repository.experiments.single.notes, contains('hek293: 1×10^6/ml'));
     expect(find.text('MTT test'), findsOneWidget);
   });
 
@@ -343,11 +349,17 @@ void main() {
     await tester.tap(find.text('첫 실험 만들기'));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, '실험 제목'), 'Repeat');
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('new-experiment-template-field')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey('new-experiment-template-field')),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('CCK-8 3반복').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('생성'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('생성'));
     await tester.pumpAndSettle();
@@ -395,10 +407,17 @@ void main() {
     await tester.tap(find.text('첫 실험 만들기'));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, '실험 제목'), 'Fail');
-    await tester
-        .tap(find.byKey(const ValueKey('new-experiment-template-field')));
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('new-experiment-template-field')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('new-experiment-template-field')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Failure template').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('생성'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('생성'));
     await tester.pumpAndSettle();
@@ -408,48 +427,57 @@ void main() {
     expect(find.textContaining('실험을 생성하지 못했습니다'), findsOneWidget);
   });
 
-  testWidgets('offers the built-in CCK-8 template when creating an experiment',
-      (
-    tester,
-  ) async {
-    final repository = FakeExperimentRepository([]);
-    final plateRepository = FakePlateRepository();
+  testWidgets(
+    'offers the built-in CCK-8 template when creating an experiment',
+    (tester) async {
+      final repository = FakeExperimentRepository([]);
+      final plateRepository = FakePlateRepository();
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: ExperimentsHomeScreen(
-          repository: repository,
-          plateRepository: plateRepository,
-          plateTemplateRepository: FakePlateTemplateRepository(),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ExperimentsHomeScreen(
+            repository: repository,
+            plateRepository: plateRepository,
+            plateTemplateRepository: FakePlateTemplateRepository(),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('첫 실험 만들기'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.widgetWithText(TextField, '실험 제목'), 'Default');
-    await tester.tap(
-      find.byKey(const ValueKey('new-experiment-template-field')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('기본 · CCK-8 2배 희석 3반복').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('생성'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('첫 실험 만들기'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, '실험 제목'),
+        'Default',
+      );
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('new-experiment-template-field')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('new-experiment-template-field')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('기본 · CCK-8 2배 희석 3반복').last);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('생성'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('생성'));
+      await tester.pumpAndSettle();
 
-    expect(repository.experiments.single.title, 'Default');
-    expect(
-      plateRepository.plate!
-          .wellAt(const WellPosition(rowIndex: 0, columnIndex: 6))
-          .concentrationValue,
-      100,
-    );
-    expect(
-      plateRepository.plate!
-          .wellAt(const WellPosition(rowIndex: 0, columnIndex: 0))
-          .role,
-      WellRole.blank,
-    );
-  });
+      expect(repository.experiments.single.title, 'Default');
+      expect(
+        plateRepository.plate!
+            .wellAt(const WellPosition(rowIndex: 0, columnIndex: 6))
+            .concentrationValue,
+        100,
+      );
+      expect(
+        plateRepository.plate!
+            .wellAt(const WellPosition(rowIndex: 0, columnIndex: 0))
+            .role,
+        WellRole.blank,
+      );
+    },
+  );
 }

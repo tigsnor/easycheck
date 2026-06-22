@@ -106,6 +106,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Plate 화면 맞춤'), findsOneWidget);
+    final zoomOutAtFit = tester.widget<IconButton>(
+      find.byKey(const ValueKey('plate-zoom-out-button')),
+    );
+    expect(zoomOutAtFit.onPressed, isNull);
     await tester.tap(find.byKey(const ValueKey('plate-zoom-in-button')));
     await tester.pumpAndSettle();
 

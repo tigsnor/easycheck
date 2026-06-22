@@ -43,7 +43,7 @@ void main() {
       updated.wells.take(8).map((well) => well.concentrationValue).toList(),
       [100, 100, 50, 50, 25, 25, 0, 0],
     );
-    expect(updated.wells[6].role, WellRole.vehicleControl);
+    expect(updated.wells[6].role, WellRole.treatment);
     expect(updated.wells[7].replicateIndex, 2);
     expect(updated.wells[0].volumeValue, 100);
     expect(updated.wells[0].volumeUnit, 'µL');

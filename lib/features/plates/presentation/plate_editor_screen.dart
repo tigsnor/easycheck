@@ -322,13 +322,13 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     return _plateWithDemoDilution(emptyPlate);
   }
 
-  bool get _canZoomPlateOut => _plateCellSize == null || _plateCellSize! > 32;
+  bool get _canZoomPlateOut => _plateCellSize != null && _plateCellSize! > 32;
 
   bool get _canZoomPlateIn => _plateCellSize == null || _plateCellSize! < 64;
 
   void _zoomPlateOut() {
     setState(() {
-      final current = _plateCellSize ?? 40;
+      final current = _plateCellSize ?? 32;
       _plateCellSize = (current - 8).clamp(32, 64).toDouble();
     });
   }
@@ -2740,7 +2740,7 @@ class _WellDetailCard extends StatelessWidget {
                   ? 'plate에서 well을 선택하면 처리 조건과 측정 결과를 확인합니다.'
                   : selected.concentrationValue == null
                       ? '${group?.name ?? '그룹 없음'} · 농도 미지정'
-                      : '${group?.name ?? selected.role.label} · ${_formatDose(selected.concentrationValue!)} ${selected.concentrationUnit ?? ''}',
+                      : '${group?.name ?? selected.role.label} · ${_formatConcentrationLabel(selected.concentrationValue!, selected.concentrationUnit)}',
             ),
             if (selected != null) ...[
               const SizedBox(height: 10),
@@ -3655,6 +3655,12 @@ String _formatDose(double value) {
     return value.toInt().toString();
   }
   return value.toString();
+}
+
+String _formatConcentrationLabel(double value, String? unit) {
+  final normalizedUnit = unit == null || unit.isEmpty ? '' : ' $unit';
+  final formatted = '${_formatDose(value)}$normalizedUnit';
+  return value == 0 ? '$formatted (0 농도)' : formatted;
 }
 
 extension _WellRoleLabel on WellRole {
