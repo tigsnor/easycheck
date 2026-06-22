@@ -18,6 +18,7 @@ class Experiment {
   });
 
   factory Experiment.fromJson(Map<String, Object?> json) {
+    final notes = json['notes'] as String? ?? '';
     return Experiment(
       id: json['id'] as String,
       title: json['title'] as String,
@@ -27,8 +28,9 @@ class Experiment {
       status: ExperimentStatusJson.fromName(json['status'] as String?),
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
-      notes: json['notes'] as String? ?? '',
-      cellCountLabel: json['cellCountLabel'] as String?,
+      notes: notes,
+      cellCountLabel:
+          json['cellCountLabel'] as String? ?? _cellCountLabelFromNotes(notes),
       tags: (json['tags'] as List<dynamic>? ?? const [])
           .whereType<String>()
           .toList(),
@@ -96,6 +98,17 @@ class Experiment {
       tags: tags ?? this.tags,
     );
   }
+}
+
+String? _cellCountLabelFromNotes(String notes) {
+  for (final line in notes.split('\n')) {
+    final trimmed = line.trim();
+    if (trimmed.startsWith('세포수:')) {
+      final value = trimmed.substring('세포수:'.length).trim();
+      return value.isEmpty ? null : value;
+    }
+  }
+  return null;
 }
 
 extension ExperimentStatusJson on ExperimentStatus {

@@ -44,5 +44,17 @@ void main() {
 
       expect(restored.status, ExperimentStatus.draft);
     });
+
+    test('migrates cell count labels from legacy notes', () {
+      final restored = Experiment.fromJson({
+        'id': 'experiment-1',
+        'title': 'Legacy cell count',
+        'createdAt': DateTime.utc(2026, 6, 2).toIso8601String(),
+        'updatedAt': DateTime.utc(2026, 6, 2).toIso8601String(),
+        'notes': 'passage 4\n세포수: hek293: 1×10^6/ml',
+      });
+
+      expect(restored.cellCountLabel, 'hek293: 1×10^6/ml');
+    });
   });
 }
