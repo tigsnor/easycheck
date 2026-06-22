@@ -20,6 +20,7 @@ class ExperimentDetailScreen extends StatefulWidget {
 class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   late final TextEditingController _titleController;
   late final TextEditingController _projectController;
+  late final TextEditingController _cellCountController;
   late final TextEditingController _notesController;
   late ExperimentStatus _status;
   late String _experimentType;
@@ -31,6 +32,9 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     _projectController = TextEditingController(
       text: widget.experiment.projectName ?? '',
     );
+    _cellCountController = TextEditingController(
+      text: widget.experiment.cellCountLabel ?? '',
+    );
     _notesController = TextEditingController(text: widget.experiment.notes);
     _status = widget.experiment.status;
     _experimentType = widget.experiment.experimentType;
@@ -40,6 +44,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   void dispose() {
     _titleController.dispose();
     _projectController.dispose();
+    _cellCountController.dispose();
     _notesController.dispose();
     super.dispose();
   }
@@ -125,6 +130,14 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                       controller: _projectController,
                       decoration: const InputDecoration(labelText: '프로젝트'),
                     ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _cellCountController,
+                      decoration: const InputDecoration(
+                        labelText: '세포수',
+                        hintText: '예: hek293: 1×10^6/ml',
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -192,6 +205,9 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
             : _projectController.text.trim(),
         experimentType: _experimentType,
         status: _status,
+        cellCountLabel: _cellCountController.text.trim().isEmpty
+            ? null
+            : _cellCountController.text.trim(),
         notes: _notesController.text.trim(),
       ),
     );

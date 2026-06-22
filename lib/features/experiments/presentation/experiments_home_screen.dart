@@ -76,6 +76,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
         experiment.projectName ?? '',
         experiment.experimentType,
         experiment.researcher ?? '',
+        experiment.cellCountLabel ?? '',
         experiment.notes,
         ...experiment.tags,
       ].join(' ').toLowerCase();
@@ -889,6 +890,15 @@ class _ExperimentCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
+              if (experiment.cellCountLabel?.isNotEmpty == true) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '세포수 · ${experiment.cellCountLabel}',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ],
               const SizedBox(height: 12),
               Wrap(
                 spacing: 6,
@@ -1104,12 +1114,9 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
                   const SizedBox(height: 16),
                   Text(
                     '세포수 (선택)',
-                    style: Theme.of(
-                      context,
-                    )
-                        .textTheme
-                        .titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w800),
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
                   ),
                   const SizedBox(height: 8),
                   TextField(
@@ -1162,7 +1169,9 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
                           items: const [
                             DropdownMenuItem(value: 'ml', child: Text('ml')),
                             DropdownMenuItem(
-                                value: 'well', child: Text('well')),
+                              value: 'well',
+                              child: Text('well'),
+                            ),
                             DropdownMenuItem(
                               value: 'plate',
                               child: Text('plate'),
@@ -1232,7 +1241,7 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
     }
 
     final now = DateTime.now();
-    final notes = _notesWithCellCount();
+    final cellCountLabel = _cellCountLabel();
     PlateTemplate? selectedTemplate;
     for (final template in widget.templates) {
       if (template.id == _templateId) {
@@ -1252,7 +1261,8 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
           status: ExperimentStatus.draft,
           createdAt: now,
           updatedAt: now,
-          notes: notes,
+          notes: _notesController.text.trim(),
+          cellCountLabel: cellCountLabel,
           tags: [_experimentType.replaceAll('-', '')],
         ),
         template: selectedTemplate,
@@ -1260,21 +1270,18 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
     );
   }
 
-  String _notesWithCellCount() {
-    final notes = _notesController.text.trim();
+  String? _cellCountLabel() {
     final cellName = _cellNameController.text.trim();
     final cellCount = _cellCountController.text.trim();
     final exponent = _cellExponentController.text.trim();
     if (cellName.isEmpty && cellCount.isEmpty && exponent.isEmpty) {
-      return notes;
+      return null;
     }
 
     final normalizedCellName = cellName.isEmpty ? 'cell' : cellName;
     final normalizedCellCount = cellCount.isEmpty ? '1' : cellCount;
     final normalizedExponent = exponent.isEmpty ? '6' : exponent;
-    final cellCountLine =
-        '세포수: $normalizedCellName: $normalizedCellCount×10^$normalizedExponent/$_cellCountUnit';
-    return notes.isEmpty ? cellCountLine : '$notes\n$cellCountLine';
+    return '$normalizedCellName: $normalizedCellCount×10^$normalizedExponent/$_cellCountUnit';
   }
 }
 

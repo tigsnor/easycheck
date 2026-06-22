@@ -302,7 +302,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.experiments.single.title, 'MTT test');
-    expect(repository.experiments.single.notes, contains('hek293: 1×10^6/ml'));
+    expect(repository.experiments.single.cellCountLabel, 'hek293: 1×10^6/ml');
+    expect(find.text('세포수 · hek293: 1×10^6/ml'), findsOneWidget);
     expect(find.text('MTT test'), findsOneWidget);
   });
 

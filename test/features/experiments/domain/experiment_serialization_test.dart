@@ -14,6 +14,7 @@ void main() {
         createdAt: DateTime.utc(2026, 6, 2, 9),
         updatedAt: DateTime.utc(2026, 6, 2, 10),
         notes: '2-fold dilution',
+        cellCountLabel: 'hek293: 1×10^6/ml',
         tags: const ['CCK8', 'DoseResponse'],
       );
 
@@ -28,6 +29,7 @@ void main() {
       expect(restored.createdAt, experiment.createdAt);
       expect(restored.updatedAt, experiment.updatedAt);
       expect(restored.notes, experiment.notes);
+      expect(restored.cellCountLabel, experiment.cellCountLabel);
       expect(restored.tags, experiment.tags);
     });
 

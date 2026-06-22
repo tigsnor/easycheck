@@ -13,6 +13,7 @@ class Experiment {
     this.researcher,
     this.status = ExperimentStatus.draft,
     this.notes = '',
+    this.cellCountLabel,
     this.tags = const [],
   });
 
@@ -27,6 +28,7 @@ class Experiment {
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
       notes: json['notes'] as String? ?? '',
+      cellCountLabel: json['cellCountLabel'] as String?,
       tags: (json['tags'] as List<dynamic>? ?? const [])
           .whereType<String>()
           .toList(),
@@ -42,6 +44,7 @@ class Experiment {
   final DateTime createdAt;
   final DateTime updatedAt;
   final String notes;
+  final String? cellCountLabel;
   final List<String> tags;
 
   Map<String, Object?> toJson() {
@@ -55,6 +58,7 @@ class Experiment {
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'notes': notes,
+      'cellCountLabel': cellCountLabel,
       'tags': tags,
     };
   }
@@ -69,6 +73,7 @@ class Experiment {
     DateTime? createdAt,
     DateTime? updatedAt,
     String? notes,
+    Object? cellCountLabel = _unset,
     List<String>? tags,
   }) {
     return Experiment(
@@ -85,6 +90,9 @@ class Experiment {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       notes: notes ?? this.notes,
+      cellCountLabel: identical(cellCountLabel, _unset)
+          ? this.cellCountLabel
+          : cellCountLabel as String?,
       tags: tags ?? this.tags,
     );
   }
