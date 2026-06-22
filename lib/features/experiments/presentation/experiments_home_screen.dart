@@ -979,6 +979,33 @@ class _CreateExperimentDraft {
   final PlateTemplate? template;
 }
 
+class _SheetHeader extends StatelessWidget {
+  const _SheetHeader({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+        ),
+        IconButton(
+          tooltip: '닫기',
+          onPressed: () => Navigator.of(context).pop(),
+          icon: const Icon(Icons.close),
+        ),
+      ],
+    );
+  }
+}
+
 class _CreateExperimentSheet extends StatefulWidget {
   const _CreateExperimentSheet({required this.templates});
 
@@ -1009,90 +1036,97 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '새 실험 노트',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _titleController,
-            autofocus: true,
-            decoration: const InputDecoration(
-              labelText: '실험 제목',
-              hintText: '예: Drug A CCK-8 2배 희석',
-            ),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            initialValue: _experimentType,
-            decoration: const InputDecoration(labelText: '실험 유형'),
-            items: const [
-              DropdownMenuItem(value: 'CCK-8', child: Text('CCK-8')),
-              DropdownMenuItem(value: 'MTT', child: Text('MTT')),
-              DropdownMenuItem(value: 'ELISA', child: Text('ELISA')),
-              DropdownMenuItem(
-                value: 'Dose-response',
-                child: Text('Dose-response'),
-              ),
-              DropdownMenuItem(value: 'Custom', child: Text('Custom')),
-            ],
-            onChanged: (value) =>
-                setState(() => _experimentType = value ?? 'Custom'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _projectController,
-            decoration: const InputDecoration(labelText: '프로젝트'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _notesController,
-            minLines: 2,
-            maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: '메모',
-              hintText: '세포주, 처리 시간, 주의사항 등을 적어두세요.',
-            ),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String?>(
-            key: const ValueKey('new-experiment-template-field'),
-            initialValue: _templateId,
-            decoration: const InputDecoration(
-              labelText: 'Plate 템플릿',
-              helperText: '선택하면 실험 생성과 동시에 Plate 설정을 적용합니다.',
-            ),
-            items: [
-              const DropdownMenuItem<String?>(
-                value: null,
-                child: Text('사용하지 않음'),
-              ),
-              for (final template in widget.templates)
-                DropdownMenuItem<String?>(
-                  value: template.id,
-                  child: Text(template.name),
+    return SafeArea(
+      top: false,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _SheetHeader(title: '새 실험 노트'),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _titleController,
+                  autofocus: true,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: '실험 제목',
+                    hintText: '예: Drug A CCK-8 2배 희석',
+                  ),
                 ),
-            ],
-            onChanged: (value) => setState(() => _templateId = value),
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: _createExperiment,
-              icon: const Icon(Icons.check),
-              label: const Text('생성'),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                  initialValue: _experimentType,
+                  decoration: const InputDecoration(labelText: '실험 유형'),
+                  items: const [
+                    DropdownMenuItem(value: 'CCK-8', child: Text('CCK-8')),
+                    DropdownMenuItem(value: 'MTT', child: Text('MTT')),
+                    DropdownMenuItem(value: 'ELISA', child: Text('ELISA')),
+                    DropdownMenuItem(
+                      value: 'Dose-response',
+                      child: Text('Dose-response'),
+                    ),
+                    DropdownMenuItem(value: 'Custom', child: Text('Custom')),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _experimentType = value ?? 'Custom'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _projectController,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(labelText: '프로젝트'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _notesController,
+                  minLines: 2,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: '메모',
+                    hintText: '세포주, 처리 시간, 주의사항 등을 적어두세요.',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  key: const ValueKey('new-experiment-template-field'),
+                  onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                  initialValue: _templateId,
+                  decoration: const InputDecoration(
+                    labelText: 'Plate 템플릿',
+                    helperText: '선택하면 실험 생성과 동시에 Plate 설정을 적용합니다.',
+                  ),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('사용하지 않음'),
+                    ),
+                    for (final template in widget.templates)
+                      DropdownMenuItem<String?>(
+                        value: template.id,
+                        child: Text(template.name),
+                      ),
+                  ],
+                  onChanged: (value) => setState(() => _templateId = value),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _createExperiment,
+                    icon: const Icon(Icons.check),
+                    label: const Text('생성'),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }

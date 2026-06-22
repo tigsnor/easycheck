@@ -1269,6 +1269,33 @@ class _WellCell extends StatelessWidget {
   }
 }
 
+class _SheetHeader extends StatelessWidget {
+  const _SheetHeader({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+        ),
+        IconButton(
+          tooltip: '닫기',
+          onPressed: () => Navigator.of(context).pop(),
+          icon: const Icon(Icons.close),
+        ),
+      ],
+    );
+  }
+}
+
 class _BulkResultImportSheet extends StatefulWidget {
   const _BulkResultImportSheet({
     required this.plate,
@@ -1424,102 +1451,102 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Plate 결과 일괄 입력',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Excel이나 Plate reader에서 복사한 행렬을 붙여넣거나 CSV/TSV/TXT 파일을 선택하세요. 첫 행의 1–12와 첫 열의 A–H 좌표는 자동으로 인식합니다.',
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            key: const ValueKey('bulk-result-matrix-field'),
-            controller: _matrixController,
-            minLines: 7,
-            maxLines: 12,
-            keyboardType: TextInputType.multiline,
-            decoration: const InputDecoration(
-              labelText: '결과 행렬',
-              alignLabelWithHint: true,
-              hintText: r'\t1\t2\t3\nA\t0.82\t0.79\t0.85\nB\t0.80\t0.81\t0.83',
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _SheetHeader(title: 'Plate 결과 일괄 입력'),
+            const SizedBox(height: 8),
+            const Text(
+              'Excel이나 Plate reader에서 복사한 행렬을 붙여넣거나 CSV/TSV/TXT 파일을 선택하세요. 첫 행의 1–12와 첫 열의 A–H 좌표는 자동으로 인식합니다.',
             ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            alignment: WrapAlignment.end,
-            spacing: 8,
-            runSpacing: 4,
-            children: [
-              TextButton.icon(
-                key: const ValueKey('pick-bulk-result-file-button'),
-                onPressed: _pickResultFile,
-                icon: const Icon(Icons.upload_file_outlined),
-                label: const Text('파일 선택'),
+            const SizedBox(height: 16),
+            TextField(
+              key: const ValueKey('bulk-result-matrix-field'),
+              controller: _matrixController,
+              minLines: 7,
+              maxLines: 12,
+              keyboardType: TextInputType.multiline,
+              decoration: const InputDecoration(
+                labelText: '결과 행렬',
+                alignLabelWithHint: true,
+                hintText:
+                    r'\t1\t2\t3\nA\t0.82\t0.79\t0.85\nB\t0.80\t0.81\t0.83',
               ),
-              TextButton.icon(
-                onPressed: _pasteClipboard,
-                icon: const Icon(Icons.content_paste),
-                label: const Text('클립보드 붙여넣기'),
-              ),
-            ],
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  key: const ValueKey('bulk-result-unit-field'),
-                  controller: _unitController,
-                  decoration: const InputDecoration(
-                    labelText: '결과 단위',
-                    hintText: '예: OD',
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                TextButton.icon(
+                  key: const ValueKey('pick-bulk-result-file-button'),
+                  onPressed: _pickResultFile,
+                  icon: const Icon(Icons.upload_file_outlined),
+                  label: const Text('파일 선택'),
+                ),
+                TextButton.icon(
+                  onPressed: _pasteClipboard,
+                  icon: const Icon(Icons.content_paste),
+                  label: const Text('클립보드 붙여넣기'),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('bulk-result-unit-field'),
+                    controller: _unitController,
+                    decoration: const InputDecoration(
+                      labelText: '결과 단위',
+                      hintText: '예: OD',
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  key: const ValueKey('bulk-result-wavelength-field'),
-                  controller: _wavelengthController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: '측정 파장 (nm)',
-                    hintText: '예: 450',
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('bulk-result-wavelength-field'),
+                    controller: _wavelengthController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: '측정 파장 (nm)',
+                      hintText: '예: 450',
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '적용 단위: ${_resolvedResultUnit.isEmpty ? '없음' : _resolvedResultUnit}',
-          ),
-          const SizedBox(height: 14),
-          _BulkResultImportPreviewCard(
-            preview: _preview,
-            overwriteCount: _overwriteCount,
-            hasDuplicateSource: _hasDuplicateSource,
-            sourceName: _sourceName,
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              key: const ValueKey('apply-bulk-results-button'),
-              onPressed: _preview.canApply ? _confirmAndApply : null,
-              icon: const Icon(Icons.check),
-              label: Text('${_preview.valueCount}개 결과 적용'),
+              ],
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text(
+              '적용 단위: ${_resolvedResultUnit.isEmpty ? '없음' : _resolvedResultUnit}',
+            ),
+            const SizedBox(height: 14),
+            _BulkResultImportPreviewCard(
+              preview: _preview,
+              overwriteCount: _overwriteCount,
+              hasDuplicateSource: _hasDuplicateSource,
+              sourceName: _sourceName,
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                key: const ValueKey('apply-bulk-results-button'),
+                onPressed: _preview.canApply ? _confirmAndApply : null,
+                icon: const Icon(Icons.check),
+                label: Text('${_preview.valueCount}개 결과 적용'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2560,123 +2587,122 @@ class _WellRecordSheetState extends State<_WellRecordSheet> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '${widget.well.label} well 기록',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '처리 농도와 측정 결과를 함께 기록합니다.',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 18),
-          Text(
-            '처리 조건',
-            style: Theme.of(
-              context,
-            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: TextField(
-                  controller: _concentrationController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(labelText: '농도'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _concentrationUnitController,
-                  decoration: const InputDecoration(labelText: '단위'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Text(
-            '측정 결과',
-            style: Theme.of(
-              context,
-            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: TextField(
-                  key: const ValueKey('well-result-value-field'),
-                  controller: _resultController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                    signed: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: '결과값',
-                    hintText: '예: 0.82',
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  key: const ValueKey('well-result-unit-field'),
-                  controller: _resultUnitController,
-                  decoration: const InputDecoration(
-                    labelText: '결과 단위',
-                    hintText: 'OD450',
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            key: const ValueKey('well-note-field'),
-            controller: _noteController,
-            minLines: 2,
-            maxLines: 4,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: const InputDecoration(
-              labelText: 'Well 메모',
-              hintText: '침전, 기포, 오염 의심 등',
-              alignLabelWithHint: true,
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SheetHeader(title: '${widget.well.label} well 기록'),
+            const SizedBox(height: 6),
+            Text(
+              '처리 농도와 측정 결과를 함께 기록합니다.',
+              style: Theme.of(context).textTheme.bodyMedium,
             ),
-          ),
-          const SizedBox(height: 8),
-          SwitchListTile.adaptive(
-            key: const ValueKey('well-excluded-switch'),
-            contentPadding: EdgeInsets.zero,
-            title: const Text('분석에서 제외'),
-            subtitle: const Text('이상치나 실험 오류가 있는 well을 표시합니다.'),
-            value: _excluded,
-            onChanged: (value) => setState(() => _excluded = value),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              key: const ValueKey('save-well-record-button'),
-              onPressed: _save,
-              icon: const Icon(Icons.check),
-              label: const Text('Well 기록 저장'),
+            const SizedBox(height: 18),
+            Text(
+              '처리 조건',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
-          ),
-        ],
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: TextField(
+                    controller: _concentrationController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(labelText: '농도'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _concentrationUnitController,
+                    decoration: const InputDecoration(labelText: '단위'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Text(
+              '측정 결과',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: TextField(
+                    key: const ValueKey('well-result-value-field'),
+                    controller: _resultController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                      signed: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: '결과값',
+                      hintText: '예: 0.82',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('well-result-unit-field'),
+                    controller: _resultUnitController,
+                    decoration: const InputDecoration(
+                      labelText: '결과 단위',
+                      hintText: 'OD450',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('well-note-field'),
+              controller: _noteController,
+              minLines: 2,
+              maxLines: 4,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                labelText: 'Well 메모',
+                hintText: '침전, 기포, 오염 의심 등',
+                alignLabelWithHint: true,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile.adaptive(
+              key: const ValueKey('well-excluded-switch'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('분석에서 제외'),
+              subtitle: const Text('이상치나 실험 오류가 있는 well을 표시합니다.'),
+              value: _excluded,
+              onChanged: (value) => setState(() => _excluded = value),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                key: const ValueKey('save-well-record-button'),
+                onPressed: _save,
+                icon: const Icon(Icons.check),
+                label: const Text('Well 기록 저장'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2789,6 +2815,7 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
   late Color _color = widget.suggestedColor;
   bool _includeZeroControl = true;
   DilutionDirection _direction = DilutionDirection.topToBottom;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -2809,7 +2836,7 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
 
   void _refreshPreview() {
     if (mounted) {
-      setState(() {});
+      setState(() => _errorMessage = null);
     }
   }
 
@@ -2831,192 +2858,202 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '희석 계산 적용',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            widget.selectedCount == 0
-                ? '선택 영역이 없어서 plate 앞쪽 well부터 자동으로 채웁니다.'
-                : '${widget.selectedCount}개 선택 well에 순서대로 농도를 적용합니다.',
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _groupController,
-            decoration: const InputDecoration(labelText: '실험군/약물명'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _labelController,
-            maxLength: 3,
-            decoration: const InputDecoration(labelText: '짧은 라벨'),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _startController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(labelText: '시작 농도'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _unitController,
-                  decoration: const InputDecoration(labelText: '단위'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _factorController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(labelText: '희석 배수'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _stepsController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: '단계 수'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _replicateController,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: '반복 well 수'),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<DilutionDirection>(
-            initialValue: _direction,
-            decoration: const InputDecoration(labelText: '적용 방향'),
-            items: DilutionDirection.values
-                .map(
-                  (direction) => DropdownMenuItem(
-                    value: direction,
-                    child: Text(direction.label),
-                  ),
-                )
-                .toList(),
-            onChanged: (value) => setState(
-              () => _direction = value ?? DilutionDirection.topToBottom,
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _SheetHeader(title: '희석 계산 적용'),
+            const SizedBox(height: 6),
+            Text(
+              widget.selectedCount == 0
+                  ? '선택 영역이 없어서 plate 앞쪽 well부터 자동으로 채웁니다.'
+                  : '${widget.selectedCount}개 선택 well에 순서대로 농도를 적용합니다.',
             ),
-          ),
-          const SizedBox(height: 12),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('0 농도 control 포함'),
-            value: _includeZeroControl,
-            onChanged: (value) => setState(() => _includeZeroControl = value),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '피펫팅 계획',
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '각 농도를 stock에서 직접 희석하는 master mix 기준입니다.',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  key: const ValueKey('pipetting-stock-field'),
-                  controller: _stockController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(labelText: 'Stock 농도'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  key: const ValueKey('pipetting-volume-field'),
-                  controller: _volumeController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Well당 최종 부피',
-                    suffixText: 'µL',
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  key: const ValueKey('pipetting-overage-field'),
-                  controller: _overageController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(labelText: '여유분 (%)'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _PipettingPlanPreview(
-            plan: _pipettingPlan,
-            requiredWellCount: _requiredWellCount,
-            selectedCount: widget.selectedCount,
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            children: [
-              for (final color in _PlateEditorScreenState._groupColors)
-                ChoiceChip(
-                  label: const Text(''),
-                  selected: color == _color,
-                  onSelected: (_) => setState(() => _color = color),
-                  avatar: CircleAvatar(backgroundColor: color),
-                ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: _save,
-              icon: const Icon(Icons.check),
-              label: const Text('희석 적용'),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _groupController,
+              decoration: const InputDecoration(labelText: '실험군/약물명'),
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            TextField(
+              controller: _labelController,
+              maxLength: 3,
+              decoration: const InputDecoration(labelText: '짧은 라벨'),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _startController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(labelText: '시작 농도'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _unitController,
+                    decoration: const InputDecoration(labelText: '단위'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _factorController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(labelText: '희석 배수'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _stepsController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: '단계 수'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _replicateController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: '반복 well 수'),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<DilutionDirection>(
+              onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+              initialValue: _direction,
+              decoration: const InputDecoration(labelText: '적용 방향'),
+              items: DilutionDirection.values
+                  .map(
+                    (direction) => DropdownMenuItem(
+                      value: direction,
+                      child: Text(direction.label),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) => setState(
+                () => _direction = value ?? DilutionDirection.topToBottom,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('0 농도 control 포함'),
+              value: _includeZeroControl,
+              onChanged: (value) => setState(() => _includeZeroControl = value),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '피펫팅 계획',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '각 농도를 stock에서 직접 희석하는 master mix 기준입니다.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('pipetting-stock-field'),
+                    controller: _stockController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(labelText: 'Stock 농도'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('pipetting-volume-field'),
+                    controller: _volumeController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Well당 최종 부피',
+                      suffixText: 'µL',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('pipetting-overage-field'),
+                    controller: _overageController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(labelText: '여유분 (%)'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _PipettingPlanPreview(
+              plan: _pipettingPlan,
+              requiredWellCount: _requiredWellCount,
+              selectedCount: widget.selectedCount,
+            ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _errorMessage!,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final color in _PlateEditorScreenState._groupColors)
+                  ChoiceChip(
+                    label: const Text(''),
+                    selected: color == _color,
+                    onSelected: (_) => setState(() => _color = color),
+                    avatar: CircleAvatar(backgroundColor: color),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _save,
+                icon: const Icon(Icons.check),
+                label: const Text('희석 적용'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -3101,9 +3138,7 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
         steps <= 0 ||
         replicateCount <= 0 ||
         volumePerWell <= 0) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('희석 계산 값을 확인해주세요.')));
+      setState(() => _errorMessage = '희석 계산 값을 확인해주세요.');
       return;
     }
 
@@ -3111,12 +3146,9 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
     final availableWellCount =
         widget.selectedCount == 0 ? 96 : widget.selectedCount;
     if (availableWellCount < requiredWellCount) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
+      setState(
+        () => _errorMessage =
             '사용 가능한 well이 부족합니다. $requiredWellCount개가 필요하지만 $availableWellCount개만 사용할 수 있습니다.',
-          ),
-        ),
       );
       return;
     }
@@ -3316,76 +3348,76 @@ class _GroupEditorSheetState extends State<_GroupEditorSheet> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '${widget.selectedCount}개 well 그룹 지정',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _nameController,
-            decoration: const InputDecoration(labelText: '그룹명'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _labelController,
-            maxLength: 3,
-            decoration: const InputDecoration(labelText: '짧은 라벨'),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<WellRole>(
-            initialValue: _role,
-            decoration: const InputDecoration(labelText: '역할'),
-            items: const [
-              DropdownMenuItem(
-                value: WellRole.treatment,
-                child: Text('Treatment'),
-              ),
-              DropdownMenuItem(value: WellRole.blank, child: Text('Blank')),
-              DropdownMenuItem(
-                value: WellRole.vehicleControl,
-                child: Text('Vehicle control'),
-              ),
-              DropdownMenuItem(value: WellRole.sample, child: Text('Sample')),
-            ],
-            onChanged: (value) =>
-                setState(() => _role = value ?? WellRole.treatment),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _unitController,
-            decoration: const InputDecoration(labelText: '농도 단위'),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            children: [
-              for (final color in _PlateEditorScreenState._groupColors)
-                ChoiceChip(
-                  label: const Text(''),
-                  selected: color == _color,
-                  onSelected: (_) => setState(() => _color = color),
-                  avatar: CircleAvatar(backgroundColor: color),
-                ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: _save,
-              icon: const Icon(Icons.check),
-              label: const Text('적용'),
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SheetHeader(title: '${widget.selectedCount}개 well 그룹 지정'),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _nameController,
+              decoration: const InputDecoration(labelText: '그룹명'),
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            TextField(
+              controller: _labelController,
+              maxLength: 3,
+              decoration: const InputDecoration(labelText: '짧은 라벨'),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<WellRole>(
+              onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+              initialValue: _role,
+              decoration: const InputDecoration(labelText: '역할'),
+              items: const [
+                DropdownMenuItem(
+                  value: WellRole.treatment,
+                  child: Text('Treatment'),
+                ),
+                DropdownMenuItem(value: WellRole.blank, child: Text('Blank')),
+                DropdownMenuItem(
+                  value: WellRole.vehicleControl,
+                  child: Text('Vehicle control'),
+                ),
+                DropdownMenuItem(value: WellRole.sample, child: Text('Sample')),
+              ],
+              onChanged: (value) =>
+                  setState(() => _role = value ?? WellRole.treatment),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _unitController,
+              decoration: const InputDecoration(labelText: '농도 단위'),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final color in _PlateEditorScreenState._groupColors)
+                  ChoiceChip(
+                    label: const Text(''),
+                    selected: color == _color,
+                    onSelected: (_) => setState(() => _color = color),
+                    avatar: CircleAvatar(backgroundColor: color),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _save,
+                icon: const Icon(Icons.check),
+                label: const Text('적용'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
