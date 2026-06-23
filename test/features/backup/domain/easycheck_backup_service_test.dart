@@ -32,13 +32,31 @@ void main() {
     expect(backup.exportedAt, DateTime.utc(2026, 6, 8, 12));
     expect(backup.experiments.single.title, 'CCK-8 backup');
     expect(backup.plates.single.experimentId, experiment.id);
-    expect(encoded, contains('"format": "easycheck-backup"'));
+    expect(encoded, contains('"format": "platenote-backup"'));
+  });
+
+  test('decodes legacy EasyCheck backup files', () {
+    const source = '''
+{
+  "format": "easycheck-backup",
+  "schemaVersion": 1,
+  "exportedAt": "2026-06-08T00:00:00.000Z",
+  "experiments": [],
+  "plates": []
+}
+''';
+
+    final backup = service.decode(source);
+
+    expect(backup.schemaVersion, 1);
+    expect(backup.experiments, isEmpty);
+    expect(backup.plates, isEmpty);
   });
 
   test('rejects unsupported future backup versions', () {
     const source = '''
 {
-  "format": "easycheck-backup",
+  "format": "platenote-backup",
   "schemaVersion": 999,
   "exportedAt": "2026-06-08T00:00:00.000Z",
   "experiments": [],
@@ -56,7 +74,7 @@ void main() {
       name: '96-well Plate',
     );
     final source = jsonEncode({
-      'format': 'easycheck-backup',
+      'format': 'platenote-backup',
       'schemaVersion': 1,
       'exportedAt': '2026-06-08T00:00:00.000Z',
       'experiments': <Object?>[],

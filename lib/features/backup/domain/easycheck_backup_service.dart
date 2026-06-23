@@ -20,6 +20,8 @@ class EasyCheckBackup {
 class EasyCheckBackupService {
   const EasyCheckBackupService();
 
+  static const backupFormat = 'platenote-backup';
+  static const legacyBackupFormat = 'easycheck-backup';
   static const currentSchemaVersion = 1;
 
   String encode({
@@ -39,7 +41,7 @@ class EasyCheckBackupService {
     }
 
     return const JsonEncoder.withIndent('  ').convert({
-      'format': 'easycheck-backup',
+      'format': backupFormat,
       'schemaVersion': currentSchemaVersion,
       'exportedAt': (exportedAt ?? DateTime.now()).toUtc().toIso8601String(),
       'experiments': experiments.map((item) => item.toJson()).toList(),
@@ -61,7 +63,8 @@ class EasyCheckBackupService {
     if (decoded is! Map<String, dynamic>) {
       throw const FormatException('백업의 최상위 값은 JSON object여야 합니다.');
     }
-    if (decoded['format'] != 'easycheck-backup') {
+    if (decoded['format'] != backupFormat &&
+        decoded['format'] != legacyBackupFormat) {
       throw const FormatException('PlateNote 백업 파일이 아닙니다.');
     }
 
