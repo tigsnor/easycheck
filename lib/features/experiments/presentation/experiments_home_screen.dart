@@ -996,6 +996,8 @@ class _SheetHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isKeyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+
     return Row(
       children: [
         Expanded(
@@ -1006,6 +1008,12 @@ class _SheetHeader extends StatelessWidget {
             ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
           ),
         ),
+        if (isKeyboardVisible)
+          IconButton(
+            tooltip: '키보드 내리기',
+            onPressed: () => FocusManager.instance.primaryFocus?.unfocus(),
+            icon: const Icon(Icons.keyboard_hide_outlined),
+          ),
         IconButton(
           tooltip: '닫기',
           onPressed: () => Navigator.of(context).pop(),
