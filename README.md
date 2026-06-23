@@ -1,4 +1,4 @@
-# easycheck
+# PlateNote
 
 PlateNote는 생명과학 연구원이 96-well plate 실험 설계, 농도 계산, 실험 노트, 결과 관리를 모바일에서 수행할 수 있도록 만드는 Flutter 앱 프로젝트입니다.
 
@@ -19,13 +19,14 @@ PlateNote는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 
 ## 현재 구현 상태
 
-첫 구현 단계로 Flutter 앱의 기본 골격과 96-well plate 화면 프로토타입을 추가했습니다.
+현재는 실제 기기 알파 테스트를 위한 단일 사용자 MVP 기능을 중심으로 구현하고 있습니다.
 
 - Flutter 앱 진입점과 iOS 메모앱 느낌의 기본 테마
 - iOS/Android 로컬 실행을 위한 Flutter platform scaffold
 - 실험 노트 홈 화면, 검색, 생성, 수정, 복제, 삭제 확인/실행 취소와 versioned JSON 로컬 저장
+- 새 실험 노트 생성·상세 편집에서 세포수 정보를 구조화해 저장하고, 기존 메모 기반 `세포수:` 기록도 자동 인식
 - 임시 파일 교체, 직전 정상본 보관, 손상 파일 자동 복구·사용자 안내와 legacy JSON migration
-- 모든 실험과 연결 Plate를 버전형 JSON으로 복사·파일 공유하고, Files/iCloud에서 선택해 사전 검증·실패 rollback과 함께 ID 기준 병합 복원하는 전체 백업
+- 모든 실험과 연결 Plate를 PlateNote 백업 JSON으로 복사·파일 공유하고, Files/iCloud에서 선택해 사전 검증·실패 rollback과 함께 ID 기준 병합 복원하는 전체 백업
 - 실험별 96-well plate grid, 화면 맞춤·단계별 확대·가로 스크롤, 행/열/범위 선택, 그룹 색상 지정, JSON 파일 기반 plate layout 저장
 - Plate 저장 중/완료 상태 표시와 최근 20개 변경에 대한 실행 취소
 - 현재 Plate 설정을 결과값 없이 로컬 템플릿으로 저장·이름 변경·삭제하고, 기본 CCK-8 예시 또는 저장 템플릿을 Plate 편집기/새 실험 생성 시 재적용
@@ -41,13 +42,12 @@ PlateNote는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 
 ## 현재 개발 우선순위
 
-1. 실제 기기에서 전체 수동 QA 수행
-2. 로컬 저장의 atomic write, 자동 복구와 schema migration
-3. 실험 사진·파일 첨부
-4. Plate 템플릿
-5. CSV 결과 파일 import
-6. 단계별 피펫팅·실험 실행 체크리스트
-7. Android internal testing과 iOS TestFlight 배포
+1. 실제 iPhone/Android 기기에서 신규 실험 생성, Plate 편집, 희석 계산, 결과 입력, 백업/복원 수동 QA 반복
+2. 실제 기기 피드백 기반 키보드/바텀시트/작은 화면 사용성 개선
+3. Android internal testing과 iOS TestFlight 배포 준비
+4. 실험 사진·파일 첨부
+5. 단계별 피펫팅·실험 실행 체크리스트
+6. 고급 분석 기능(IC50, 통계 검정 등) 검토
 
 진행률은 개발자 검증, 실제 기기 알파 테스트, 단일 사용자 MVP, 단일 사용자 실험실 사용 가능도의 네 단계로 관리합니다. 세부 완료 기준은 [단일 사용자 우선 출시 계획](docs/single-user-release-plan.md)을 따릅니다.
 
