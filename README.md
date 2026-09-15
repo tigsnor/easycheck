@@ -39,6 +39,7 @@ PlateNote는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 - 완료된 실험 노트의 수정 잠금, 수정 사유 및 변경 이력 기록
 - 완료된 실험의 Plate 배치·결과를 변경 없이 확인하는 읽기 전용 화면
 - Plate 그룹·희석·well 결과·import·템플릿 변경과 실행 취소 이력 기록
+- Plate 선택·범위·확대 상태를 UI에서 분리한 테스트 가능한 상태관리 controller
 - 실험 담당자와 시약 제조사·catalog·lot, 장비 model·serial 정보를 저장하는 사용 자원 기록
 - Blank/Control 누락, 반복 well 부족, 농도 단위 혼용, 일부 결과 누락을 알려주는 실험 준비 점검
 - 분석 제외 well을 반영한 농도별 평균·표본 표준편차·CV·blank 보정·control 대비 정규화
