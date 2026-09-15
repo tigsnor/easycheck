@@ -38,6 +38,32 @@ class PlateResultImportRecord {
   }
 }
 
+class PlateRevision {
+  const PlateRevision({
+    required this.id,
+    required this.changedAt,
+    required this.summary,
+  });
+
+  factory PlateRevision.fromJson(Map<String, Object?> json) {
+    return PlateRevision(
+      id: json['id'] as String,
+      changedAt: DateTime.parse(json['changedAt'] as String).toUtc(),
+      summary: json['summary'] as String,
+    );
+  }
+
+  final String id;
+  final DateTime changedAt;
+  final String summary;
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'changedAt': changedAt.toUtc().toIso8601String(),
+    'summary': summary,
+  };
+}
+
 class Plate {
   Plate({
     required this.id,
@@ -49,6 +75,7 @@ class Plate {
     this.groups = const [],
     this.notes = '',
     this.importHistory = const [],
+    this.revisions = const [],
   }) : wells = wells ?? _buildEmptyWells(rowCount, columnCount);
 
   factory Plate.fromJson(Map<String, Object?> json) {
@@ -71,6 +98,10 @@ class Plate {
           .whereType<Map<String, Object?>>()
           .map(PlateResultImportRecord.fromJson)
           .toList(),
+      revisions: (json['revisions'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, Object?>>()
+          .map(PlateRevision.fromJson)
+          .toList(),
     );
   }
 
@@ -83,6 +114,7 @@ class Plate {
   final List<WellGroup> groups;
   final String notes;
   final List<PlateResultImportRecord> importHistory;
+  final List<PlateRevision> revisions;
 
   Map<String, Object?> toJson() {
     return {
@@ -95,6 +127,7 @@ class Plate {
       'groups': groups.map((group) => group.toJson()).toList(),
       'notes': notes,
       'importHistory': importHistory.map((record) => record.toJson()).toList(),
+      'revisions': revisions.map((revision) => revision.toJson()).toList(),
     };
   }
 
@@ -108,6 +141,7 @@ class Plate {
     List<WellGroup>? groups,
     String? notes,
     List<PlateResultImportRecord>? importHistory,
+    List<PlateRevision>? revisions,
   }) {
     return Plate(
       id: id ?? this.id,
@@ -119,6 +153,7 @@ class Plate {
       groups: groups ?? this.groups,
       notes: notes ?? this.notes,
       importHistory: importHistory ?? this.importHistory,
+      revisions: revisions ?? this.revisions,
     );
   }
 

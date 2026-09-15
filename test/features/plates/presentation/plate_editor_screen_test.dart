@@ -589,6 +589,7 @@ void main() {
     expect(savedWell.resultUnit, 'OD450');
     expect(savedWell.note, '기포 확인');
     expect(savedWell.excluded, isTrue);
+    expect(repository.plate!.revisions.last.summary, 'well 수정: A1');
     await tester.scrollUntilVisible(
       find.text('결과 · 0.82 OD450'),
       500,
@@ -634,6 +635,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.plate!.wells[0].concentrationValue, 1000);
+    expect(repository.plate!.revisions, hasLength(2));
+    expect(repository.plate!.revisions.last.summary, '마지막 Plate 변경 실행 취소');
     expect(find.text('마지막 Plate 변경을 취소했습니다.'), findsOneWidget);
   });
 
@@ -825,23 +828,24 @@ void main() {
           createdAt: DateTime.utc(2026, 6, 12),
           plate: Plate(id: 'source', experimentId: 'source', name: 'Source')
               .copyWith(
-            wells: Plate(
-              id: 'source-wells',
-              experimentId: 'source',
-              name: 'Source',
-            ).wells.map((well) {
-              if (well.position ==
-                  const WellPosition(rowIndex: 0, columnIndex: 0)) {
-                return well.copyWith(
-                  role: WellRole.treatment,
-                  concentrationValue: 10,
-                  resultValue: 9.9,
-                  excluded: true,
-                );
-              }
-              return well;
-            }).toList(),
-          ),
+                wells:
+                    Plate(
+                      id: 'source-wells',
+                      experimentId: 'source',
+                      name: 'Source',
+                    ).wells.map((well) {
+                      if (well.position ==
+                          const WellPosition(rowIndex: 0, columnIndex: 0)) {
+                        return well.copyWith(
+                          role: WellRole.treatment,
+                          concentrationValue: 10,
+                          resultValue: 9.9,
+                          excluded: true,
+                        );
+                      }
+                      return well;
+                    }).toList(),
+              ),
         ),
       );
 
