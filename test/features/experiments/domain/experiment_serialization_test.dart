@@ -25,6 +25,17 @@ void main() {
             completedAt: DateTime.utc(2026, 6, 2, 9, 30),
           ),
         ],
+        resources: const [
+          ExperimentResource(
+            id: 'resource-1',
+            type: ExperimentResourceType.reagent,
+            name: 'CCK-8',
+            manufacturer: 'Dojindo',
+            catalogOrModel: 'CK04',
+            lotOrSerial: 'LOT-123',
+            note: '개봉 2026-06-01',
+          ),
+        ],
       );
 
       final restored = Experiment.fromJson(experiment.toJson());
@@ -48,6 +59,12 @@ void main() {
         restored.tasks.single.completedAt,
         DateTime.utc(2026, 6, 2, 9, 30),
       );
+      expect(restored.resources, hasLength(1));
+      expect(restored.resources.single.type, ExperimentResourceType.reagent);
+      expect(restored.resources.single.name, 'CCK-8');
+      expect(restored.resources.single.manufacturer, 'Dojindo');
+      expect(restored.resources.single.catalogOrModel, 'CK04');
+      expect(restored.resources.single.lotOrSerial, 'LOT-123');
     });
 
     test('falls back to draft for unknown status names', () {
@@ -74,6 +91,7 @@ void main() {
       expect(restored.cellCountLabel, 'hek293: 1×10^6/ml');
       expect(restored.notesWithoutCellCountLine, 'passage 4');
       expect(restored.tasks, isEmpty);
+      expect(restored.resources, isEmpty);
     });
   });
 }

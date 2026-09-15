@@ -76,11 +76,13 @@ void main() {
     final timerButton = find.byKey(
       const ValueKey('experiment-task-timer-default-0'),
     );
+    await tester.ensureVisible(timerButton);
     await tester.tap(timerButton);
     await tester.pump(const Duration(seconds: 2));
     expect(find.textContaining('경과'), findsOneWidget);
     expect(find.widgetWithText(TextButton, '완료'), findsOneWidget);
 
+    await tester.ensureVisible(timerButton);
     await tester.tap(timerButton);
     await tester.pump();
     expect(find.textContaining('완료 ·'), findsOneWidget);
@@ -93,5 +95,54 @@ void main() {
       saved!.tasks.first.completedAt!.isBefore(saved!.tasks.first.startedAt!),
       isFalse,
     );
+  });
+
+  testWidgets('records researcher and reagent lot information', (tester) async {
+    Experiment? saved;
+    final experiment = Experiment(
+      id: 'experiment-3',
+      title: 'Resource tracking test',
+      createdAt: DateTime.utc(2026, 9, 15),
+      updatedAt: DateTime.utc(2026, 9, 15),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ExperimentDetailScreen(
+          experiment: experiment,
+          onChanged: (experiment) async => saved = experiment,
+        ),
+      ),
+    );
+
+    await tester.enterText(find.widgetWithText(TextField, '담당자'), '홍길동');
+    await tester.scrollUntilVisible(
+      find.text('시약·장비 추가'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(find.text('시약·장비 추가'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('시약·장비 추가'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('resource-name-field')),
+      'CCK-8',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('resource-lot-field')),
+      'LOT-123',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, '추가'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('CCK-8'), findsWidgets);
+    expect(find.textContaining('Lot LOT-123'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, '저장'));
+    await tester.pump();
+    expect(saved!.researcher, '홍길동');
+    expect(saved!.resources.single.name, 'CCK-8');
+    expect(saved!.resources.single.lotOrSerial, 'LOT-123');
   });
 }

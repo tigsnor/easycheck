@@ -23,10 +23,12 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   late final TextEditingController _titleController;
   late final TextEditingController _projectController;
   late final TextEditingController _cellCountController;
+  late final TextEditingController _researcherController;
   late final TextEditingController _notesController;
   late ExperimentStatus _status;
   late String _experimentType;
   late List<ExperimentTask> _tasks;
+  late List<ExperimentResource> _resources;
 
   @override
   void initState() {
@@ -38,6 +40,9 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     _cellCountController = TextEditingController(
       text: widget.experiment.cellCountLabel ?? '',
     );
+    _researcherController = TextEditingController(
+      text: widget.experiment.researcher ?? '',
+    );
     _notesController = TextEditingController(
       text: widget.experiment.notesWithoutCellCountLine,
     );
@@ -46,6 +51,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     _tasks = widget.experiment.tasks.isEmpty
         ? _defaultTasks(widget.experiment.experimentType)
         : [...widget.experiment.tasks];
+    _resources = [...widget.experiment.resources];
   }
 
   @override
@@ -53,6 +59,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     _titleController.dispose();
     _projectController.dispose();
     _cellCountController.dispose();
+    _researcherController.dispose();
     _notesController.dispose();
     super.dispose();
   }
@@ -140,6 +147,15 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                     ),
                     const SizedBox(height: 12),
                     TextField(
+                      controller: _researcherController,
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(
+                        labelText: '담당자',
+                        hintText: '예: 홍길동',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
                       controller: _cellCountController,
                       decoration: const InputDecoration(
                         labelText: '세포수',
@@ -154,6 +170,11 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
             _ExperimentChecklistCard(
               tasks: _tasks,
               onChanged: (tasks) => setState(() => _tasks = tasks),
+            ),
+            const SizedBox(height: 16),
+            _ExperimentResourcesCard(
+              resources: _resources,
+              onChanged: (resources) => setState(() => _resources = resources),
             ),
             const SizedBox(height: 16),
             Card(
@@ -219,11 +240,15 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
         experimentType: _experimentType,
         status: _status,
         updatedAt: DateTime.now(),
+        researcher: _researcherController.text.trim().isEmpty
+            ? null
+            : _researcherController.text.trim(),
         cellCountLabel: _cellCountController.text.trim().isEmpty
             ? null
             : _cellCountController.text.trim(),
         notes: _notesController.text.trim(),
         tasks: _tasks,
+        resources: _resources,
       ),
     );
 
@@ -281,6 +306,217 @@ class _ExperimentChecklistCard extends StatefulWidget {
   @override
   State<_ExperimentChecklistCard> createState() =>
       _ExperimentChecklistCardState();
+}
+
+class _ExperimentResourcesCard extends StatelessWidget {
+  const _ExperimentResourcesCard({
+    required this.resources,
+    required this.onChanged,
+  });
+
+  final List<ExperimentResource> resources;
+  final ValueChanged<List<ExperimentResource>> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 14, 10, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                '시약 및 장비',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w800),
+              ),
+            ),
+            if (resources.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(8),
+                child: Text('Lot 번호와 사용 장비를 기록하면 결과 차이를 추적하기 쉬워집니다.'),
+              ),
+            for (var index = 0; index < resources.length; index++)
+              ListTile(
+                key: ValueKey('experiment-resource-${resources[index].id}'),
+                leading: Icon(
+                  resources[index].type == ExperimentResourceType.reagent
+                      ? Icons.science_outlined
+                      : Icons.precision_manufacturing_outlined,
+                ),
+                title: Text(resources[index].name),
+                subtitle: Text(_resourceDetails(resources[index])),
+                trailing: IconButton(
+                  tooltip: '기록 삭제',
+                  onPressed: () {
+                    final updated = [...resources]..removeAt(index);
+                    onChanged(updated);
+                  },
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => _addResource(context),
+                icon: const Icon(Icons.add),
+                label: const Text('시약·장비 추가'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _resourceDetails(ExperimentResource resource) {
+    final details = <String>[
+      resource.type == ExperimentResourceType.reagent ? '시약' : '장비',
+      if (resource.manufacturer.isNotEmpty) resource.manufacturer,
+      if (resource.catalogOrModel.isNotEmpty)
+        '${resource.type == ExperimentResourceType.reagent ? 'Cat.' : 'Model'} ${resource.catalogOrModel}',
+      if (resource.lotOrSerial.isNotEmpty)
+        '${resource.type == ExperimentResourceType.reagent ? 'Lot' : 'S/N'} ${resource.lotOrSerial}',
+      if (resource.note.isNotEmpty) resource.note,
+    ];
+    return details.join(' · ');
+  }
+
+  Future<void> _addResource(BuildContext context) async {
+    final resource = await showDialog<ExperimentResource>(
+      context: context,
+      builder: (_) => const _ResourceEditorDialog(),
+    );
+    if (resource == null || !context.mounted) return;
+    onChanged([...resources, resource]);
+  }
+}
+
+class _ResourceEditorDialog extends StatefulWidget {
+  const _ResourceEditorDialog();
+
+  @override
+  State<_ResourceEditorDialog> createState() => _ResourceEditorDialogState();
+}
+
+class _ResourceEditorDialogState extends State<_ResourceEditorDialog> {
+  final _nameController = TextEditingController();
+  final _manufacturerController = TextEditingController();
+  final _catalogController = TextEditingController();
+  final _lotController = TextEditingController();
+  final _noteController = TextEditingController();
+  ExperimentResourceType _type = ExperimentResourceType.reagent;
+  String? _errorText;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _manufacturerController.dispose();
+    _catalogController.dispose();
+    _lotController.dispose();
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isReagent = _type == ExperimentResourceType.reagent;
+    return AlertDialog(
+      title: const Text('시약·장비 기록'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SegmentedButton<ExperimentResourceType>(
+              segments: const [
+                ButtonSegment(
+                  value: ExperimentResourceType.reagent,
+                  label: Text('시약'),
+                  icon: Icon(Icons.science_outlined),
+                ),
+                ButtonSegment(
+                  value: ExperimentResourceType.equipment,
+                  label: Text('장비'),
+                  icon: Icon(Icons.precision_manufacturing_outlined),
+                ),
+              ],
+              selected: {_type},
+              onSelectionChanged: (values) =>
+                  setState(() => _type = values.single),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('resource-name-field'),
+              controller: _nameController,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: isReagent ? '시약명' : '장비명',
+                errorText: _errorText,
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _manufacturerController,
+              decoration: const InputDecoration(labelText: '제조사'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _catalogController,
+              decoration: InputDecoration(
+                labelText: isReagent ? 'Catalog number' : 'Model',
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              key: const ValueKey('resource-lot-field'),
+              controller: _lotController,
+              decoration: InputDecoration(
+                labelText: isReagent ? 'Lot number' : 'Serial number',
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _noteController,
+              decoration: const InputDecoration(labelText: '메모'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('취소'),
+        ),
+        FilledButton(
+          onPressed: _save,
+          child: const Text('추가'),
+        ),
+      ],
+    );
+  }
+
+  void _save() {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      setState(() => _errorText = '이름을 입력해주세요.');
+      return;
+    }
+    Navigator.of(context).pop(
+      ExperimentResource(
+        id: 'resource-${DateTime.now().microsecondsSinceEpoch}',
+        type: _type,
+        name: name,
+        manufacturer: _manufacturerController.text.trim(),
+        catalogOrModel: _catalogController.text.trim(),
+        lotOrSerial: _lotController.text.trim(),
+        note: _noteController.text.trim(),
+      ),
+    );
+  }
 }
 
 class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {

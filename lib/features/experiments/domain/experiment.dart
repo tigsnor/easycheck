@@ -1,5 +1,7 @@
 enum ExperimentStatus { draft, planned, inProgress, completed, archived }
 
+enum ExperimentResourceType { reagent, equipment }
+
 const _unset = Object();
 
 class ExperimentTask {
@@ -58,6 +60,51 @@ class ExperimentTask {
   }
 }
 
+class ExperimentResource {
+  const ExperimentResource({
+    required this.id,
+    required this.type,
+    required this.name,
+    this.manufacturer = '',
+    this.catalogOrModel = '',
+    this.lotOrSerial = '',
+    this.note = '',
+  });
+
+  factory ExperimentResource.fromJson(Map<String, Object?> json) {
+    return ExperimentResource(
+      id: json['id'] as String,
+      type: ExperimentResourceType.values.firstWhere(
+        (type) => type.name == json['type'],
+        orElse: () => ExperimentResourceType.reagent,
+      ),
+      name: json['name'] as String,
+      manufacturer: json['manufacturer'] as String? ?? '',
+      catalogOrModel: json['catalogOrModel'] as String? ?? '',
+      lotOrSerial: json['lotOrSerial'] as String? ?? '',
+      note: json['note'] as String? ?? '',
+    );
+  }
+
+  final String id;
+  final ExperimentResourceType type;
+  final String name;
+  final String manufacturer;
+  final String catalogOrModel;
+  final String lotOrSerial;
+  final String note;
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'type': type.name,
+        'name': name,
+        'manufacturer': manufacturer,
+        'catalogOrModel': catalogOrModel,
+        'lotOrSerial': lotOrSerial,
+        'note': note,
+      };
+}
+
 class Experiment {
   const Experiment({
     required this.id,
@@ -72,6 +119,7 @@ class Experiment {
     this.cellCountLabel,
     this.tags = const [],
     this.tasks = const [],
+    this.resources = const [],
   });
 
   factory Experiment.fromJson(Map<String, Object?> json) {
@@ -95,6 +143,10 @@ class Experiment {
           .whereType<Map<String, Object?>>()
           .map(ExperimentTask.fromJson)
           .toList(),
+      resources: (json['resources'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, Object?>>()
+          .map(ExperimentResource.fromJson)
+          .toList(),
     );
   }
 
@@ -110,6 +162,7 @@ class Experiment {
   final String? cellCountLabel;
   final List<String> tags;
   final List<ExperimentTask> tasks;
+  final List<ExperimentResource> resources;
 
   String get notesWithoutCellCountLine {
     return notes
@@ -133,6 +186,7 @@ class Experiment {
       'cellCountLabel': cellCountLabel,
       'tags': tags,
       'tasks': tasks.map((task) => task.toJson()).toList(),
+      'resources': resources.map((resource) => resource.toJson()).toList(),
     };
   }
 
@@ -149,6 +203,7 @@ class Experiment {
     Object? cellCountLabel = _unset,
     List<String>? tags,
     List<ExperimentTask>? tasks,
+    List<ExperimentResource>? resources,
   }) {
     return Experiment(
       id: id ?? this.id,
@@ -169,6 +224,7 @@ class Experiment {
           : cellCountLabel as String?,
       tags: tags ?? this.tags,
       tasks: tasks ?? this.tasks,
+      resources: resources ?? this.resources,
     );
   }
 }
