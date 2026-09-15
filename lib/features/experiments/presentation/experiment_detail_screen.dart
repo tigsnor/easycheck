@@ -29,10 +29,15 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   late String _experimentType;
   late List<ExperimentTask> _tasks;
   late List<ExperimentResource> _resources;
+  late Experiment _persistedExperiment;
+  late bool _isLocked;
+  String? _editReason;
 
   @override
   void initState() {
     super.initState();
+    _persistedExperiment = widget.experiment;
+    _isLocked = widget.experiment.status == ExperimentStatus.completed;
     _titleController = TextEditingController(text: widget.experiment.title);
     _projectController = TextEditingController(
       text: widget.experiment.projectName ?? '',
@@ -69,14 +74,27 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('실험 노트'),
-        actions: [TextButton(onPressed: _save, child: const Text('저장'))],
+        actions: [
+          if (_isLocked)
+            TextButton(
+              onPressed: _requestUnlock,
+              child: const Text('수정 잠금 해제'),
+            )
+          else
+            TextButton(onPressed: _save, child: const Text('저장')),
+        ],
       ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
+            if (_isLocked) ...[
+              const _CompletionLockBanner(),
+              const SizedBox(height: 12),
+            ],
             TextField(
               controller: _titleController,
+              enabled: !_isLocked,
               style: Theme.of(
                 context,
               ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
@@ -107,8 +125,11 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                           child: Text('Custom'),
                         ),
                       ],
-                      onChanged: (value) =>
-                          setState(() => _experimentType = value ?? 'Custom'),
+                      onChanged: _isLocked
+                          ? null
+                          : (value) => setState(
+                                () => _experimentType = value ?? 'Custom',
+                              ),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<ExperimentStatus>(
@@ -136,18 +157,22 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                           child: Text('보관됨'),
                         ),
                       ],
-                      onChanged: (value) => setState(
-                        () => _status = value ?? ExperimentStatus.draft,
-                      ),
+                      onChanged: _isLocked
+                          ? null
+                          : (value) => setState(
+                                () => _status = value ?? ExperimentStatus.draft,
+                              ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _projectController,
+                      enabled: !_isLocked,
                       decoration: const InputDecoration(labelText: '프로젝트'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _researcherController,
+                      enabled: !_isLocked,
                       textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(
                         labelText: '담당자',
@@ -157,6 +182,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: _cellCountController,
+                      enabled: !_isLocked,
                       decoration: const InputDecoration(
                         labelText: '세포수',
                         hintText: '예: hek293: 1×10^6/ml',
@@ -169,11 +195,13 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
             const SizedBox(height: 16),
             _ExperimentChecklistCard(
               tasks: _tasks,
+              enabled: !_isLocked,
               onChanged: (tasks) => setState(() => _tasks = tasks),
             ),
             const SizedBox(height: 16),
             _ExperimentResourcesCard(
               resources: _resources,
+              enabled: !_isLocked,
               onChanged: (resources) => setState(() => _resources = resources),
             ),
             const SizedBox(height: 16),
@@ -182,6 +210,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                 padding: const EdgeInsets.all(18),
                 child: TextField(
                   controller: _notesController,
+                  enabled: !_isLocked,
                   minLines: 8,
                   maxLines: 16,
                   decoration: const InputDecoration(
@@ -192,8 +221,13 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            if (_persistedExperiment.completedAt != null ||
+                _persistedExperiment.revisions.isNotEmpty) ...[
+              _ExperimentHistoryCard(experiment: _persistedExperiment),
+              const SizedBox(height: 16),
+            ],
             FilledButton.icon(
-              onPressed: _saveAndOpenPlate,
+              onPressed: _isLocked ? null : _saveAndOpenPlate,
               icon: const Icon(Icons.grid_on_rounded),
               label: const Text('96-well Plate 열기'),
             ),
@@ -231,26 +265,56 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       return false;
     }
 
-    await widget.onChanged(
-      widget.experiment.copyWith(
-        title: title,
-        projectName: _projectController.text.trim().isEmpty
-            ? null
-            : _projectController.text.trim(),
-        experimentType: _experimentType,
-        status: _status,
-        updatedAt: DateTime.now(),
-        researcher: _researcherController.text.trim().isEmpty
-            ? null
-            : _researcherController.text.trim(),
-        cellCountLabel: _cellCountController.text.trim().isEmpty
-            ? null
-            : _cellCountController.text.trim(),
-        notes: _notesController.text.trim(),
-        tasks: _tasks,
-        resources: _resources,
-      ),
+    final now = DateTime.now();
+    final revisions = [..._persistedExperiment.revisions];
+    DateTime? completedAt = _persistedExperiment.completedAt;
+    if (_persistedExperiment.status != ExperimentStatus.completed &&
+        _status == ExperimentStatus.completed) {
+      completedAt ??= now;
+      revisions.add(
+        ExperimentRevision(
+          id: 'revision-${now.microsecondsSinceEpoch}',
+          changedAt: now,
+          summary: '실험 완료',
+        ),
+      );
+    }
+    if (_editReason != null) {
+      revisions.add(
+        ExperimentRevision(
+          id: 'revision-${now.microsecondsSinceEpoch}-edit',
+          changedAt: now,
+          summary: '완료 후 수정',
+          reason: _editReason!,
+        ),
+      );
+    }
+    final updated = _persistedExperiment.copyWith(
+      title: title,
+      projectName: _projectController.text.trim().isEmpty
+          ? null
+          : _projectController.text.trim(),
+      experimentType: _experimentType,
+      status: _status,
+      updatedAt: now,
+      researcher: _researcherController.text.trim().isEmpty
+          ? null
+          : _researcherController.text.trim(),
+      cellCountLabel: _cellCountController.text.trim().isEmpty
+          ? null
+          : _cellCountController.text.trim(),
+      notes: _notesController.text.trim(),
+      tasks: _tasks,
+      resources: _resources,
+      completedAt: completedAt,
+      revisions: revisions,
     );
+    await widget.onChanged(updated);
+    _persistedExperiment = updated;
+    _editReason = null;
+    if (_status == ExperimentStatus.completed && mounted) {
+      setState(() => _isLocked = true);
+    }
 
     if (!mounted) {
       return true;
@@ -263,6 +327,52 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     }
 
     return true;
+  }
+
+  Future<void> _requestUnlock() async {
+    final controller = TextEditingController();
+    String? errorText;
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('완료 노트 수정'),
+          content: TextField(
+            key: const ValueKey('completion-edit-reason-field'),
+            controller: controller,
+            autofocus: true,
+            decoration: InputDecoration(
+              labelText: '수정 사유',
+              hintText: '예: 시약 Lot 번호 정정',
+              errorText: errorText,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final value = controller.text.trim();
+                if (value.isEmpty) {
+                  setDialogState(() => errorText = '수정 사유를 입력해주세요.');
+                  return;
+                }
+                Navigator.pop(dialogContext, value);
+              },
+              child: const Text('수정 시작'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (reason != null && mounted) {
+      setState(() {
+        _isLocked = false;
+        _editReason = reason;
+      });
+    }
   }
 
   List<ExperimentTask> _defaultTasks(String experimentType) {
@@ -294,14 +404,82 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   }
 }
 
+class _CompletionLockBanner extends StatelessWidget {
+  const _CompletionLockBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      child: const ListTile(
+        leading: Icon(Icons.lock_outline),
+        title: Text('완료된 실험 노트입니다'),
+        subtitle: Text('내용 변경과 Plate 편집을 시작하려면 수정 사유를 남기고 잠금을 해제하세요.'),
+      ),
+    );
+  }
+}
+
+class _ExperimentHistoryCard extends StatelessWidget {
+  const _ExperimentHistoryCard({required this.experiment});
+
+  final Experiment experiment;
+
+  @override
+  Widget build(BuildContext context) {
+    final revisions = experiment.revisions.reversed.toList();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '변경 이력',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            if (experiment.completedAt != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text('최초 완료: ${_historyDate(experiment.completedAt!)}'),
+              ),
+            for (final revision in revisions)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.history),
+                title: Text(revision.summary),
+                subtitle: Text(
+                  revision.reason.isEmpty
+                      ? _historyDate(revision.changedAt)
+                      : '${_historyDate(revision.changedAt)} · ${revision.reason}',
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _historyDate(DateTime value) {
+    String twoDigits(int number) => number.toString().padLeft(2, '0');
+    return '${value.year}.${twoDigits(value.month)}.${twoDigits(value.day)} '
+        '${twoDigits(value.hour)}:${twoDigits(value.minute)}';
+  }
+}
+
 class _ExperimentChecklistCard extends StatefulWidget {
   const _ExperimentChecklistCard({
     required this.tasks,
     required this.onChanged,
+    required this.enabled,
   });
 
   final List<ExperimentTask> tasks;
   final ValueChanged<List<ExperimentTask>> onChanged;
+  final bool enabled;
 
   @override
   State<_ExperimentChecklistCard> createState() =>
@@ -312,10 +490,12 @@ class _ExperimentResourcesCard extends StatelessWidget {
   const _ExperimentResourcesCard({
     required this.resources,
     required this.onChanged,
+    required this.enabled,
   });
 
   final List<ExperimentResource> resources;
   final ValueChanged<List<ExperimentResource>> onChanged;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -352,17 +532,19 @@ class _ExperimentResourcesCard extends StatelessWidget {
                 subtitle: Text(_resourceDetails(resources[index])),
                 trailing: IconButton(
                   tooltip: '기록 삭제',
-                  onPressed: () {
-                    final updated = [...resources]..removeAt(index);
-                    onChanged(updated);
-                  },
+                  onPressed: enabled
+                      ? () {
+                          final updated = [...resources]..removeAt(index);
+                          onChanged(updated);
+                        }
+                      : null,
                   icon: const Icon(Icons.delete_outline),
                 ),
               ),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
-                onPressed: () => _addResource(context),
+                onPressed: enabled ? () => _addResource(context) : null,
                 icon: const Icon(Icons.add),
                 label: const Text('시약·장비 추가'),
               ),
@@ -599,26 +781,28 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                     : Text(_completedLabel(tasks[index])),
                 secondary: _TaskTimerButton(
                   task: tasks[index],
-                  onPressed: () => _toggleTimer(index),
+                  onPressed: widget.enabled ? () => _toggleTimer(index) : null,
                 ),
                 value: tasks[index].isCompleted,
-                onChanged: (value) {
-                  final updated = [...tasks];
-                  final now = DateTime.now();
-                  updated[index] = tasks[index].copyWith(
-                    isCompleted: value ?? false,
-                    startedAt: value == true
-                        ? tasks[index].startedAt ?? now
-                        : tasks[index].startedAt,
-                    completedAt: value == true ? now : null,
-                  );
-                  widget.onChanged(updated);
-                },
+                onChanged: widget.enabled
+                    ? (value) {
+                        final updated = [...tasks];
+                        final now = DateTime.now();
+                        updated[index] = tasks[index].copyWith(
+                          isCompleted: value ?? false,
+                          startedAt: value == true
+                              ? tasks[index].startedAt ?? now
+                              : tasks[index].startedAt,
+                          completedAt: value == true ? now : null,
+                        );
+                        widget.onChanged(updated);
+                      }
+                    : null,
               ),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
-                onPressed: () => _addTask(context),
+                onPressed: widget.enabled ? () => _addTask(context) : null,
                 icon: const Icon(Icons.add),
                 label: const Text('단계 추가'),
               ),
@@ -719,7 +903,7 @@ class _TaskTimerButton extends StatelessWidget {
   const _TaskTimerButton({required this.task, required this.onPressed});
 
   final ExperimentTask task;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {

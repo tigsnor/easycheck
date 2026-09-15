@@ -145,4 +145,60 @@ void main() {
     expect(saved!.resources.single.name, 'CCK-8');
     expect(saved!.resources.single.lotOrSerial, 'LOT-123');
   });
+
+  testWidgets('locks completed notes and records the reason after editing', (
+    tester,
+  ) async {
+    Experiment? saved;
+    final experiment = Experiment(
+      id: 'experiment-4',
+      title: 'Completed test',
+      status: ExperimentStatus.completed,
+      completedAt: DateTime.utc(2026, 9, 15, 10),
+      createdAt: DateTime.utc(2026, 9, 15),
+      updatedAt: DateTime.utc(2026, 9, 15, 10),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ExperimentDetailScreen(
+          experiment: experiment,
+          onChanged: (experiment) async => saved = experiment,
+        ),
+      ),
+    );
+
+    expect(find.text('완료된 실험 노트입니다'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, '저장'), findsNothing);
+    expect(
+      tester
+          .widget<TextField>(find.widgetWithText(TextField, 'Completed test'))
+          .enabled,
+      isFalse,
+    );
+
+    await tester.tap(find.text('수정 잠금 해제'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '수정 시작'));
+    await tester.pump();
+    expect(find.text('수정 사유를 입력해주세요.'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey('completion-edit-reason-field')),
+      'Lot 번호 정정',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, '수정 시작'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Completed test'),
+      'Corrected test',
+    );
+    await tester.tap(find.widgetWithText(TextButton, '저장'));
+    await tester.pump();
+
+    expect(saved!.title, 'Corrected test');
+    expect(saved!.revisions.single.summary, '완료 후 수정');
+    expect(saved!.revisions.single.reason, 'Lot 번호 정정');
+    expect(find.text('완료된 실험 노트입니다'), findsOneWidget);
+  });
 }

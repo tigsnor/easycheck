@@ -13,6 +13,7 @@ void main() {
         status: ExperimentStatus.planned,
         createdAt: DateTime.utc(2026, 6, 2, 9),
         updatedAt: DateTime.utc(2026, 6, 2, 10),
+        completedAt: DateTime.utc(2026, 6, 2, 11),
         notes: '2-fold dilution',
         cellCountLabel: 'hek293: 1×10^6/ml',
         tags: const ['CCK8', 'DoseResponse'],
@@ -34,6 +35,14 @@ void main() {
             catalogOrModel: 'CK04',
             lotOrSerial: 'LOT-123',
             note: '개봉 2026-06-01',
+          ),
+        ],
+        revisions: [
+          ExperimentRevision(
+            id: 'revision-1',
+            changedAt: DateTime.utc(2026, 6, 2, 12),
+            summary: '완료 후 수정',
+            reason: 'Lot 번호 정정',
           ),
         ],
       );
@@ -65,6 +74,9 @@ void main() {
       expect(restored.resources.single.manufacturer, 'Dojindo');
       expect(restored.resources.single.catalogOrModel, 'CK04');
       expect(restored.resources.single.lotOrSerial, 'LOT-123');
+      expect(restored.completedAt, DateTime.utc(2026, 6, 2, 11));
+      expect(restored.revisions.single.summary, '완료 후 수정');
+      expect(restored.revisions.single.reason, 'Lot 번호 정정');
     });
 
     test('falls back to draft for unknown status names', () {
@@ -92,6 +104,8 @@ void main() {
       expect(restored.notesWithoutCellCountLine, 'passage 4');
       expect(restored.tasks, isEmpty);
       expect(restored.resources, isEmpty);
+      expect(restored.completedAt, isNull);
+      expect(restored.revisions, isEmpty);
     });
   });
 }

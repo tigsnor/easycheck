@@ -105,6 +105,36 @@ class ExperimentResource {
       };
 }
 
+class ExperimentRevision {
+  const ExperimentRevision({
+    required this.id,
+    required this.changedAt,
+    required this.summary,
+    this.reason = '',
+  });
+
+  factory ExperimentRevision.fromJson(Map<String, Object?> json) {
+    return ExperimentRevision(
+      id: json['id'] as String,
+      changedAt: DateTime.parse(json['changedAt'] as String),
+      summary: json['summary'] as String,
+      reason: json['reason'] as String? ?? '',
+    );
+  }
+
+  final String id;
+  final DateTime changedAt;
+  final String summary;
+  final String reason;
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'changedAt': changedAt.toIso8601String(),
+        'summary': summary,
+        'reason': reason,
+      };
+}
+
 class Experiment {
   const Experiment({
     required this.id,
@@ -120,6 +150,8 @@ class Experiment {
     this.tags = const [],
     this.tasks = const [],
     this.resources = const [],
+    this.completedAt,
+    this.revisions = const [],
   });
 
   factory Experiment.fromJson(Map<String, Object?> json) {
@@ -147,6 +179,13 @@ class Experiment {
           .whereType<Map<String, Object?>>()
           .map(ExperimentResource.fromJson)
           .toList(),
+      completedAt: json['completedAt'] == null
+          ? null
+          : DateTime.parse(json['completedAt'] as String),
+      revisions: (json['revisions'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, Object?>>()
+          .map(ExperimentRevision.fromJson)
+          .toList(),
     );
   }
 
@@ -163,6 +202,8 @@ class Experiment {
   final List<String> tags;
   final List<ExperimentTask> tasks;
   final List<ExperimentResource> resources;
+  final DateTime? completedAt;
+  final List<ExperimentRevision> revisions;
 
   String get notesWithoutCellCountLine {
     return notes
@@ -187,6 +228,8 @@ class Experiment {
       'tags': tags,
       'tasks': tasks.map((task) => task.toJson()).toList(),
       'resources': resources.map((resource) => resource.toJson()).toList(),
+      'completedAt': completedAt?.toIso8601String(),
+      'revisions': revisions.map((revision) => revision.toJson()).toList(),
     };
   }
 
@@ -204,6 +247,8 @@ class Experiment {
     List<String>? tags,
     List<ExperimentTask>? tasks,
     List<ExperimentResource>? resources,
+    Object? completedAt = _unset,
+    List<ExperimentRevision>? revisions,
   }) {
     return Experiment(
       id: id ?? this.id,
@@ -225,6 +270,10 @@ class Experiment {
       tags: tags ?? this.tags,
       tasks: tasks ?? this.tasks,
       resources: resources ?? this.resources,
+      completedAt: identical(completedAt, _unset)
+          ? this.completedAt
+          : completedAt as DateTime?,
+      revisions: revisions ?? this.revisions,
     );
   }
 }
