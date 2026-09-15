@@ -15,6 +15,7 @@ import '../../../support/fake_document_exchange_service.dart';
 
 class FakePlateRepository implements PlateRepository {
   Plate? plate;
+  int saveCount = 0;
 
   @override
   Future<void> deletePlate(String experimentId) async {
@@ -26,6 +27,7 @@ class FakePlateRepository implements PlateRepository {
 
   @override
   Future<void> savePlate(Plate plate) async {
+    saveCount++;
     this.plate = plate;
   }
 }
@@ -53,6 +55,55 @@ class FakePlateTemplateRepository implements PlateTemplateRepository {
 }
 
 void main() {
+  testWidgets('shows completed experiment plates without editing controls', (
+    tester,
+  ) async {
+    final repository = FakePlateRepository()
+      ..plate = Plate(
+        id: 'plate-read-only',
+        experimentId: 'experiment-read-only',
+        name: 'Completed Plate',
+      );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlateEditorScreen(
+          experimentId: 'experiment-read-only',
+          experimentTitle: 'Completed experiment',
+          repository: repository,
+          readOnly: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('읽기 전용 Plate'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('bulk-result-import-button')),
+      findsNothing,
+    );
+    expect(
+      tester
+          .widget<IconButton>(
+            find.widgetWithIcon(IconButton, Icons.water_drop_outlined).first,
+          )
+          .onPressed,
+      isNull,
+    );
+    await tester.tap(find.byKey(const ValueKey('plate-template-menu')));
+    await tester.pumpAndSettle();
+    expect(find.text('현재 Plate를 템플릿으로 저장'), findsNothing);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.widgetWithIcon(IconButton, Icons.ios_share_outlined),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    expect(repository.saveCount, 0);
+  });
+
   testWidgets('creates a default plate and renders dilution values', (
     tester,
   ) async {

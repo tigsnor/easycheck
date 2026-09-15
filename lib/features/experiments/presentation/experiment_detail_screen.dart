@@ -76,10 +76,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
         title: const Text('실험 노트'),
         actions: [
           if (_isLocked)
-            TextButton(
-              onPressed: _requestUnlock,
-              child: const Text('수정 잠금 해제'),
-            )
+            TextButton(onPressed: _requestUnlock, child: const Text('수정 잠금 해제'))
           else
             TextButton(onPressed: _save, child: const Text('저장')),
         ],
@@ -227,9 +224,11 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
               const SizedBox(height: 16),
             ],
             FilledButton.icon(
-              onPressed: _isLocked ? null : _saveAndOpenPlate,
+              onPressed: _isLocked
+                  ? () => _openPlate(readOnly: true)
+                  : _saveAndOpenPlate,
               icon: const Icon(Icons.grid_on_rounded),
-              label: const Text('96-well Plate 열기'),
+              label: Text(_isLocked ? '96-well Plate 보기' : '96-well Plate 열기'),
             ),
           ],
         ),
@@ -246,11 +245,16 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       return;
     }
 
-    Navigator.of(context).push(
+    await _openPlate(readOnly: false);
+  }
+
+  Future<void> _openPlate({required bool readOnly}) async {
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => PlateEditorScreen(
           experimentId: widget.experiment.id,
           experimentTitle: _titleController.text.trim(),
+          readOnly: readOnly,
         ),
       ),
     );
@@ -436,10 +440,9 @@ class _ExperimentHistoryCard extends StatelessWidget {
           children: [
             Text(
               '변경 이력',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w800),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
             if (experiment.completedAt != null)
               Padding(
@@ -509,10 +512,9 @@ class _ExperimentResourcesCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Text(
                 '시약 및 장비',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w800),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
             ),
             if (resources.isEmpty)
@@ -673,10 +675,7 @@ class _ResourceEditorDialogState extends State<_ResourceEditorDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('취소'),
         ),
-        FilledButton(
-          onPressed: _save,
-          child: const Text('추가'),
-        ),
+        FilledButton(onPressed: _save, child: const Text('추가')),
       ],
     );
   }

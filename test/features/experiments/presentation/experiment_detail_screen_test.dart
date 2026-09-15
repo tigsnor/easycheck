@@ -176,6 +176,12 @@ void main() {
           .enabled,
       isFalse,
     );
+    await tester.scrollUntilVisible(
+      find.text('96-well Plate 보기'),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('96-well Plate 보기'), findsOneWidget);
 
     await tester.tap(find.text('수정 잠금 해제'));
     await tester.pumpAndSettle();
@@ -189,6 +195,11 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '수정 시작'));
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(
+      find.widgetWithText(TextField, 'Completed test'),
+      -400,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.enterText(
       find.widgetWithText(TextField, 'Completed test'),
       'Corrected test',

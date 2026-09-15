@@ -30,6 +30,7 @@ class PlateEditorScreen extends StatefulWidget {
   const PlateEditorScreen({
     required this.experimentId,
     this.experimentTitle = 'CCK-8 2배 희석 실험 초안',
+    this.readOnly = false,
     PlateRepository? repository,
     DocumentExchangeService? documentExchangeService,
     PlateTemplateRepository? templateRepository,
@@ -42,6 +43,7 @@ class PlateEditorScreen extends StatefulWidget {
 
   final String experimentId;
   final String experimentTitle;
+  final bool readOnly;
   final PlateRepository repository;
   final DocumentExchangeService documentExchangeService;
   final PlateTemplateRepository templateRepository;
@@ -101,20 +103,23 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         actions: [
           IconButton(
             tooltip: '마지막 Plate 변경 실행 취소',
-            onPressed:
-                _undoHistory.isEmpty || _isSaving ? null : _undoLastChange,
+            onPressed: widget.readOnly || _undoHistory.isEmpty || _isSaving
+                ? null
+                : _undoLastChange,
             icon: const Icon(Icons.undo),
           ),
           IconButton(
             tooltip: '선택 영역 그룹 지정',
-            onPressed: plate == null || _selectedPositions.isEmpty
-                ? null
-                : _assignGroupToSelection,
+            onPressed:
+                widget.readOnly || plate == null || _selectedPositions.isEmpty
+                    ? null
+                    : _assignGroupToSelection,
             icon: const Icon(Icons.palette_outlined),
           ),
           IconButton(
             tooltip: '희석 계산 적용',
-            onPressed: plate == null ? null : _openDilutionBuilder,
+            onPressed:
+                widget.readOnly || plate == null ? null : _openDilutionBuilder,
             icon: const Icon(Icons.water_drop_outlined),
           ),
           IconButton(
@@ -123,8 +128,9 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
             icon: const Icon(Icons.ios_share_outlined),
           ),
           PopupMenuButton<_TemplateAction>(
+            key: const ValueKey('plate-template-menu'),
             tooltip: 'Plate 템플릿',
-            enabled: plate != null && !_isSaving,
+            enabled: !widget.readOnly && plate != null && !_isSaving,
             onSelected: (action) {
               switch (action) {
                 case _TemplateAction.save:
@@ -167,7 +173,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
           ),
         ],
       ),
-      floatingActionButton: plate == null
+      floatingActionButton: plate == null || widget.readOnly
           ? null
           : FloatingActionButton.extended(
               key: const ValueKey('bulk-result-import-button'),
@@ -181,6 +187,10 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
             : ListView(
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
                 children: [
+                  if (widget.readOnly) ...[
+                    const _ReadOnlyPlateBanner(),
+                    const SizedBox(height: 18),
+                  ],
                   _ExperimentHeaderCard(
                     title: widget.experimentTitle,
                     series: _demoConcentrations,
@@ -248,16 +258,19 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                         ? null
                         : () =>
                             setState(() => _rangeAnchor = _selectedPosition),
-                    onAssignGroup: _selectedPositions.isEmpty
+                    onAssignGroup: _selectedPositions.isEmpty || widget.readOnly
                         ? null
                         : _assignGroupToSelection,
-                    onApplyDilution: _openDilutionBuilder,
+                    onApplyDilution:
+                        widget.readOnly ? null : _openDilutionBuilder,
                   ),
                   const SizedBox(height: 12),
                   _WellDetailCard(
                     well: _selectedWell,
                     group: _selectedGroup,
-                    onEdit: _selectedWell == null ? null : _editSelectedWell,
+                    onEdit: widget.readOnly || _selectedWell == null
+                        ? null
+                        : _editSelectedWell,
                   ),
                 ],
               ),
@@ -290,7 +303,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     try {
       final stored = await widget.repository.loadPlate(widget.experimentId);
       final plate = stored ?? _buildDefaultPlate();
-      if (stored == null) {
+      if (stored == null && !widget.readOnly) {
         await widget.repository.savePlate(plate);
       }
 
@@ -922,6 +935,23 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       updated[index] = group;
     }
     return updated;
+  }
+}
+
+class _ReadOnlyPlateBanner extends StatelessWidget {
+  const _ReadOnlyPlateBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: const ValueKey('read-only-plate-banner'),
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      child: const ListTile(
+        leading: Icon(Icons.visibility_outlined),
+        title: Text('읽기 전용 Plate'),
+        subtitle: Text('완료된 실험의 배치와 결과를 확인할 수 있지만 변경할 수는 없습니다.'),
+      ),
+    );
   }
 }
 
@@ -2468,7 +2498,7 @@ class _SelectionSummaryCard extends StatelessWidget {
   final WellPosition? rangeAnchor;
   final VoidCallback? onStartRange;
   final VoidCallback? onAssignGroup;
-  final VoidCallback onApplyDilution;
+  final VoidCallback? onApplyDilution;
 
   @override
   Widget build(BuildContext context) {
@@ -3382,8 +3412,9 @@ class _SerialTransferPlanPreview extends StatelessWidget {
       );
     }
 
-    final hasLowVolume =
-        currentPlan.steps.any((step) => step.hasLowSourceVolume);
+    final hasLowVolume = currentPlan.steps.any(
+      (step) => step.hasLowSourceVolume,
+    );
     return Card(
       key: const ValueKey('serial-transfer-plan-preview'),
       color: const Color(0xFFF8F8FA),
@@ -3394,10 +3425,9 @@ class _SerialTransferPlanPreview extends StatelessWidget {
           children: [
             Text(
               '연속 희석 미리보기',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w700),
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
             Text(
