@@ -251,7 +251,11 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                   ),
                   if (plate.revisions.isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    _PlateHistoryCard(revisions: plate.revisions),
+                    _PlateHistoryCard(
+                      revisions: plate.revisions,
+                      onShowAll: () => _showPlateHistory(plate.revisions),
+                      onRestore: widget.readOnly ? null : _restoreRevision,
+                    ),
                   ],
                   const SizedBox(height: 12),
                   _SelectionSummaryCard(
@@ -887,14 +891,20 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     final previous = _plate;
     final savedAt = DateTime.now().toUtc();
     final revisions = previous?.revisions ?? plate.revisions;
+    final retainedRevisions = revisions.length >= 20
+        ? revisions.skip(revisions.length - 19)
+        : revisions;
     final plateToSave = recordHistory
         ? plate.copyWith(
             revisions: [
-              ...revisions,
+              ...retainedRevisions,
               PlateRevision(
                 id: 'plate-revision-${savedAt.microsecondsSinceEpoch}',
                 changedAt: savedAt,
                 summary: changeSummary,
+                snapshot: previous == null
+                    ? null
+                    : PlateSnapshot.fromPlate(previous),
               ),
             ],
           )
@@ -964,6 +974,75 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     }
   }
 
+  Future<void> _showPlateHistory(List<PlateRevision> revisions) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          children: [
+            Text(
+              '전체 Plate 변경 이력',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            for (final revision in revisions.reversed)
+              ListTile(
+                leading: const Icon(Icons.history),
+                title: Text(revision.summary),
+                subtitle: Text(_plateRevisionDate(revision.changedAt)),
+                trailing: widget.readOnly || revision.snapshot == null
+                    ? null
+                    : TextButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _restoreRevision(revision);
+                        },
+                        child: const Text('이 시점으로 복원'),
+                      ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _restoreRevision(PlateRevision revision) async {
+    final plate = _plate;
+    final snapshot = revision.snapshot;
+    if (plate == null || snapshot == null || widget.readOnly) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('이 Plate 상태로 복원할까요?'),
+        content: Text(
+          '${_plateRevisionDate(revision.changedAt)} 이전 상태로 복원합니다. 현재 상태도 변경 이력에 남습니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm-restore-plate-revision'),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('복원'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _savePlate(
+      snapshot.restore(id: plate.id, experimentId: plate.experimentId),
+      successMessage: '선택한 시점의 Plate 상태를 복원했습니다.',
+      changeSummary: '이력 복원: ${revision.summary}',
+    );
+    if (mounted) _clearSelection();
+  }
+
   List<WellGroup> _upsertGroup(List<WellGroup> groups, WellGroup group) {
     final updated = [...groups];
     final index = updated.indexWhere((candidate) => candidate.id == group.id);
@@ -977,9 +1056,15 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
 }
 
 class _PlateHistoryCard extends StatelessWidget {
-  const _PlateHistoryCard({required this.revisions});
+  const _PlateHistoryCard({
+    required this.revisions,
+    required this.onShowAll,
+    required this.onRestore,
+  });
 
   final List<PlateRevision> revisions;
+  final VoidCallback onShowAll;
+  final ValueChanged<PlateRevision>? onRestore;
 
   @override
   Widget build(BuildContext context) {
@@ -1003,21 +1088,33 @@ class _PlateHistoryCard extends StatelessWidget {
                 leading: const Icon(Icons.history),
                 title: Text(revision.summary),
                 subtitle: Text(_plateRevisionDate(revision.changedAt)),
+                trailing: onRestore == null || revision.snapshot == null
+                    ? null
+                    : IconButton(
+                        tooltip: '이 시점으로 복원',
+                        onPressed: () => onRestore!(revision),
+                        icon: const Icon(Icons.restore),
+                      ),
               ),
-            if (revisions.length > 5)
-              Text('최근 5개 표시 · 전체 ${revisions.length}개'),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: onShowAll,
+                child: Text('전체 이력 보기 (${revisions.length})'),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
+}
 
-  String _plateRevisionDate(DateTime value) {
-    final local = value.toLocal();
-    String twoDigits(int number) => number.toString().padLeft(2, '0');
-    return '${local.year}.${twoDigits(local.month)}.${twoDigits(local.day)} '
-        '${twoDigits(local.hour)}:${twoDigits(local.minute)}';
-  }
+String _plateRevisionDate(DateTime value) {
+  final local = value.toLocal();
+  String twoDigits(int number) => number.toString().padLeft(2, '0');
+  return '${local.year}.${twoDigits(local.month)}.${twoDigits(local.day)} '
+      '${twoDigits(local.hour)}:${twoDigits(local.minute)}';
 }
 
 class _ReadOnlyPlateBanner extends StatelessWidget {

@@ -598,6 +598,24 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('결과 · 0.82 OD450'), findsOneWidget);
     expect(find.text('분석 제외'), findsOneWidget);
+
+    final restoreButton = find.widgetWithIcon(IconButton, Icons.restore);
+    await tester.scrollUntilVisible(
+      restoreButton,
+      -400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(restoreButton);
+    await tester.pumpAndSettle();
+    await tester.tap(restoreButton);
+    await tester.pumpAndSettle();
+    expect(find.text('이 Plate 상태로 복원할까요?'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('confirm-restore-plate-revision')),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.plate!.wells.first.resultValue, isNull);
+    expect(repository.plate!.revisions.last.summary, '이력 복원: well 수정: A1');
   });
 
   testWidgets('shows save status and undoes the last plate change', (
@@ -828,24 +846,23 @@ void main() {
           createdAt: DateTime.utc(2026, 6, 12),
           plate: Plate(id: 'source', experimentId: 'source', name: 'Source')
               .copyWith(
-                wells:
-                    Plate(
-                      id: 'source-wells',
-                      experimentId: 'source',
-                      name: 'Source',
-                    ).wells.map((well) {
-                      if (well.position ==
-                          const WellPosition(rowIndex: 0, columnIndex: 0)) {
-                        return well.copyWith(
-                          role: WellRole.treatment,
-                          concentrationValue: 10,
-                          resultValue: 9.9,
-                          excluded: true,
-                        );
-                      }
-                      return well;
-                    }).toList(),
-              ),
+            wells: Plate(
+              id: 'source-wells',
+              experimentId: 'source',
+              name: 'Source',
+            ).wells.map((well) {
+              if (well.position ==
+                  const WellPosition(rowIndex: 0, columnIndex: 0)) {
+                return well.copyWith(
+                  role: WellRole.treatment,
+                  concentrationValue: 10,
+                  resultValue: 9.9,
+                  excluded: true,
+                );
+              }
+              return well;
+            }).toList(),
+          ),
         ),
       );
 

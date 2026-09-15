@@ -50,6 +50,7 @@ void main() {
                   id: 'revision-1',
                   changedAt: DateTime.utc(2026, 6, 17, 13),
                   summary: 'well 수정: A1',
+                  snapshot: PlateSnapshot.fromPlate(plate),
                 ),
               ],
             )
@@ -76,6 +77,14 @@ void main() {
       expect(
         restored.revisions.single.changedAt,
         DateTime.utc(2026, 6, 17, 13),
+      );
+      final restoredSnapshot = restored.revisions.single.snapshot!;
+      expect(restoredSnapshot.wells, hasLength(96));
+      expect(
+        restoredSnapshot
+            .restore(id: 'restored', experimentId: 'experiment-2')
+            .experimentId,
+        'experiment-2',
       );
     });
 
