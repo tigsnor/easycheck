@@ -21,6 +21,7 @@ void main() {
             id: 'task-1',
             title: 'Treatment 처리',
             isCompleted: true,
+            startedAt: DateTime.utc(2026, 6, 2, 9),
             completedAt: DateTime.utc(2026, 6, 2, 9, 30),
           ),
         ],
@@ -42,6 +43,7 @@ void main() {
       expect(restored.tasks, hasLength(1));
       expect(restored.tasks.single.title, 'Treatment 처리');
       expect(restored.tasks.single.isCompleted, isTrue);
+      expect(restored.tasks.single.startedAt, DateTime.utc(2026, 6, 2, 9));
       expect(
         restored.tasks.single.completedAt,
         DateTime.utc(2026, 6, 2, 9, 30),

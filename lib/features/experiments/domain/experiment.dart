@@ -7,6 +7,7 @@ class ExperimentTask {
     required this.id,
     required this.title,
     this.isCompleted = false,
+    this.startedAt,
     this.completedAt,
   });
 
@@ -15,6 +16,9 @@ class ExperimentTask {
       id: json['id'] as String,
       title: json['title'] as String,
       isCompleted: json['isCompleted'] as bool? ?? false,
+      startedAt: json['startedAt'] == null
+          ? null
+          : DateTime.parse(json['startedAt'] as String),
       completedAt: json['completedAt'] == null
           ? null
           : DateTime.parse(json['completedAt'] as String),
@@ -24,20 +28,29 @@ class ExperimentTask {
   final String id;
   final String title;
   final bool isCompleted;
+  final DateTime? startedAt;
   final DateTime? completedAt;
 
   Map<String, Object?> toJson() => {
         'id': id,
         'title': title,
         'isCompleted': isCompleted,
+        'startedAt': startedAt?.toIso8601String(),
         'completedAt': completedAt?.toIso8601String(),
       };
 
-  ExperimentTask copyWith({bool? isCompleted, Object? completedAt = _unset}) {
+  ExperimentTask copyWith({
+    bool? isCompleted,
+    Object? startedAt = _unset,
+    Object? completedAt = _unset,
+  }) {
     return ExperimentTask(
       id: id,
       title: title,
       isCompleted: isCompleted ?? this.isCompleted,
+      startedAt: identical(startedAt, _unset)
+          ? this.startedAt
+          : startedAt as DateTime?,
       completedAt: identical(completedAt, _unset)
           ? this.completedAt
           : completedAt as DateTime?,

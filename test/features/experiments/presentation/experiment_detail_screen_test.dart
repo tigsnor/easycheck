@@ -51,4 +51,47 @@ void main() {
     expect(saved!.tasks.first.completedAt, isNotNull);
     expect(saved!.tasks.last.title, '현미경 사진 촬영');
   });
+
+  testWidgets('records task start, elapsed time, and completion', (
+    tester,
+  ) async {
+    Experiment? saved;
+    final experiment = Experiment(
+      id: 'experiment-2',
+      title: 'Timed CCK-8 test',
+      experimentType: 'CCK-8',
+      createdAt: DateTime.utc(2026, 9, 15),
+      updatedAt: DateTime.utc(2026, 9, 15),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ExperimentDetailScreen(
+          experiment: experiment,
+          onChanged: (experiment) async => saved = experiment,
+        ),
+      ),
+    );
+
+    final timerButton = find.byKey(
+      const ValueKey('experiment-task-timer-default-0'),
+    );
+    await tester.tap(timerButton);
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.textContaining('경과'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, '완료'), findsOneWidget);
+
+    await tester.tap(timerButton);
+    await tester.pump();
+    expect(find.textContaining('완료 ·'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, '저장'));
+    await tester.pump();
+    expect(saved!.tasks.first.startedAt, isNotNull);
+    expect(saved!.tasks.first.completedAt, isNotNull);
+    expect(
+      saved!.tasks.first.completedAt!.isBefore(saved!.tasks.first.startedAt!),
+      isFalse,
+    );
+  });
 }

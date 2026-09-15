@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../plates/presentation/plate_editor_screen.dart';
@@ -267,7 +269,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   }
 }
 
-class _ExperimentChecklistCard extends StatelessWidget {
+class _ExperimentChecklistCard extends StatefulWidget {
   const _ExperimentChecklistCard({
     required this.tasks,
     required this.onChanged,
@@ -277,7 +279,48 @@ class _ExperimentChecklistCard extends StatelessWidget {
   final ValueChanged<List<ExperimentTask>> onChanged;
 
   @override
+  State<_ExperimentChecklistCard> createState() =>
+      _ExperimentChecklistCardState();
+}
+
+class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncTicker();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ExperimentChecklistCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncTicker();
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  void _syncTicker() {
+    final hasRunningTask = widget.tasks.any(
+      (task) => task.startedAt != null && !task.isCompleted,
+    );
+    if (hasRunningTask && _ticker == null) {
+      _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    } else if (!hasRunningTask && _ticker != null) {
+      _ticker?.cancel();
+      _ticker = null;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final tasks = widget.tasks;
     final completedCount = tasks.where((task) => task.isCompleted).length;
     return Card(
       child: Padding(
@@ -316,16 +359,24 @@ class _ExperimentChecklistCard extends StatelessWidget {
                   ),
                 ),
                 subtitle: tasks[index].completedAt == null
-                    ? null
-                    : Text(_completedAtLabel(tasks[index].completedAt!)),
+                    ? _runningLabel(tasks[index])
+                    : Text(_completedLabel(tasks[index])),
+                secondary: _TaskTimerButton(
+                  task: tasks[index],
+                  onPressed: () => _toggleTimer(index),
+                ),
                 value: tasks[index].isCompleted,
                 onChanged: (value) {
                   final updated = [...tasks];
+                  final now = DateTime.now();
                   updated[index] = tasks[index].copyWith(
                     isCompleted: value ?? false,
-                    completedAt: value == true ? DateTime.now() : null,
+                    startedAt: value == true
+                        ? tasks[index].startedAt ?? now
+                        : tasks[index].startedAt,
+                    completedAt: value == true ? now : null,
                   );
-                  onChanged(updated);
+                  widget.onChanged(updated);
                 },
               ),
             Align(
@@ -377,8 +428,8 @@ class _ExperimentChecklistCard extends StatelessWidget {
       ),
     );
     if (title == null || !context.mounted) return;
-    onChanged([
-      ...tasks,
+    widget.onChanged([
+      ...widget.tasks,
       ExperimentTask(
         id: 'custom-${DateTime.now().microsecondsSinceEpoch}',
         title: title,
@@ -386,9 +437,63 @@ class _ExperimentChecklistCard extends StatelessWidget {
     ]);
   }
 
-  String _completedAtLabel(DateTime value) {
+  void _toggleTimer(int index) {
+    final task = widget.tasks[index];
+    final now = DateTime.now();
+    final updated = [...widget.tasks];
+    updated[index] = task.startedAt == null
+        ? task.copyWith(startedAt: now)
+        : task.copyWith(isCompleted: true, completedAt: now);
+    widget.onChanged(updated);
+  }
+
+  Widget? _runningLabel(ExperimentTask task) {
+    final startedAt = task.startedAt;
+    if (startedAt == null) return null;
+    return Text(
+      '${_dateTimeLabel(startedAt)} 시작 · ${_durationLabel(DateTime.now().difference(startedAt))} 경과',
+    );
+  }
+
+  String _completedLabel(ExperimentTask task) {
+    final completedAt = task.completedAt!;
+    final startedAt = task.startedAt;
+    if (startedAt == null) return '${_dateTimeLabel(completedAt)} 완료';
+    return '${_dateTimeLabel(completedAt)} 완료 · ${_durationLabel(completedAt.difference(startedAt))}';
+  }
+
+  String _dateTimeLabel(DateTime value) {
     String twoDigits(int number) => number.toString().padLeft(2, '0');
-    return '${value.year}.${twoDigits(value.month)}.${twoDigits(value.day)} '
-        '${twoDigits(value.hour)}:${twoDigits(value.minute)} 완료';
+    return '${value.year}.${twoDigits(value.month)}.${twoDigits(value.day)} ${twoDigits(value.hour)}:${twoDigits(value.minute)}';
+  }
+
+  String _durationLabel(Duration duration) {
+    final safeSeconds = duration.isNegative ? 0 : duration.inSeconds;
+    final hours = safeSeconds ~/ 3600;
+    final minutes = (safeSeconds % 3600) ~/ 60;
+    final seconds = safeSeconds % 60;
+    String twoDigits(int number) => number.toString().padLeft(2, '0');
+    return hours > 0
+        ? '$hours:${twoDigits(minutes)}:${twoDigits(seconds)}'
+        : '${twoDigits(minutes)}:${twoDigits(seconds)}';
+  }
+}
+
+class _TaskTimerButton extends StatelessWidget {
+  const _TaskTimerButton({required this.task, required this.onPressed});
+
+  final ExperimentTask task;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    if (task.isCompleted) {
+      return const Icon(Icons.check_circle, color: Colors.green);
+    }
+    return TextButton(
+      key: ValueKey('experiment-task-timer-${task.id}'),
+      onPressed: onPressed,
+      child: Text(task.startedAt == null ? '시작' : '완료'),
+    );
   }
 }
