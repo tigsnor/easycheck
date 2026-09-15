@@ -2,6 +2,49 @@ enum ExperimentStatus { draft, planned, inProgress, completed, archived }
 
 const _unset = Object();
 
+class ExperimentTask {
+  const ExperimentTask({
+    required this.id,
+    required this.title,
+    this.isCompleted = false,
+    this.completedAt,
+  });
+
+  factory ExperimentTask.fromJson(Map<String, Object?> json) {
+    return ExperimentTask(
+      id: json['id'] as String,
+      title: json['title'] as String,
+      isCompleted: json['isCompleted'] as bool? ?? false,
+      completedAt: json['completedAt'] == null
+          ? null
+          : DateTime.parse(json['completedAt'] as String),
+    );
+  }
+
+  final String id;
+  final String title;
+  final bool isCompleted;
+  final DateTime? completedAt;
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'title': title,
+        'isCompleted': isCompleted,
+        'completedAt': completedAt?.toIso8601String(),
+      };
+
+  ExperimentTask copyWith({bool? isCompleted, Object? completedAt = _unset}) {
+    return ExperimentTask(
+      id: id,
+      title: title,
+      isCompleted: isCompleted ?? this.isCompleted,
+      completedAt: identical(completedAt, _unset)
+          ? this.completedAt
+          : completedAt as DateTime?,
+    );
+  }
+}
+
 class Experiment {
   const Experiment({
     required this.id,
@@ -15,6 +58,7 @@ class Experiment {
     this.notes = '',
     this.cellCountLabel,
     this.tags = const [],
+    this.tasks = const [],
   });
 
   factory Experiment.fromJson(Map<String, Object?> json) {
@@ -34,6 +78,10 @@ class Experiment {
       tags: (json['tags'] as List<dynamic>? ?? const [])
           .whereType<String>()
           .toList(),
+      tasks: (json['tasks'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, Object?>>()
+          .map(ExperimentTask.fromJson)
+          .toList(),
     );
   }
 
@@ -48,6 +96,7 @@ class Experiment {
   final String notes;
   final String? cellCountLabel;
   final List<String> tags;
+  final List<ExperimentTask> tasks;
 
   String get notesWithoutCellCountLine {
     return notes
@@ -70,6 +119,7 @@ class Experiment {
       'notes': notes,
       'cellCountLabel': cellCountLabel,
       'tags': tags,
+      'tasks': tasks.map((task) => task.toJson()).toList(),
     };
   }
 
@@ -85,6 +135,7 @@ class Experiment {
     String? notes,
     Object? cellCountLabel = _unset,
     List<String>? tags,
+    List<ExperimentTask>? tasks,
   }) {
     return Experiment(
       id: id ?? this.id,
@@ -104,6 +155,7 @@ class Experiment {
           ? this.cellCountLabel
           : cellCountLabel as String?,
       tags: tags ?? this.tags,
+      tasks: tasks ?? this.tasks,
     );
   }
 }

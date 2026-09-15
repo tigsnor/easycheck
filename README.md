@@ -35,6 +35,7 @@ PlateNote는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 - Plate layout과 well별 측정 결과를 메모/엑셀/구글시트에 붙여넣거나 파일로 공유할 수 있는 TSV 내보내기
 - 시작 농도, 희석 배수, 단계 수, 반복 well 수, 방향을 입력해 plate에 적용하는 희석 계산 Builder
 - Stock 농도, well당 부피, 여유분을 이용한 농도별 master mix 피펫팅 계획과 저용량 경고
+- 실험 유형별 기본 실행 단계, 사용자 단계 추가, 완료 시각을 저장하는 실험 실행 체크리스트
 - Blank/Control 누락, 반복 well 부족, 농도 단위 혼용, 일부 결과 누락을 알려주는 실험 준비 점검
 - 분석 제외 well을 반영한 농도별 평균·표본 표준편차·CV·blank 보정·control 대비 정규화
 - 농도별 기초 차트와 분석 reference/series를 포함한 TSV 복사·파일 공유
@@ -46,7 +47,7 @@ PlateNote는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 2. 실제 기기 피드백 기반 키보드/바텀시트/작은 화면 사용성 개선
 3. Android internal testing과 iOS TestFlight 배포 준비
 4. 실험 사진·파일 첨부
-5. 단계별 피펫팅·실험 실행 체크리스트
+5. 피펫팅 계획과 연결되는 serial transfer·단계별 잔여량 계산
 6. 고급 분석 기능(IC50, 통계 검정 등) 검토
 
 진행률은 개발자 검증, 실제 기기 알파 테스트, 단일 사용자 MVP, 단일 사용자 실험실 사용 가능도의 네 단계로 관리합니다. 세부 완료 기준은 [단일 사용자 우선 출시 계획](docs/single-user-release-plan.md)을 따릅니다.

@@ -16,6 +16,14 @@ void main() {
         notes: '2-fold dilution',
         cellCountLabel: 'hek293: 1×10^6/ml',
         tags: const ['CCK8', 'DoseResponse'],
+        tasks: [
+          ExperimentTask(
+            id: 'task-1',
+            title: 'Treatment 처리',
+            isCompleted: true,
+            completedAt: DateTime.utc(2026, 6, 2, 9, 30),
+          ),
+        ],
       );
 
       final restored = Experiment.fromJson(experiment.toJson());
@@ -31,6 +39,13 @@ void main() {
       expect(restored.notes, experiment.notes);
       expect(restored.cellCountLabel, experiment.cellCountLabel);
       expect(restored.tags, experiment.tags);
+      expect(restored.tasks, hasLength(1));
+      expect(restored.tasks.single.title, 'Treatment 처리');
+      expect(restored.tasks.single.isCompleted, isTrue);
+      expect(
+        restored.tasks.single.completedAt,
+        DateTime.utc(2026, 6, 2, 9, 30),
+      );
     });
 
     test('falls back to draft for unknown status names', () {
@@ -56,6 +71,7 @@ void main() {
 
       expect(restored.cellCountLabel, 'hek293: 1×10^6/ml');
       expect(restored.notesWithoutCellCountLine, 'passage 4');
+      expect(restored.tasks, isEmpty);
     });
   });
 }
