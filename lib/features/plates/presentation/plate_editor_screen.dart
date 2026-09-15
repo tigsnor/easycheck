@@ -2822,6 +2822,7 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
   final _pipettingPlanService = const PipettingPlanService();
   late Color _color = widget.suggestedColor;
   bool _includeZeroControl = true;
+  bool _useSerialTransfer = false;
   DilutionDirection _direction = DilutionDirection.topToBottom;
   String? _errorMessage;
 
@@ -2975,10 +2976,27 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
             ),
             const SizedBox(height: 4),
             Text(
-              '각 농도를 stock에서 직접 희석하는 master mix 기준입니다.',
+              _useSerialTransfer
+                  ? '높은 농도에서 다음 농도로 순서대로 옮기며, 각 단계의 분주 후 잔여량을 확보합니다.'
+                  : '각 농도를 stock에서 직접 희석하는 master mix 기준입니다.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: false, label: Text('직접 희석')),
+                  ButtonSegment(value: true, label: Text('연속 희석')),
+                ],
+                selected: {_useSerialTransfer},
+                onSelectionChanged: (values) {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  setState(() => _useSerialTransfer = values.single);
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -3023,11 +3041,14 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
               ],
             ),
             const SizedBox(height: 12),
-            _PipettingPlanPreview(
-              plan: _pipettingPlan,
-              requiredWellCount: _requiredWellCount,
-              selectedCount: widget.selectedCount,
-            ),
+            if (_useSerialTransfer)
+              _SerialTransferPlanPreview(plan: _serialTransferPlan)
+            else
+              _PipettingPlanPreview(
+                plan: _pipettingPlan,
+                requiredWellCount: _requiredWellCount,
+                selectedCount: widget.selectedCount,
+              ),
             if (_errorMessage != null) ...[
               const SizedBox(height: 12),
               Text(
@@ -3122,6 +3143,49 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
     }
   }
 
+  SerialTransferPlan? get _serialTransferPlan {
+    final start = double.tryParse(_startController.text.trim());
+    final factor = double.tryParse(_factorController.text.trim());
+    final steps = int.tryParse(_stepsController.text.trim());
+    final replicates = int.tryParse(_replicateController.text.trim());
+    final stock = double.tryParse(_stockController.text.trim());
+    final volume = double.tryParse(_volumeController.text.trim());
+    final overage = double.tryParse(_overageController.text.trim());
+    if (start == null ||
+        factor == null ||
+        steps == null ||
+        replicates == null ||
+        stock == null ||
+        volume == null ||
+        overage == null) {
+      return null;
+    }
+    try {
+      final concentrations = _dilutionService.buildSeries(
+        DilutionPlan(
+          startConcentration: start,
+          dilutionFactor: factor,
+          steps: steps,
+          includeZeroControl: _includeZeroControl,
+          direction: _direction,
+        ),
+      );
+      return _pipettingPlanService.buildSerialTransferPlan(
+        stockConcentration: stock,
+        concentrationUnit: _unitController.text.trim().isEmpty
+            ? 'µM'
+            : _unitController.text.trim(),
+        concentrations: concentrations,
+        volumePerWell: volume,
+        volumeUnit: 'µL',
+        replicateCount: replicates,
+        overagePercent: overage,
+      );
+    } on ArgumentError {
+      return null;
+    }
+  }
+
   void _save() {
     final groupName = _groupController.text.trim();
     final startConcentration = double.tryParse(_startController.text.trim());
@@ -3130,6 +3194,7 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
     final replicateCount = int.tryParse(_replicateController.text.trim());
     final volumePerWell = double.tryParse(_volumeController.text.trim());
     final pipettingPlan = _pipettingPlan;
+    final serialTransferPlan = _serialTransferPlan;
     final unit = _unitController.text.trim().isEmpty
         ? 'µM'
         : _unitController.text.trim();
@@ -3140,7 +3205,9 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
         steps == null ||
         replicateCount == null ||
         volumePerWell == null ||
-        pipettingPlan == null ||
+        (_useSerialTransfer
+            ? serialTransferPlan == null
+            : pipettingPlan == null) ||
         startConcentration < 0 ||
         dilutionFactor <= 0 ||
         steps <= 0 ||
@@ -3171,7 +3238,7 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
         unit: unit,
         replicateCount: replicateCount,
         volumePerWell: volumePerWell,
-        volumeUnit: pipettingPlan.volumeUnit,
+        volumeUnit: 'µL',
         plan: DilutionPlan(
           startConcentration: startConcentration,
           dilutionFactor: dilutionFactor,
@@ -3283,6 +3350,92 @@ class _PipettingPlanPreview extends StatelessWidget {
               const SizedBox(height: 10),
               Text(
                 '경고: 1 ${currentPlan.volumeUnit} 미만 stock 분주가 있습니다. 실제 피펫 범위를 확인하고 필요하면 중간 희석액을 준비하세요.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.error,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SerialTransferPlanPreview extends StatelessWidget {
+  const _SerialTransferPlanPreview({required this.plan});
+
+  final SerialTransferPlan? plan;
+
+  @override
+  Widget build(BuildContext context) {
+    final currentPlan = plan;
+    if (currentPlan == null) {
+      return Card(
+        key: const ValueKey('serial-transfer-plan-preview'),
+        color: Theme.of(context).colorScheme.errorContainer,
+        child: const Padding(
+          padding: EdgeInsets.all(12),
+          child: Text('Stock 농도와 부피를 확인해주세요. 연속 희석은 높은 농도에서 낮은 농도 순서여야 합니다.'),
+        ),
+      );
+    }
+
+    final hasLowVolume =
+        currentPlan.steps.any((step) => step.hasLowSourceVolume);
+    return Card(
+      key: const ValueKey('serial-transfer-plan-preview'),
+      color: const Color(0xFFF8F8FA),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '연속 희석 미리보기',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '각 농도에서 ${_formatPipettingNumber(currentPlan.volumePerWell * currentPlan.replicateCount * (1 + currentPlan.overagePercent / 100))} ${currentPlan.volumeUnit}를 Plate 분주용으로 남깁니다.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const Divider(height: 20),
+            for (var index = 0; index < currentPlan.steps.length; index++) ...[
+              Builder(
+                builder: (context) {
+                  final step = currentPlan.steps[index];
+                  final concentration =
+                      '${_formatPipettingNumber(step.concentration)} ${currentPlan.concentrationUnit}';
+                  if (step.concentration == 0) {
+                    return Text(
+                      '$concentration control: 희석액 ${_formatPipettingNumber(step.diluentVolume)} ${currentPlan.volumeUnit}',
+                      key: const ValueKey('serial-transfer-zero-control'),
+                    );
+                  }
+                  final sourceName = index == 0
+                      ? 'Stock'
+                      : '${_formatPipettingNumber(step.sourceConcentration!)} ${currentPlan.concentrationUnit}';
+                  final nextText = step.transferToNextVolume > 0
+                      ? ' · 다음 단계로 ${_formatPipettingNumber(step.transferToNextVolume)} ${currentPlan.volumeUnit}'
+                      : '';
+                  return Text(
+                    '$concentration: $sourceName ${_formatPipettingNumber(step.sourceVolume)} + 희석액 ${_formatPipettingNumber(step.diluentVolume)} ${currentPlan.volumeUnit}$nextText',
+                    key: ValueKey('serial-transfer-step-${step.concentration}'),
+                  );
+                },
+              ),
+              if (index != currentPlan.steps.length - 1)
+                const SizedBox(height: 8),
+            ],
+            if (hasLowVolume) ...[
+              const SizedBox(height: 10),
+              Text(
+                '경고: 1 ${currentPlan.volumeUnit} 미만 분주가 있습니다. 중간 희석액과 실제 피펫 범위를 확인하세요.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.error,
                       fontWeight: FontWeight.w700,

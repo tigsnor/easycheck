@@ -265,6 +265,37 @@ void main() {
     expect(find.text('희석 계산 적용'), findsOneWidget);
   });
 
+  testWidgets('previews a serial transfer plan', (tester) async {
+    final repository = FakePlateRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlateEditorScreen(
+          experimentId: 'experiment-1',
+          repository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('희석 계산 적용'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('연속 희석'));
+    await tester.tap(find.text('연속 희석'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('연속 희석 미리보기'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('serial-transfer-step-1000.0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('serial-transfer-zero-control')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('다음 단계로'), findsWidgets);
+  });
+
   testWidgets('imports an Excel-style result matrix into wells', (
     tester,
   ) async {
