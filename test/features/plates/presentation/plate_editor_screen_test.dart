@@ -112,11 +112,7 @@ void main() {
     expect(find.text('Drug A CCK-8'), findsOneWidget);
     expect(find.text('96-well Plate'), findsOneWidget);
     expect(find.textContaining('1000'), findsWidgets);
-    await tester.scrollUntilVisible(
-      find.text('실험군 · 농도 요약'),
-      400,
-      scrollable: find.byType(Scrollable).first,
-    );
+    await tester.tap(find.byKey(const ValueKey('open-plate-overview')));
     await tester.pumpAndSettle();
     expect(find.text('실험군 · 농도 요약'), findsOneWidget);
     expect(find.text('Drug A (A)'), findsOneWidget);
@@ -187,8 +183,9 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('plate-zoom-in-button')));
     await tester.pumpAndSettle();
-    await tester
-        .tap(find.byKey(const ValueKey('assign-selected-group-action')));
+    await tester.tap(
+      find.byKey(const ValueKey('assign-selected-group-action')),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('12개 well 그룹 지정'), findsOneWidget);
@@ -241,8 +238,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('row-header-A')));
     await tester.pumpAndSettle();
 
-    await tester
-        .tap(find.byKey(const ValueKey('assign-selected-group-action')));
+    await tester.tap(
+      find.byKey(const ValueKey('assign-selected-group-action')),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('12개 well 그룹 지정'), findsOneWidget);
@@ -557,14 +555,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('well-A1')));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('농도 · 결과 편집'),
-      400,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.ensureVisible(find.text('농도 · 결과 편집'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('농도 · 결과 편집'));
+    await tester.tap(find.byKey(const ValueKey('edit-selected-well-action')));
     await tester.pumpAndSettle();
 
     await tester.enterText(
@@ -592,14 +583,12 @@ void main() {
     expect(savedWell.note, '기포 확인');
     expect(savedWell.excluded, isTrue);
     expect(repository.plate!.revisions.last.summary, 'well 수정: A1');
-    await tester.scrollUntilVisible(
-      find.text('결과 · 0.82 OD450'),
-      500,
-      scrollable: find.byType(Scrollable).first,
-    );
+    await tester.tap(find.byKey(const ValueKey('show-selected-well-action')));
     await tester.pumpAndSettle();
     expect(find.text('결과 · 0.82 OD450'), findsOneWidget);
     expect(find.text('분석 제외'), findsOneWidget);
+    Navigator.of(tester.element(find.text('A1 상세'))).pop();
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('plate-more-menu')));
     await tester.pumpAndSettle();
@@ -735,11 +724,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('plate-analysis-card')),
-      500,
-      scrollable: find.byType(Scrollable).first,
-    );
+    await tester.tap(find.byKey(const ValueKey('show-analysis-action')));
     await tester.pumpAndSettle();
 
     expect(find.text('기본 결과 분석'), findsOneWidget);
@@ -850,23 +835,24 @@ void main() {
           createdAt: DateTime.utc(2026, 6, 12),
           plate: Plate(id: 'source', experimentId: 'source', name: 'Source')
               .copyWith(
-            wells: Plate(
-              id: 'source-wells',
-              experimentId: 'source',
-              name: 'Source',
-            ).wells.map((well) {
-              if (well.position ==
-                  const WellPosition(rowIndex: 0, columnIndex: 0)) {
-                return well.copyWith(
-                  role: WellRole.treatment,
-                  concentrationValue: 10,
-                  resultValue: 9.9,
-                  excluded: true,
-                );
-              }
-              return well;
-            }).toList(),
-          ),
+                wells:
+                    Plate(
+                      id: 'source-wells',
+                      experimentId: 'source',
+                      name: 'Source',
+                    ).wells.map((well) {
+                      if (well.position ==
+                          const WellPosition(rowIndex: 0, columnIndex: 0)) {
+                        return well.copyWith(
+                          role: WellRole.treatment,
+                          concentrationValue: 10,
+                          resultValue: 9.9,
+                          excluded: true,
+                        );
+                      }
+                      return well;
+                    }).toList(),
+              ),
         ),
       );
 
