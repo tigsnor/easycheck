@@ -4,6 +4,79 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('warns before leaving with unsaved experiment changes', (
+    tester,
+  ) async {
+    final experiment = Experiment(
+      id: 'experiment-unsaved',
+      title: 'Original title',
+      createdAt: DateTime.utc(2026, 9, 16),
+      updatedAt: DateTime.utc(2026, 9, 16),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _DetailRouteHarness(
+          experiment: experiment,
+          onChanged: (_) async {},
+        ),
+      ),
+    );
+    await tester.tap(find.text('상세 열기'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Original title'),
+      'Changed title',
+    );
+    await tester.pump();
+    expect(find.byKey(const ValueKey('unsaved-experiment-changes')), findsOne);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('저장하지 않은 변경이 있습니다'), findsWidgets);
+    await tester.tap(find.text('계속 편집'));
+    await tester.pumpAndSettle();
+    expect(find.text('Changed title'), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('저장하지 않고 나가기'));
+    await tester.pumpAndSettle();
+    expect(find.text('상세 열기'), findsOneWidget);
+  });
+
+  testWidgets('saves experiment changes before leaving when requested', (
+    tester,
+  ) async {
+    Experiment? saved;
+    final experiment = Experiment(
+      id: 'experiment-save-exit',
+      title: 'Before',
+      createdAt: DateTime.utc(2026, 9, 16),
+      updatedAt: DateTime.utc(2026, 9, 16),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _DetailRouteHarness(
+          experiment: experiment,
+          onChanged: (value) async => saved = value,
+        ),
+      ),
+    );
+    await tester.tap(find.text('상세 열기'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Before'), 'After');
+    await tester.pump();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('저장 후 나가기'));
+    await tester.pumpAndSettle();
+
+    expect(saved?.title, 'After');
+    expect(find.text('상세 열기'), findsOneWidget);
+  });
+
   testWidgets('tracks and saves experiment execution tasks', (tester) async {
     Experiment? saved;
     final experiment = Experiment(
@@ -212,4 +285,33 @@ void main() {
     expect(saved!.revisions.single.reason, 'Lot 번호 정정');
     expect(find.text('완료된 실험 노트입니다'), findsOneWidget);
   });
+}
+
+class _DetailRouteHarness extends StatelessWidget {
+  const _DetailRouteHarness({
+    required this.experiment,
+    required this.onChanged,
+  });
+
+  final Experiment experiment;
+  final Future<void> Function(Experiment) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: FilledButton(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => ExperimentDetailScreen(
+                experiment: experiment,
+                onChanged: onChanged,
+              ),
+            ),
+          ),
+          child: const Text('상세 열기'),
+        ),
+      ),
+    );
+  }
 }

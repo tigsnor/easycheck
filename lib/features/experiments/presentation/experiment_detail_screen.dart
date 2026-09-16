@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
@@ -32,6 +33,9 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   late Experiment _persistedExperiment;
   late bool _isLocked;
   String? _editReason;
+  late String _savedFingerprint;
+  bool _isSaving = false;
+  bool _allowPop = false;
 
   @override
   void initState() {
@@ -57,10 +61,29 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
         ? _defaultTasks(widget.experiment.experimentType)
         : [...widget.experiment.tasks];
     _resources = [...widget.experiment.resources];
+    for (final controller in [
+      _titleController,
+      _projectController,
+      _cellCountController,
+      _researcherController,
+      _notesController,
+    ]) {
+      controller.addListener(_onFormChanged);
+    }
+    _savedFingerprint = _fingerprint();
   }
 
   @override
   void dispose() {
+    for (final controller in [
+      _titleController,
+      _projectController,
+      _cellCountController,
+      _researcherController,
+      _notesController,
+    ]) {
+      controller.removeListener(_onFormChanged);
+    }
     _titleController.dispose();
     _projectController.dispose();
     _cellCountController.dispose();
@@ -71,169 +94,249 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('실험 노트'),
-        actions: [
-          if (_isLocked)
-            TextButton(onPressed: _requestUnlock, child: const Text('수정 잠금 해제'))
-          else
-            TextButton(onPressed: _save, child: const Text('저장')),
-        ],
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            if (_isLocked) ...[
-              const _CompletionLockBanner(),
-              const SizedBox(height: 12),
-            ],
-            TextField(
-              controller: _titleController,
-              enabled: !_isLocked,
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                hintText: '실험 제목',
+    return PopScope(
+      canPop: _allowPop || (!_hasUnsavedChanges && !_isSaving),
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && !_isSaving) _confirmExit();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('실험 노트'),
+          actions: [
+            if (_isLocked)
+              TextButton(
+                onPressed: _requestUnlock,
+                child: const Text('수정 잠금 해제'),
+              )
+            else
+              TextButton(
+                onPressed: _isSaving ? null : _save,
+                child: Text(_isSaving ? '저장 중…' : '저장'),
               ),
-            ),
-            const SizedBox(height: 10),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  children: [
-                    DropdownButtonFormField<String>(
-                      initialValue: _experimentType,
-                      decoration: const InputDecoration(labelText: '실험 유형'),
-                      items: const [
-                        DropdownMenuItem(value: 'CCK-8', child: Text('CCK-8')),
-                        DropdownMenuItem(value: 'MTT', child: Text('MTT')),
-                        DropdownMenuItem(value: 'ELISA', child: Text('ELISA')),
-                        DropdownMenuItem(
-                          value: 'Dose-response',
-                          child: Text('Dose-response'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Custom',
-                          child: Text('Custom'),
-                        ),
-                      ],
-                      onChanged: _isLocked
-                          ? null
-                          : (value) => setState(
-                                () => _experimentType = value ?? 'Custom',
-                              ),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<ExperimentStatus>(
-                      initialValue: _status,
-                      decoration: const InputDecoration(labelText: '상태'),
-                      items: const [
-                        DropdownMenuItem(
-                          value: ExperimentStatus.draft,
-                          child: Text('초안'),
-                        ),
-                        DropdownMenuItem(
-                          value: ExperimentStatus.planned,
-                          child: Text('계획됨'),
-                        ),
-                        DropdownMenuItem(
-                          value: ExperimentStatus.inProgress,
-                          child: Text('진행 중'),
-                        ),
-                        DropdownMenuItem(
-                          value: ExperimentStatus.completed,
-                          child: Text('완료'),
-                        ),
-                        DropdownMenuItem(
-                          value: ExperimentStatus.archived,
-                          child: Text('보관됨'),
-                        ),
-                      ],
-                      onChanged: _isLocked
-                          ? null
-                          : (value) => setState(
-                                () => _status = value ?? ExperimentStatus.draft,
-                              ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _projectController,
-                      enabled: !_isLocked,
-                      decoration: const InputDecoration(labelText: '프로젝트'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _researcherController,
-                      enabled: !_isLocked,
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: '담당자',
-                        hintText: '예: 홍길동',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _cellCountController,
-                      enabled: !_isLocked,
-                      decoration: const InputDecoration(
-                        labelText: '세포수',
-                        hintText: '예: hek293: 1×10^6/ml',
-                      ),
-                    ),
-                  ],
+          ],
+        ),
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              if (_hasUnsavedChanges) ...[
+                const _UnsavedChangesBanner(),
+                const SizedBox(height: 12),
+              ],
+              if (_isLocked) ...[
+                const _CompletionLockBanner(),
+                const SizedBox(height: 12),
+              ],
+              TextField(
+                controller: _titleController,
+                enabled: !_isLocked,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  hintText: '실험 제목',
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            _ExperimentChecklistCard(
-              tasks: _tasks,
-              enabled: !_isLocked,
-              onChanged: (tasks) => setState(() => _tasks = tasks),
-            ),
-            const SizedBox(height: 16),
-            _ExperimentResourcesCard(
-              resources: _resources,
-              enabled: !_isLocked,
-              onChanged: (resources) => setState(() => _resources = resources),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: TextField(
-                  controller: _notesController,
-                  enabled: !_isLocked,
-                  minLines: 8,
-                  maxLines: 16,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    hintText: '실험 조건, 세포주, 처리 시간, 관찰 내용을 메모하세요.',
+              const SizedBox(height: 10),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    children: [
+                      DropdownButtonFormField<String>(
+                        initialValue: _experimentType,
+                        decoration: const InputDecoration(labelText: '실험 유형'),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'CCK-8',
+                            child: Text('CCK-8'),
+                          ),
+                          DropdownMenuItem(value: 'MTT', child: Text('MTT')),
+                          DropdownMenuItem(
+                            value: 'ELISA',
+                            child: Text('ELISA'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Dose-response',
+                            child: Text('Dose-response'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Custom',
+                            child: Text('Custom'),
+                          ),
+                        ],
+                        onChanged: _isLocked
+                            ? null
+                            : (value) => setState(
+                                () => _experimentType = value ?? 'Custom',
+                              ),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<ExperimentStatus>(
+                        initialValue: _status,
+                        decoration: const InputDecoration(labelText: '상태'),
+                        items: const [
+                          DropdownMenuItem(
+                            value: ExperimentStatus.draft,
+                            child: Text('초안'),
+                          ),
+                          DropdownMenuItem(
+                            value: ExperimentStatus.planned,
+                            child: Text('계획됨'),
+                          ),
+                          DropdownMenuItem(
+                            value: ExperimentStatus.inProgress,
+                            child: Text('진행 중'),
+                          ),
+                          DropdownMenuItem(
+                            value: ExperimentStatus.completed,
+                            child: Text('완료'),
+                          ),
+                          DropdownMenuItem(
+                            value: ExperimentStatus.archived,
+                            child: Text('보관됨'),
+                          ),
+                        ],
+                        onChanged: _isLocked
+                            ? null
+                            : (value) => setState(
+                                () => _status = value ?? ExperimentStatus.draft,
+                              ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _projectController,
+                        enabled: !_isLocked,
+                        decoration: const InputDecoration(labelText: '프로젝트'),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _researcherController,
+                        enabled: !_isLocked,
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(
+                          labelText: '담당자',
+                          hintText: '예: 홍길동',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _cellCountController,
+                        enabled: !_isLocked,
+                        decoration: const InputDecoration(
+                          labelText: '세포수',
+                          hintText: '예: hek293: 1×10^6/ml',
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            if (_persistedExperiment.completedAt != null ||
-                _persistedExperiment.revisions.isNotEmpty) ...[
-              _ExperimentHistoryCard(experiment: _persistedExperiment),
               const SizedBox(height: 16),
+              _ExperimentChecklistCard(
+                tasks: _tasks,
+                enabled: !_isLocked,
+                onChanged: (tasks) => setState(() => _tasks = tasks),
+              ),
+              const SizedBox(height: 16),
+              _ExperimentResourcesCard(
+                resources: _resources,
+                enabled: !_isLocked,
+                onChanged: (resources) =>
+                    setState(() => _resources = resources),
+              ),
+              const SizedBox(height: 16),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: TextField(
+                    controller: _notesController,
+                    enabled: !_isLocked,
+                    minLines: 8,
+                    maxLines: 16,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      hintText: '실험 조건, 세포주, 처리 시간, 관찰 내용을 메모하세요.',
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (_persistedExperiment.completedAt != null ||
+                  _persistedExperiment.revisions.isNotEmpty) ...[
+                _ExperimentHistoryCard(experiment: _persistedExperiment),
+                const SizedBox(height: 16),
+              ],
+              FilledButton.icon(
+                onPressed: _isLocked
+                    ? () => _openPlate(readOnly: true)
+                    : _saveAndOpenPlate,
+                icon: const Icon(Icons.grid_on_rounded),
+                label: Text(
+                  _isLocked ? '96-well Plate 보기' : '96-well Plate 열기',
+                ),
+              ),
             ],
-            FilledButton.icon(
-              onPressed: _isLocked
-                  ? () => _openPlate(readOnly: true)
-                  : _saveAndOpenPlate,
-              icon: const Icon(Icons.grid_on_rounded),
-              label: Text(_isLocked ? '96-well Plate 보기' : '96-well Plate 열기'),
-            ),
-          ],
+          ),
         ),
       ),
     );
+  }
+
+  bool get _hasUnsavedChanges =>
+      !_isLocked &&
+      (_editReason != null || _fingerprint() != _savedFingerprint);
+
+  String _fingerprint() => jsonEncode({
+    'title': _titleController.text.trim(),
+    'project': _projectController.text.trim(),
+    'cellCount': _cellCountController.text.trim(),
+    'researcher': _researcherController.text.trim(),
+    'notes': _notesController.text.trim(),
+    'status': _status.name,
+    'experimentType': _experimentType,
+    'tasks': _tasks.map((task) => task.toJson()).toList(),
+    'resources': _resources.map((resource) => resource.toJson()).toList(),
+  });
+
+  void _onFormChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _confirmExit() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final action = await showDialog<_ExperimentExitAction>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('저장하지 않은 변경이 있습니다'),
+        content: const Text('저장한 뒤 나가거나, 변경 내용을 버리고 나갈 수 있습니다.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('계속 편집'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(context, _ExperimentExitAction.discard),
+            child: const Text('저장하지 않고 나가기'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, _ExperimentExitAction.save),
+            child: const Text('저장 후 나가기'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == _ExperimentExitAction.save &&
+        !await _save(showMessage: false)) {
+      return;
+    }
+    if (mounted) {
+      setState(() => _allowPop = true);
+      Navigator.of(context).pop();
+    }
   }
 
   Future<void> _saveAndOpenPlate() async {
@@ -261,6 +364,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   }
 
   Future<bool> _save({bool showMessage = true}) async {
+    if (_isSaving) return false;
     final title = _titleController.text.trim();
     if (title.isEmpty) {
       ScaffoldMessenger.of(
@@ -269,6 +373,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       return false;
     }
 
+    setState(() => _isSaving = true);
     final now = DateTime.now();
     final revisions = [..._persistedExperiment.revisions];
     DateTime? completedAt = _persistedExperiment.completedAt;
@@ -313,11 +418,25 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       completedAt: completedAt,
       revisions: revisions,
     );
-    await widget.onChanged(updated);
+    try {
+      await widget.onChanged(updated);
+    } on Object catch (error) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('실험 노트를 저장하지 못했습니다: $error')));
+      }
+      return false;
+    }
     _persistedExperiment = updated;
     _editReason = null;
-    if (_status == ExperimentStatus.completed && mounted) {
-      setState(() => _isLocked = true);
+    _savedFingerprint = _fingerprint();
+    if (mounted) {
+      setState(() {
+        _isSaving = false;
+        if (_status == ExperimentStatus.completed) _isLocked = true;
+      });
     }
 
     if (!mounted) {
@@ -382,29 +501,54 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   List<ExperimentTask> _defaultTasks(String experimentType) {
     final titles = switch (experimentType) {
       'CCK-8' || 'MTT' => const [
-          '세포 seeding',
-          '세포 부착 incubation',
-          'Treatment 처리',
-          'Assay reagent 투입',
-          '발색 incubation',
-          'Plate reader 측정',
-          '결과 파일 가져오기',
-        ],
+        '세포 seeding',
+        '세포 부착 incubation',
+        'Treatment 처리',
+        'Assay reagent 투입',
+        '발색 incubation',
+        'Plate reader 측정',
+        '결과 파일 가져오기',
+      ],
       'ELISA' => const [
-          '시료 및 standard 준비',
-          '시료 반응',
-          '세척',
-          'Detection reagent 반응',
-          '기질 반응',
-          'Plate reader 측정',
-          '결과 파일 가져오기',
-        ],
+        '시료 및 standard 준비',
+        '시료 반응',
+        '세척',
+        'Detection reagent 반응',
+        '기질 반응',
+        'Plate reader 측정',
+        '결과 파일 가져오기',
+      ],
       _ => const ['실험 준비', 'Treatment 처리', '결과 측정', '결과 파일 가져오기'],
     };
     return [
       for (var index = 0; index < titles.length; index++)
         ExperimentTask(id: 'default-$index', title: titles[index]),
     ];
+  }
+}
+
+enum _ExperimentExitAction { save, discard }
+
+class _UnsavedChangesBanner extends StatelessWidget {
+  const _UnsavedChangesBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      key: const ValueKey('unsaved-experiment-changes'),
+      color: Theme.of(context).colorScheme.tertiaryContainer,
+      borderRadius: BorderRadius.circular(12),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
+          children: [
+            Icon(Icons.edit_note_outlined),
+            SizedBox(width: 8),
+            Expanded(child: Text('저장하지 않은 변경이 있습니다.')),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -753,8 +897,8 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                     child: Text(
                       '실험 실행 체크리스트',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
                   Text('$completedCount/${tasks.length} 완료'),
