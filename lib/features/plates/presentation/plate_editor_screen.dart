@@ -25,7 +25,13 @@ import '../templates/data/plate_template_repository.dart';
 import '../templates/domain/default_plate_templates.dart';
 import '../templates/domain/plate_template.dart';
 
-enum _TemplateAction { save, apply, manage }
+enum _PlateMoreAction {
+  export,
+  history,
+  saveTemplate,
+  applyTemplate,
+  manageTemplates,
+}
 
 class PlateEditorScreen extends StatefulWidget {
   const PlateEditorScreen({
@@ -116,7 +122,22 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('PlateNote'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              plate?.name ?? 'Plate',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (plate != null)
+              _PlateSaveStatus(
+                isSaving: _isSaving,
+                lastSavedAt: _lastSavedAt,
+                compact: true,
+              ),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: '마지막 Plate 변경 실행 취소',
@@ -125,78 +146,92 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                 : _undoLastChange,
             icon: const Icon(Icons.undo),
           ),
-          IconButton(
-            tooltip: '선택 영역 그룹 지정',
-            onPressed:
-                widget.readOnly || plate == null || _selectedPositions.isEmpty
-                    ? null
-                    : _assignGroupToSelection,
-            icon: const Icon(Icons.palette_outlined),
-          ),
-          IconButton(
-            tooltip: '희석 계산 적용',
-            onPressed:
-                widget.readOnly || plate == null ? null : _openDilutionBuilder,
-            icon: const Icon(Icons.water_drop_outlined),
-          ),
-          IconButton(
-            tooltip: 'Plate 내보내기',
-            onPressed: plate == null ? null : _showPlateExport,
-            icon: const Icon(Icons.ios_share_outlined),
-          ),
-          PopupMenuButton<_TemplateAction>(
-            key: const ValueKey('plate-template-menu'),
-            tooltip: 'Plate 템플릿',
-            enabled: !widget.readOnly && plate != null && !_isSaving,
+          PopupMenuButton<_PlateMoreAction>(
+            key: const ValueKey('plate-more-menu'),
+            tooltip: 'Plate 더보기',
+            enabled: plate != null && !_isSaving,
             onSelected: (action) {
               switch (action) {
-                case _TemplateAction.save:
+                case _PlateMoreAction.export:
+                  _showPlateExport();
+                  return;
+                case _PlateMoreAction.history:
+                  _showPlateHistory(plate!.revisions);
+                  return;
+                case _PlateMoreAction.saveTemplate:
                   _saveCurrentPlateAsTemplate();
                   return;
-                case _TemplateAction.apply:
+                case _PlateMoreAction.applyTemplate:
                   _chooseAndApplyTemplate();
                   return;
-                case _TemplateAction.manage:
+                case _PlateMoreAction.manageTemplates:
                   _managePlateTemplates();
                   return;
               }
             },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: _TemplateAction.save,
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: _PlateMoreAction.export,
                 child: ListTile(
-                  leading: Icon(Icons.bookmark_add_outlined),
-                  title: Text('현재 Plate를 템플릿으로 저장'),
+                  leading: Icon(Icons.ios_share_outlined),
+                  title: Text('Plate 전체 내보내기'),
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
               PopupMenuItem(
-                value: _TemplateAction.apply,
-                child: ListTile(
-                  leading: Icon(Icons.library_add_check_outlined),
-                  title: Text('저장된 템플릿 적용'),
+                value: _PlateMoreAction.history,
+                enabled: plate?.revisions.isNotEmpty == true,
+                child: const ListTile(
+                  leading: Icon(Icons.history),
+                  title: Text('전체 변경 이력'),
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
-              PopupMenuItem(
-                value: _TemplateAction.manage,
-                child: ListTile(
-                  leading: Icon(Icons.tune_outlined),
-                  title: Text('템플릿 관리'),
-                  contentPadding: EdgeInsets.zero,
+              if (!widget.readOnly) const PopupMenuDivider(),
+              if (!widget.readOnly)
+                const PopupMenuItem(
+                  value: _PlateMoreAction.saveTemplate,
+                  child: ListTile(
+                    leading: Icon(Icons.bookmark_add_outlined),
+                    title: Text('현재 Plate를 템플릿으로 저장'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
                 ),
-              ),
+              if (!widget.readOnly)
+                const PopupMenuItem(
+                  value: _PlateMoreAction.applyTemplate,
+                  child: ListTile(
+                    leading: Icon(Icons.library_add_check_outlined),
+                    title: Text('저장된 템플릿 적용'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              if (!widget.readOnly)
+                const PopupMenuItem(
+                  value: _PlateMoreAction.manageTemplates,
+                  child: ListTile(
+                    leading: Icon(Icons.tune_outlined),
+                    title: Text('템플릿 관리'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
             ],
           ),
         ],
       ),
-      floatingActionButton: plate == null || widget.readOnly
+      bottomNavigationBar: plate == null || widget.readOnly
           ? null
-          : FloatingActionButton.extended(
-              key: const ValueKey('bulk-result-import-button'),
-              onPressed: _openBulkResultImport,
-              icon: const Icon(Icons.table_view_outlined),
-              label: const Text('결과 일괄 입력'),
+          : _PlateContextActionBar(
+              selectedCount: _selectedPositions.length,
+              hasSingleSelection: _selectedPositions.length == 1,
+              isRangeActive: _rangeAnchor != null,
+              isSaving: _isSaving,
+              onEdit: _editSelectedWell,
+              onAssignGroup: _assignGroupToSelection,
+              onStartRange: _editorController.startRange,
+              onApplyDilution: _openDilutionBuilder,
+              onClearSelection: _clearSelection,
+              onBulkResultImport: _openBulkResultImport,
             ),
       body: SafeArea(
         child: _isLoading || plate == null
@@ -213,35 +248,6 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                     series: _demoConcentrations,
                   ),
                   const SizedBox(height: 18),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              plate.name,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleLarge
-                                  ?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                            const SizedBox(height: 2),
-                            _PlateSaveStatus(
-                              isSaving: _isSaving,
-                              lastSavedAt: _lastSavedAt,
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (_selectedPositions.isNotEmpty)
-                        TextButton(
-                          onPressed: _clearSelection,
-                          child: const Text('선택 해제'),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
                   _PlateGrid(
                     plate: plate,
                     selectedPositions: _selectedPositions,
@@ -266,27 +272,6 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                     onCopy: () => _copyAnalysisExport(plate),
                     onShare: (shareContext) =>
                         _shareAnalysisExport(plate, shareContext),
-                  ),
-                  if (plate.revisions.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    _PlateHistoryCard(
-                      revisions: plate.revisions,
-                      onShowAll: () => _showPlateHistory(plate.revisions),
-                      onRestore: widget.readOnly ? null : _restoreRevision,
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  _SelectionSummaryCard(
-                    selectedCount: _selectedPositions.length,
-                    rangeAnchor: _rangeAnchor,
-                    onStartRange: _selectedPosition == null
-                        ? null
-                        : _editorController.startRange,
-                    onAssignGroup: _selectedPositions.isEmpty || widget.readOnly
-                        ? null
-                        : _assignGroupToSelection,
-                    onApplyDilution:
-                        widget.readOnly ? null : _openDilutionBuilder,
                   ),
                   const SizedBox(height: 12),
                   _WellDetailCard(
@@ -999,61 +984,6 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   }
 }
 
-class _PlateHistoryCard extends StatelessWidget {
-  const _PlateHistoryCard({
-    required this.revisions,
-    required this.onShowAll,
-    required this.onRestore,
-  });
-
-  final List<PlateRevision> revisions;
-  final VoidCallback onShowAll;
-  final ValueChanged<PlateRevision>? onRestore;
-
-  @override
-  Widget build(BuildContext context) {
-    final recent = revisions.reversed.take(5);
-    return Card(
-      key: const ValueKey('plate-history-card'),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Plate 변경 이력',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            for (final revision in recent)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.history),
-                title: Text(revision.summary),
-                subtitle: Text(_plateRevisionDate(revision.changedAt)),
-                trailing: onRestore == null || revision.snapshot == null
-                    ? null
-                    : IconButton(
-                        tooltip: '이 시점으로 복원',
-                        onPressed: () => onRestore!(revision),
-                        icon: const Icon(Icons.restore),
-                      ),
-              ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: onShowAll,
-                child: Text('전체 이력 보기 (${revisions.length})'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 String _plateRevisionDate(DateTime value) {
   final local = value.toLocal();
   String twoDigits(int number) => number.toString().padLeft(2, '0');
@@ -1079,10 +1009,15 @@ class _ReadOnlyPlateBanner extends StatelessWidget {
 }
 
 class _PlateSaveStatus extends StatelessWidget {
-  const _PlateSaveStatus({required this.isSaving, required this.lastSavedAt});
+  const _PlateSaveStatus({
+    required this.isSaving,
+    required this.lastSavedAt,
+    this.compact = false,
+  });
 
   final bool isSaving;
   final DateTime? lastSavedAt;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -1106,7 +1041,12 @@ class _PlateSaveStatus extends StatelessWidget {
           key: const ValueKey('plate-save-status'),
           style: Theme.of(
             context,
-          ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+          ).textTheme.bodySmall?.copyWith(
+                color: compact
+                    ? Theme.of(context).colorScheme.onSurfaceVariant
+                    : Colors.black54,
+                fontSize: compact ? 11 : null,
+              ),
         ),
       ],
     );
@@ -2608,64 +2548,142 @@ class _PlateValidationIssueRow extends StatelessWidget {
   }
 }
 
-class _SelectionSummaryCard extends StatelessWidget {
-  const _SelectionSummaryCard({
+class _PlateContextActionBar extends StatelessWidget {
+  const _PlateContextActionBar({
     required this.selectedCount,
-    required this.rangeAnchor,
-    required this.onStartRange,
+    required this.hasSingleSelection,
+    required this.isRangeActive,
+    required this.isSaving,
+    required this.onEdit,
     required this.onAssignGroup,
+    required this.onStartRange,
     required this.onApplyDilution,
+    required this.onClearSelection,
+    required this.onBulkResultImport,
   });
 
   final int selectedCount;
-  final WellPosition? rangeAnchor;
-  final VoidCallback? onStartRange;
-  final VoidCallback? onAssignGroup;
-  final VoidCallback? onApplyDilution;
+  final bool hasSingleSelection;
+  final bool isRangeActive;
+  final bool isSaving;
+  final VoidCallback onEdit;
+  final VoidCallback onAssignGroup;
+  final VoidCallback onStartRange;
+  final VoidCallback onApplyDilution;
+  final VoidCallback onClearSelection;
+  final VoidCallback onBulkResultImport;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              selectedCount == 0 ? '선택 영역 없음' : '$selectedCount개 well 선택됨',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              rangeAnchor == null
-                  ? '행/열 헤더를 탭하거나 well을 길게 눌러 범위를 선택할 수 있습니다.'
-                  : '${rangeAnchor!.label}부터 끝 well을 탭하면 사각형 범위를 선택합니다.',
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: onStartRange,
-                  icon: const Icon(Icons.select_all_outlined),
-                  label: const Text('범위 시작'),
+    final hasSelection = selectedCount > 0;
+    return Material(
+      key: const ValueKey('plate-context-action-bar'),
+      elevation: 8,
+      color: Theme.of(context).colorScheme.surface,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(
+                  hasSelection
+                      ? isRangeActive
+                          ? '범위의 끝 well을 선택하세요'
+                          : '$selectedCount개 well 선택됨'
+                      : 'Plate 작업',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                 ),
-                FilledButton.icon(
-                  onPressed: onAssignGroup,
-                  icon: const Icon(Icons.palette_outlined),
-                  label: const Text('그룹 지정'),
+              ),
+              const SizedBox(height: 6),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: hasSelection
+                      ? [
+                          if (hasSingleSelection)
+                            _ContextActionButton(
+                              key: const ValueKey('edit-selected-well-action'),
+                              icon: Icons.edit_outlined,
+                              label: '편집',
+                              onPressed: isSaving ? null : onEdit,
+                            ),
+                          _ContextActionButton(
+                            key: const ValueKey('assign-selected-group-action'),
+                            icon: Icons.palette_outlined,
+                            label: '그룹 지정',
+                            onPressed: isSaving ? null : onAssignGroup,
+                          ),
+                          _ContextActionButton(
+                            key: const ValueKey('start-range-action'),
+                            icon: Icons.select_all_outlined,
+                            label: isRangeActive ? '범위 선택 중' : '범위',
+                            onPressed:
+                                isSaving || isRangeActive ? null : onStartRange,
+                          ),
+                          _ContextActionButton(
+                            key: const ValueKey('apply-dilution-action'),
+                            icon: Icons.water_drop_outlined,
+                            label: '희석 적용',
+                            onPressed: isSaving ? null : onApplyDilution,
+                          ),
+                          _ContextActionButton(
+                            key: const ValueKey('clear-selection-action'),
+                            icon: Icons.deselect,
+                            label: '선택 해제',
+                            onPressed: isSaving ? null : onClearSelection,
+                          ),
+                        ]
+                      : [
+                          _ContextActionButton(
+                            key: const ValueKey('bulk-result-import-button'),
+                            icon: Icons.table_view_outlined,
+                            label: '결과 일괄 입력',
+                            onPressed: isSaving ? null : onBulkResultImport,
+                          ),
+                          _ContextActionButton(
+                            key: const ValueKey('apply-dilution-action'),
+                            icon: Icons.water_drop_outlined,
+                            label: '희석 적용',
+                            onPressed: isSaving ? null : onApplyDilution,
+                          ),
+                        ],
                 ),
-                FilledButton.tonalIcon(
-                  onPressed: onApplyDilution,
-                  icon: const Icon(Icons.water_drop_outlined),
-                  label: const Text('희석 계산'),
-                ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+class _ContextActionButton extends StatelessWidget {
+  const _ContextActionButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    super.key,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: FilledButton.tonalIcon(
+        onPressed: onPressed,
+        icon: Icon(icon),
+        label: Text(label),
       ),
     );
   }
@@ -3229,6 +3247,7 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
+                key: const ValueKey('confirm-dilution-apply'),
                 onPressed: _save,
                 icon: const Icon(Icons.check),
                 label: const Text('희석 적용'),

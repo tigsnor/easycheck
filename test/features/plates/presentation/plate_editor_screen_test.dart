@@ -83,24 +83,13 @@ void main() {
       findsNothing,
     );
     expect(
-      tester
-          .widget<IconButton>(
-            find.widgetWithIcon(IconButton, Icons.water_drop_outlined).first,
-          )
-          .onPressed,
-      isNull,
+      find.byKey(const ValueKey('plate-context-action-bar')),
+      findsNothing,
     );
-    await tester.tap(find.byKey(const ValueKey('plate-template-menu')));
+    await tester.tap(find.byKey(const ValueKey('plate-more-menu')));
     await tester.pumpAndSettle();
     expect(find.text('현재 Plate를 템플릿으로 저장'), findsNothing);
-    expect(
-      tester
-          .widget<IconButton>(
-            find.widgetWithIcon(IconButton, Icons.ios_share_outlined),
-          )
-          .onPressed,
-      isNotNull,
-    );
+    expect(find.text('Plate 전체 내보내기'), findsOneWidget);
     expect(repository.saveCount, 0);
   });
 
@@ -198,7 +187,8 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('plate-zoom-in-button')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('선택 영역 그룹 지정'));
+    await tester
+        .tap(find.byKey(const ValueKey('assign-selected-group-action')));
     await tester.pumpAndSettle();
 
     expect(find.text('12개 well 그룹 지정'), findsOneWidget);
@@ -219,6 +209,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('plate-more-menu')), findsOneWidget);
+    expect(find.byTooltip('선택 영역 그룹 지정'), findsNothing);
+    expect(find.byTooltip('희석 계산 적용'), findsNothing);
+    expect(find.byTooltip('Plate 내보내기'), findsNothing);
+    expect(find.text('Plate 작업'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('bulk-result-import-button')),
+      findsOneWidget,
+    );
     expect(find.byKey(const ValueKey('plate-zoom-in-button')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('plate-zoom-in-button')));
     await tester.pumpAndSettle();
@@ -242,7 +241,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('row-header-A')));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('선택 영역 그룹 지정'));
+    await tester
+        .tap(find.byKey(const ValueKey('assign-selected-group-action')));
     await tester.pumpAndSettle();
 
     expect(find.text('12개 well 그룹 지정'), findsOneWidget);
@@ -264,7 +264,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('희석 계산 적용'));
+    await tester.tap(find.byKey(const ValueKey('apply-dilution-action')));
     await tester.pumpAndSettle();
     expect(find.text('피펫팅 계획'), findsOneWidget);
     expect(find.text('Master mix 미리보기'), findsOneWidget);
@@ -275,8 +275,10 @@ void main() {
     await tester.enterText(find.widgetWithText(TextField, '반복 well 수'), '1');
     await tester.tap(find.byType(SwitchListTile));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('희석 적용'));
-    await tester.tap(find.text('희석 적용'));
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('confirm-dilution-apply')),
+    );
+    await tester.tap(find.byKey(const ValueKey('confirm-dilution-apply')));
     await tester.pumpAndSettle();
 
     expect(repository.plate!.wells[0].concentrationValue, 90);
@@ -302,14 +304,14 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('well-A1')));
-    await tester.tap(find.byTooltip('희석 계산 적용'));
+    await tester.tap(find.byKey(const ValueKey('apply-dilution-action')));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('희석 적용'),
+      find.byKey(const ValueKey('confirm-dilution-apply')),
       400,
       scrollable: find.byType(Scrollable).last,
     );
-    await tester.tap(find.text('희석 적용'));
+    await tester.tap(find.byKey(const ValueKey('confirm-dilution-apply')));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('사용 가능한 well이 부족합니다.'), findsOneWidget);
@@ -329,7 +331,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('희석 계산 적용'));
+    await tester.tap(find.byKey(const ValueKey('apply-dilution-action')));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('연속 희석'));
     await tester.tap(find.text('연속 희석'));
@@ -599,13 +601,11 @@ void main() {
     expect(find.text('결과 · 0.82 OD450'), findsOneWidget);
     expect(find.text('분석 제외'), findsOneWidget);
 
-    final restoreButton = find.widgetWithIcon(IconButton, Icons.restore);
-    await tester.scrollUntilVisible(
-      restoreButton,
-      -400,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.ensureVisible(restoreButton);
+    await tester.tap(find.byKey(const ValueKey('plate-more-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('전체 변경 이력'));
+    await tester.pumpAndSettle();
+    final restoreButton = find.text('이 시점으로 복원').first;
     await tester.pumpAndSettle();
     await tester.tap(restoreButton);
     await tester.pumpAndSettle();
@@ -637,15 +637,17 @@ void main() {
     final undoButton = find.widgetWithIcon(IconButton, Icons.undo);
     expect(tester.widget<IconButton>(undoButton).onPressed, isNull);
 
-    await tester.tap(find.byTooltip('희석 계산 적용'));
+    await tester.tap(find.byKey(const ValueKey('apply-dilution-action')));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, '시작 농도'), '90');
     await tester.enterText(find.widgetWithText(TextField, '희석 배수'), '3');
     await tester.enterText(find.widgetWithText(TextField, '단계 수'), '2');
     await tester.enterText(find.widgetWithText(TextField, '반복 well 수'), '1');
     await tester.tap(find.byType(SwitchListTile));
-    await tester.ensureVisible(find.text('희석 적용'));
-    await tester.tap(find.text('희석 적용'));
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('confirm-dilution-apply')),
+    );
+    await tester.tap(find.byKey(const ValueKey('confirm-dilution-apply')));
     await tester.pumpAndSettle();
 
     expect(repository.plate!.wells[0].concentrationValue, 90);
@@ -787,7 +789,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Plate 내보내기'));
+    await tester.tap(find.byKey(const ValueKey('plate-more-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Plate 전체 내보내기'));
     await tester.pumpAndSettle();
 
     expect(find.text('Plate 내보내기'), findsOneWidget);
@@ -819,7 +823,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Plate 템플릿'));
+    await tester.tap(find.byKey(const ValueKey('plate-more-menu')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('현재 Plate를 템플릿으로 저장'));
     await tester.pumpAndSettle();
@@ -877,7 +881,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Plate 템플릿'));
+    await tester.tap(find.byKey(const ValueKey('plate-more-menu')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('저장된 템플릿 적용'));
     await tester.pumpAndSettle();
@@ -934,7 +938,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('Plate 템플릿'));
+      await tester.tap(find.byKey(const ValueKey('plate-more-menu')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('템플릿 관리'));
       await tester.pumpAndSettle();
@@ -995,7 +999,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('Plate 템플릿'));
+      await tester.tap(find.byKey(const ValueKey('plate-more-menu')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('저장된 템플릿 적용'));
       await tester.pumpAndSettle();
