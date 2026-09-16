@@ -49,6 +49,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   List<Experiment> _experiments = const [];
   String _query = '';
   bool _isLoading = true;
+  Object? _loadError;
 
   @override
   void initState() {
@@ -105,60 +106,71 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
         ],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 96),
-          children: [
-            Text(
-              '실험 노트',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 12),
-            SearchBar(
-              controller: _searchController,
-              hintText: '제목, 태그, 실험 유형 검색',
-              leading: const Icon(Icons.search),
-              trailing: [
-                if (_query.isNotEmpty)
-                  IconButton(
-                    tooltip: '검색어 지우기',
-                    onPressed: _searchController.clear,
-                    icon: const Icon(Icons.close),
+        child: RefreshIndicator(
+          onRefresh: () => _loadExperiments(showLoading: false),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 96),
+            children: [
+              Text(
+                '실험 노트',
+                style: Theme.of(
+                  context,
+                )
+                    .textTheme
+                    .headlineMedium
+                    ?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 12),
+              SearchBar(
+                controller: _searchController,
+                hintText: '제목, 태그, 실험 유형 검색',
+                leading: const Icon(Icons.search),
+                trailing: [
+                  if (_query.isNotEmpty)
+                    IconButton(
+                      tooltip: '검색어 지우기',
+                      onPressed: _searchController.clear,
+                      icon: const Icon(Icons.close),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              _QuickActionsCard(onCreate: _showCreateExperimentSheet),
+              const SizedBox(height: 18),
+              Text(
+                '최근 실험',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 10),
+              if (_isLoading)
+                const _LoadingExperimentCard()
+              else if (_loadError != null && _experiments.isEmpty)
+                _ExperimentLoadErrorCard(onRetry: _loadExperiments)
+              else if (experiments.isEmpty)
+                _EmptyExperimentCard(
+                  message: _query.isEmpty ? '아직 실험 노트가 없습니다.' : '검색 결과가 없습니다.',
+                  actionLabel: _query.isEmpty ? '첫 실험 만들기' : '검색어 지우기',
+                  onAction: _query.isEmpty
+                      ? _showCreateExperimentSheet
+                      : _searchController.clear,
+                )
+              else
+                for (final experiment in experiments)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _ExperimentCard(
+                      experiment: experiment,
+                      onOpen: () => _openExperiment(experiment),
+                      onOpenPlate: () => _openPlate(experiment),
+                      onDuplicate: () => _duplicateExperiment(experiment),
+                      onDelete: () => _deleteExperiment(experiment),
+                    ),
                   ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            _QuickActionsCard(onCreate: _showCreateExperimentSheet),
-            const SizedBox(height: 18),
-            Text(
-              '최근 실험',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 10),
-            if (_isLoading)
-              const _LoadingExperimentCard()
-            else if (experiments.isEmpty)
-              _EmptyExperimentCard(
-                message: _query.isEmpty ? '아직 실험 노트가 없습니다.' : '검색 결과가 없습니다.',
-                actionLabel: _query.isEmpty ? '첫 실험 만들기' : null,
-                onAction: _query.isEmpty ? _showCreateExperimentSheet : null,
-              )
-            else
-              for (final experiment in experiments)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _ExperimentCard(
-                    experiment: experiment,
-                    onOpen: () => _openExperiment(experiment),
-                    onOpenPlate: () => _openPlate(experiment),
-                    onDuplicate: () => _duplicateExperiment(experiment),
-                    onDelete: () => _deleteExperiment(experiment),
-                  ),
-                ),
-          ],
+            ],
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -169,8 +181,13 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
     );
   }
 
-  Future<void> _loadExperiments() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadExperiments({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        _isLoading = true;
+        _loadError = null;
+      });
+    }
 
     try {
       final experiments = await widget.repository.loadExperiments();
@@ -180,13 +197,19 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
       setState(() {
         _experiments = experiments;
         _isLoading = false;
+        _loadError = null;
       });
     } on Object catch (error) {
       if (!mounted) {
         return;
       }
-      setState(() => _isLoading = false);
-      _showError('실험 노트를 불러오지 못했습니다: $error');
+      setState(() {
+        _isLoading = false;
+        _loadError = error;
+      });
+      if (_experiments.isNotEmpty) {
+        _showError('새로고침하지 못했습니다. 잠시 후 다시 시도해주세요.');
+      }
     }
   }
 
@@ -937,6 +960,51 @@ class _LoadingExperimentCard extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.all(24),
         child: Center(child: CircularProgressIndicator()),
+      ),
+    );
+  }
+}
+
+class _ExperimentLoadErrorCard extends StatelessWidget {
+  const _ExperimentLoadErrorCard({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: const ValueKey('experiment-load-error'),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            Icon(
+              Icons.cloud_off_outlined,
+              size: 42,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '실험 노트를 불러오지 못했습니다.',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              '저장된 데이터는 그대로 유지됩니다. 잠시 후 다시 시도해주세요.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 14),
+            FilledButton.icon(
+              key: const ValueKey('retry-experiment-load'),
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('다시 시도'),
+            ),
+          ],
+        ),
       ),
     );
   }

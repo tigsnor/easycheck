@@ -38,6 +38,32 @@ class FakeExperimentRepository implements ExperimentRepository {
   }
 }
 
+class FlakyExperimentRepository implements ExperimentRepository {
+  FlakyExperimentRepository(this.experiments, {this.remainingLoadFailures = 0});
+
+  final List<Experiment> experiments;
+  int remainingLoadFailures;
+
+  @override
+  Future<void> deleteExperiment(String id) async {
+    experiments.removeWhere((experiment) => experiment.id == id);
+  }
+
+  @override
+  Future<List<Experiment>> loadExperiments() async {
+    if (remainingLoadFailures > 0) {
+      remainingLoadFailures--;
+      throw StateError('simulated load failure');
+    }
+    return [...experiments];
+  }
+
+  @override
+  Future<void> saveExperiment(Experiment experiment) async {
+    experiments.add(experiment);
+  }
+}
+
 class FakePlateRepository implements PlateRepository {
   Plate? plate;
   bool failNextSave = false;
@@ -118,6 +144,67 @@ void main() {
 
     expect(find.text('Drug A CCK-8'), findsNothing);
     expect(find.text('검색 결과가 없습니다.'), findsOneWidget);
+
+    await tester.tap(find.text('검색어 지우기'));
+    await tester.pumpAndSettle();
+    expect(find.text('Drug A CCK-8'), findsOneWidget);
+  });
+
+  testWidgets('shows a recoverable error when experiments fail to load', (
+    tester,
+  ) async {
+    final repository = FlakyExperimentRepository(
+      [
+        Experiment(
+          id: 'experiment-recovered',
+          title: 'Recovered experiment',
+          createdAt: DateTime.utc(2026, 9, 16),
+          updatedAt: DateTime.utc(2026, 9, 16),
+        ),
+      ],
+      remainingLoadFailures: 1,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: ExperimentsHomeScreen(repository: repository)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('experiment-load-error')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('simulated load failure'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('retry-experiment-load')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Recovered experiment'), findsOneWidget);
+    expect(find.byKey(const ValueKey('experiment-load-error')), findsNothing);
+  });
+
+  testWidgets('refreshes the experiment list with a pull gesture', (
+    tester,
+  ) async {
+    final repository = FlakyExperimentRepository([]);
+    await tester.pumpWidget(
+      MaterialApp(home: ExperimentsHomeScreen(repository: repository)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('아직 실험 노트가 없습니다.'), findsOneWidget);
+
+    repository.experiments.add(
+      Experiment(
+        id: 'experiment-refreshed',
+        title: 'Newly refreshed experiment',
+        createdAt: DateTime.utc(2026, 9, 16),
+        updatedAt: DateTime.utc(2026, 9, 16),
+      ),
+    );
+    await tester.drag(find.byType(ListView).first, const Offset(0, 400));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Newly refreshed experiment'), findsOneWidget);
   });
 
   testWidgets('confirms experiment deletion and restores it with undo', (
