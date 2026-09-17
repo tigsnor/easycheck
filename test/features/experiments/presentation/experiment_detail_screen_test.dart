@@ -117,6 +117,36 @@ void main() {
     expect(find.textContaining('저장됨'), findsOneWidget);
   });
 
+  testWidgets('shows a missing experiment title beside the field', (
+    tester,
+  ) async {
+    final experiment = Experiment(
+      id: 'experiment-title-validation',
+      title: 'Before',
+      createdAt: DateTime.utc(2026, 9, 17),
+      updatedAt: DateTime.utc(2026, 9, 17),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ExperimentDetailScreen(
+          experiment: experiment,
+          onChanged: (_) async {},
+        ),
+      ),
+    );
+
+    await tester.enterText(find.widgetWithText(TextField, 'Before'), '');
+    await tester.tap(find.widgetWithText(TextButton, '저장'));
+    await tester.pump();
+
+    expect(find.text('실험 제목을 입력해주세요.'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+
+    await tester.enterText(find.byType(TextField).first, 'Recovered title');
+    await tester.pump();
+    expect(find.text('실험 제목을 입력해주세요.'), findsNothing);
+  });
+
   testWidgets('tracks and saves experiment execution tasks', (tester) async {
     Experiment? saved;
     final experiment = Experiment(

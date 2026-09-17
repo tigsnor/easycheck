@@ -17,6 +17,7 @@ class FakePlateRepository implements PlateRepository {
   Plate? plate;
   int saveCount = 0;
   bool failNextSave = false;
+  bool failNextLoad = false;
 
   @override
   Future<void> deletePlate(String experimentId) async {
@@ -24,7 +25,13 @@ class FakePlateRepository implements PlateRepository {
   }
 
   @override
-  Future<Plate?> loadPlate(String experimentId) async => plate;
+  Future<Plate?> loadPlate(String experimentId) async {
+    if (failNextLoad) {
+      failNextLoad = false;
+      throw StateError('simulated load failure');
+    }
+    return plate;
+  }
 
   @override
   Future<void> savePlate(Plate plate) async {
@@ -60,6 +67,29 @@ class FakePlateTemplateRepository implements PlateTemplateRepository {
 }
 
 void main() {
+  testWidgets('shows Plate load failure in place and retries', (tester) async {
+    final repository = FakePlateRepository()..failNextLoad = true;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlateEditorScreen(
+          experimentId: 'experiment-load-retry',
+          repository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Plate를 불러오지 못했습니다'), findsOneWidget);
+    expect(find.byKey(const ValueKey('retry-plate-load')), findsOneWidget);
+    expect(find.textContaining('simulated load failure'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('retry-plate-load')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('plate-grid')), findsOneWidget);
+    expect(find.textContaining('Plate를 불러오지 못했습니다'), findsNothing);
+  });
+
   testWidgets('shows completed experiment plates without editing controls', (
     tester,
   ) async {
@@ -250,6 +280,10 @@ void main() {
 
     expect(find.text('12개 well 그룹 지정'), findsOneWidget);
     expect(find.widgetWithText(TextField, '그룹명'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextField, '그룹명'), '');
+    await tester.tap(find.widgetWithText(FilledButton, '적용'));
+    await tester.pump();
+    expect(find.text('그룹명을 입력해주세요.'), findsOneWidget);
   });
 
   testWidgets('applies a custom dilution builder plan to the plate', (
@@ -318,6 +352,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('사용 가능한 well이 부족합니다.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('inline-error-panel')), findsOneWidget);
     expect(find.text('희석 계산 적용'), findsOneWidget);
   });
 
@@ -881,23 +916,24 @@ void main() {
           createdAt: DateTime.utc(2026, 6, 12),
           plate: Plate(id: 'source', experimentId: 'source', name: 'Source')
               .copyWith(
-            wells: Plate(
-              id: 'source-wells',
-              experimentId: 'source',
-              name: 'Source',
-            ).wells.map((well) {
-              if (well.position ==
-                  const WellPosition(rowIndex: 0, columnIndex: 0)) {
-                return well.copyWith(
-                  role: WellRole.treatment,
-                  concentrationValue: 10,
-                  resultValue: 9.9,
-                  excluded: true,
-                );
-              }
-              return well;
-            }).toList(),
-          ),
+                wells:
+                    Plate(
+                      id: 'source-wells',
+                      experimentId: 'source',
+                      name: 'Source',
+                    ).wells.map((well) {
+                      if (well.position ==
+                          const WellPosition(rowIndex: 0, columnIndex: 0)) {
+                        return well.copyWith(
+                          role: WellRole.treatment,
+                          concentrationValue: 10,
+                          resultValue: 9.9,
+                          excluded: true,
+                        );
+                      }
+                      return well;
+                    }).toList(),
+              ),
         ),
       );
 

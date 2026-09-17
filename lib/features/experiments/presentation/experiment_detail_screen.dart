@@ -39,6 +39,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   bool _allowPop = false;
   DateTime? _lastSavedAt;
   Object? _saveError;
+  String? _titleError;
 
   @override
   void initState() {
@@ -149,11 +150,12 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                 controller: _titleController,
                 enabled: !_isLocked,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                decoration: const InputDecoration(
+                  fontWeight: FontWeight.w800,
+                ),
+                decoration: InputDecoration(
                   border: InputBorder.none,
                   hintText: '실험 제목',
+                  errorText: _titleError,
                 ),
               ),
               const SizedBox(height: 10),
@@ -187,8 +189,8 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                         onChanged: _isLocked
                             ? null
                             : (value) => setState(
-                                  () => _experimentType = value ?? 'Custom',
-                                ),
+                                () => _experimentType = value ?? 'Custom',
+                              ),
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<ExperimentStatus>(
@@ -219,9 +221,8 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                         onChanged: _isLocked
                             ? null
                             : (value) => setState(
-                                  () =>
-                                      _status = value ?? ExperimentStatus.draft,
-                                ),
+                                () => _status = value ?? ExperimentStatus.draft,
+                              ),
                       ),
                       const SizedBox(height: 12),
                       TextField(
@@ -315,19 +316,23 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   }
 
   String _fingerprint() => jsonEncode({
-        'title': _titleController.text.trim(),
-        'project': _projectController.text.trim(),
-        'cellCount': _cellCountController.text.trim(),
-        'researcher': _researcherController.text.trim(),
-        'notes': _notesController.text.trim(),
-        'status': _status.name,
-        'experimentType': _experimentType,
-        'tasks': _tasks.map((task) => task.toJson()).toList(),
-        'resources': _resources.map((resource) => resource.toJson()).toList(),
-      });
+    'title': _titleController.text.trim(),
+    'project': _projectController.text.trim(),
+    'cellCount': _cellCountController.text.trim(),
+    'researcher': _researcherController.text.trim(),
+    'notes': _notesController.text.trim(),
+    'status': _status.name,
+    'experimentType': _experimentType,
+    'tasks': _tasks.map((task) => task.toJson()).toList(),
+    'resources': _resources.map((resource) => resource.toJson()).toList(),
+  });
 
   void _onFormChanged() {
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {
+        if (_titleController.text.trim().isNotEmpty) _titleError = null;
+      });
+    }
   }
 
   Future<void> _confirmExit() async {
@@ -393,9 +398,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     if (_isSaving) return false;
     final title = _titleController.text.trim();
     if (title.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('실험 제목을 입력해주세요.')));
+      setState(() => _titleError = '실험 제목을 입력해주세요.');
       return false;
     }
 
@@ -532,23 +535,23 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   List<ExperimentTask> _defaultTasks(String experimentType) {
     final titles = switch (experimentType) {
       'CCK-8' || 'MTT' => const [
-          '세포 seeding',
-          '세포 부착 incubation',
-          'Treatment 처리',
-          'Assay reagent 투입',
-          '발색 incubation',
-          'Plate reader 측정',
-          '결과 파일 가져오기',
-        ],
+        '세포 seeding',
+        '세포 부착 incubation',
+        'Treatment 처리',
+        'Assay reagent 투입',
+        '발색 incubation',
+        'Plate reader 측정',
+        '결과 파일 가져오기',
+      ],
       'ELISA' => const [
-          '시료 및 standard 준비',
-          '시료 반응',
-          '세척',
-          'Detection reagent 반응',
-          '기질 반응',
-          'Plate reader 측정',
-          '결과 파일 가져오기',
-        ],
+        '시료 및 standard 준비',
+        '시료 반응',
+        '세척',
+        'Detection reagent 반응',
+        '기질 반응',
+        'Plate reader 측정',
+        '결과 파일 가져오기',
+      ],
       _ => const ['실험 준비', 'Treatment 처리', '결과 측정', '결과 파일 가져오기'],
     };
     return [
@@ -905,8 +908,8 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                     child: Text(
                       '실험 실행 체크리스트',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
                   Text('$completedCount/${tasks.length} 완료'),
