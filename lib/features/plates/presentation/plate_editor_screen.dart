@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../shared/models/well_position.dart';
+import '../../../shared/presentation/save_status_indicator.dart';
 import '../../../shared/services/document_exchange_service.dart';
 import '../../dilution/domain/dilution_direction.dart';
 import '../../dilution/domain/dilution_plan.dart';
@@ -42,11 +43,11 @@ class PlateEditorScreen extends StatefulWidget {
     DocumentExchangeService? documentExchangeService,
     PlateTemplateRepository? templateRepository,
     super.key,
-  }) : repository = repository ?? const FilePlateRepository(),
-       templateRepository =
-           templateRepository ?? const FilePlateTemplateRepository(),
-       documentExchangeService =
-           documentExchangeService ?? const PlatformDocumentExchangeService();
+  })  : repository = repository ?? const FilePlateRepository(),
+        templateRepository =
+            templateRepository ?? const FilePlateTemplateRepository(),
+        documentExchangeService =
+            documentExchangeService ?? const PlatformDocumentExchangeService();
 
   final String experimentId;
   final String experimentTitle;
@@ -81,6 +82,11 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
   DateTime? _lastSavedAt;
+  Object? _saveError;
+  Plate? _failedPlate;
+  String? _failedSuccessMessage;
+  String? _failedChangeSummary;
+  bool _failedRecordHistory = true;
   final List<Plate> _undoHistory = [];
 
   @override
@@ -132,9 +138,8 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
             ),
             if (plate != null)
               _PlateSaveStatus(
-                isSaving: _isSaving,
+                status: _plateSaveStatus,
                 lastSavedAt: _lastSavedAt,
-                compact: true,
               ),
           ],
         ),
@@ -241,6 +246,14 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
             : ListView(
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
                 children: [
+                  if (_saveError != null) ...[
+                    SaveStatusIndicator(
+                      status: SaveStatus.failed,
+                      savedAt: _lastSavedAt,
+                      onRetry: _retryPlateSave,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   if (widget.readOnly) ...[
                     const _ReadOnlyPlateBanner(),
                     const SizedBox(height: 18),
@@ -280,6 +293,12 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     return plate.wellAt(position);
   }
 
+  SaveStatus get _plateSaveStatus {
+    if (_isSaving) return SaveStatus.saving;
+    if (_saveError != null) return SaveStatus.failed;
+    return SaveStatus.saved;
+  }
+
   WellGroup? get _selectedGroup {
     final plate = _plate;
     final groupId = _selectedWell?.groupId;
@@ -287,9 +306,9 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       return null;
     }
     return plate.groups.cast<WellGroup?>().firstWhere(
-      (group) => group?.id == groupId,
-      orElse: () => null,
-    );
+          (group) => group?.id == groupId,
+          orElse: () => null,
+        );
   }
 
   Future<void> _loadPlate() async {
@@ -708,22 +727,22 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     final importedAt = DateTime.now().toUtc();
     final updated = _plateResultImportService
         .apply(
-          plate: plate,
-          preview: draft.preview,
-          resultUnit: draft.resultUnit,
-        )
+      plate: plate,
+      preview: draft.preview,
+      resultUnit: draft.resultUnit,
+    )
         .copyWith(
-          importHistory: [
-            PlateResultImportRecord(
-              id: 'import-${importedAt.microsecondsSinceEpoch}',
-              sourceName: draft.sourceName,
-              importedAt: importedAt,
-              valueCount: draft.preview.valueCount,
-              resultUnit: draft.resultUnit,
-            ),
-            ...plate.importHistory,
-          ],
-        );
+      importHistory: [
+        PlateResultImportRecord(
+          id: 'import-${importedAt.microsecondsSinceEpoch}',
+          sourceName: draft.sourceName,
+          importedAt: importedAt,
+          valueCount: draft.preview.valueCount,
+          resultUnit: draft.resultUnit,
+        ),
+        ...plate.importHistory,
+      ],
+    );
     await _savePlate(
       updated,
       successMessage: '${draft.preview.valueCount}개 well 결과를 입력했습니다.',
@@ -896,24 +915,30 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                 id: 'plate-revision-${savedAt.microsecondsSinceEpoch}',
                 changedAt: savedAt,
                 summary: changeSummary,
-                snapshot: previous == null
-                    ? null
-                    : PlateSnapshot.fromPlate(previous),
+                snapshot:
+                    previous == null ? null : PlateSnapshot.fromPlate(previous),
               ),
             ],
           )
         : plate;
-    setState(() => _isSaving = true);
+    setState(() {
+      _isSaving = true;
+      _saveError = null;
+    });
     try {
       await widget.repository.savePlate(plateToSave);
     } on Object catch (error) {
       if (!mounted) {
         return false;
       }
-      setState(() => _isSaving = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Plate를 저장하지 못했습니다: $error')));
+      setState(() {
+        _isSaving = false;
+        _saveError = error;
+        _failedPlate = plate;
+        _failedSuccessMessage = successMessage;
+        _failedChangeSummary = changeSummary;
+        _failedRecordHistory = recordHistory;
+      });
       return false;
     }
     if (!mounted) {
@@ -929,6 +954,10 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       _plate = plateToSave;
       _isSaving = false;
       _lastSavedAt = DateTime.now();
+      _saveError = null;
+      _failedPlate = null;
+      _failedSuccessMessage = null;
+      _failedChangeSummary = null;
     });
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -941,6 +970,17 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         ),
       );
     return true;
+  }
+
+  Future<void> _retryPlateSave() async {
+    final plate = _failedPlate;
+    if (plate == null || _isSaving) return;
+    await _savePlate(
+      plate,
+      successMessage: _failedSuccessMessage ?? 'plate layout을 저장했습니다.',
+      changeSummary: _failedChangeSummary ?? 'Plate 수정',
+      recordHistory: _failedRecordHistory,
+    );
   }
 
   Future<void> _undoLastChange() async {
@@ -1074,44 +1114,20 @@ class _ReadOnlyPlateBanner extends StatelessWidget {
 }
 
 class _PlateSaveStatus extends StatelessWidget {
-  const _PlateSaveStatus({
-    required this.isSaving,
-    required this.lastSavedAt,
-    this.compact = false,
-  });
+  const _PlateSaveStatus({required this.status, required this.lastSavedAt});
 
-  final bool isSaving;
+  final SaveStatus status;
   final DateTime? lastSavedAt;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final time = lastSavedAt;
-    final label = isSaving
-        ? '저장 중…'
-        : time == null
-        ? '아직 저장되지 않음'
-        : '저장됨 ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          isSaving ? Icons.sync : Icons.cloud_done_outlined,
-          size: 14,
-          color: Colors.black54,
-        ),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          key: const ValueKey('plate-save-status'),
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: compact
-                ? Theme.of(context).colorScheme.onSurfaceVariant
-                : Colors.black54,
-            fontSize: compact ? 11 : null,
-          ),
-        ),
-      ],
+    return KeyedSubtree(
+      key: const ValueKey('plate-save-status'),
+      child: SaveStatusIndicator(
+        status: status,
+        savedAt: lastSavedAt,
+        compact: true,
+      ),
     );
   }
 }
@@ -1158,8 +1174,8 @@ class _PlateWorkspaceHint extends StatelessWidget {
       'well을 선택하면 하단에서 상세 확인, 편집, 그룹 및 범위 작업을 할 수 있습니다.',
       textAlign: TextAlign.center,
       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-      ),
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
     );
   }
 }
@@ -1209,8 +1225,8 @@ class _PlateGrid extends StatelessWidget {
                         : 'Plate ${requestedCellSize!.round()}px',
                     key: const ValueKey('plate-zoom-label'),
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                          fontWeight: FontWeight.w700,
+                        ),
                   ),
                 ),
                 IconButton(
@@ -1249,10 +1265,9 @@ class _PlateGrid extends StatelessWidget {
                 final gridRowCount = plate.rowCount + 1;
                 final fitCellSize =
                     (constraints.maxWidth - _spacing * (gridColumnCount - 1)) /
-                    gridColumnCount;
+                        gridColumnCount;
                 final cellSize = requestedCellSize ?? fitCellSize;
-                final gridWidth =
-                    cellSize * gridColumnCount +
+                final gridWidth = cellSize * gridColumnCount +
                     _spacing * (gridColumnCount - 1);
                 final gridHeight =
                     cellSize * gridRowCount + _spacing * (gridRowCount - 1);
@@ -1320,9 +1335,9 @@ class _PlateGrid extends StatelessWidget {
     final group = well.groupId == null
         ? null
         : plate.groups.cast<WellGroup?>().firstWhere(
-            (candidate) => candidate?.id == well.groupId,
-            orElse: () => null,
-          );
+              (candidate) => candidate?.id == well.groupId,
+              orElse: () => null,
+            );
 
     return _WellCell(
       key: ValueKey('well-${well.label}'),
@@ -1390,8 +1405,7 @@ class _WellCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasDose = well.concentrationValue != null;
-    final background =
-        group?.color ??
+    final background = group?.color ??
         (hasDose ? const Color(0xFFE6D9FF) : const Color(0xFFF2F2F7));
     final borderColor = selected ? Colors.black : Colors.transparent;
     final label = group?.shortLabel.isNotEmpty == true ? group!.shortLabel : '';
@@ -1421,8 +1435,8 @@ class _WellCell extends StatelessWidget {
             hasDose
                 ? '${label.isEmpty ? '' : '$label\n'}${_formatDose(well.concentrationValue!)}'
                 : label.isEmpty
-                ? well.label
-                : label,
+                    ? well.label
+                    : label,
             maxLines: 2,
             overflow: TextOverflow.fade,
             textAlign: TextAlign.center,
@@ -1885,16 +1899,16 @@ class _PlateExportSheet extends StatelessWidget {
                     key: const ValueKey('share-plate-file-button'),
                     onPressed: () async {
                       try {
-                        final status = await documentExchangeService
-                            .shareTextDocument(
-                              content: exportText,
-                              fileName: fileName,
-                              mimeType: 'text/tab-separated-values',
-                              subject: 'PlateNote Plate 내보내기',
-                              sharePositionOrigin: _sharePositionOrigin(
-                                shareContext,
-                              ),
-                            );
+                        final status =
+                            await documentExchangeService.shareTextDocument(
+                          content: exportText,
+                          fileName: fileName,
+                          mimeType: 'text/tab-separated-values',
+                          subject: 'PlateNote Plate 내보내기',
+                          sharePositionOrigin: _sharePositionOrigin(
+                            shareContext,
+                          ),
+                        );
                         if (!context.mounted ||
                             status == DocumentShareStatus.dismissed) {
                           return;
@@ -2051,9 +2065,12 @@ class _GroupSummary {
     required WellGroup group,
     required List<Well> wells,
   }) {
-    final concentrations =
-        wells.map((well) => well.concentrationValue).nonNulls.toSet().toList()
-          ..sort((a, b) => b.compareTo(a));
+    final concentrations = wells
+        .map((well) => well.concentrationValue)
+        .nonNulls
+        .toSet()
+        .toList()
+      ..sort((a, b) => b.compareTo(a));
     return _GroupSummary(
       name: group.name,
       shortLabel: group.shortLabel,
@@ -2103,8 +2120,8 @@ class _PlateAnalysisCard extends StatelessWidget {
                   child: Text(
                     '기본 결과 분석',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                          fontWeight: FontWeight.w700,
+                        ),
                   ),
                 ),
                 if (report.hasResults)
@@ -2309,9 +2326,8 @@ class _AnalysisBarRow extends StatelessWidget {
               builder: (context, constraints) {
                 final width = constraints.maxWidth;
                 final range = maximum - minimum;
-                final valueFraction = range == 0
-                    ? 0.0
-                    : (value - minimum) / range;
+                final valueFraction =
+                    range == 0 ? 0.0 : (value - minimum) / range;
                 final zeroX = width * zeroFraction;
                 final valueX = width * valueFraction;
                 return Stack(
@@ -2376,13 +2392,14 @@ class _AnalysisReferenceSummary extends StatelessWidget {
     final units = {
       ...report.blankMeanByUnit.keys,
       ...report.controlByUnit.keys,
-    }.toList()..sort();
+    }.toList()
+      ..sort();
     if (units.isEmpty) {
       return Text(
         'Blank 또는 normalization control이 없어 raw 결과만 표시합니다.',
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: Theme.of(context).colorScheme.error,
-        ),
+              color: Theme.of(context).colorScheme.error,
+            ),
       );
     }
     return Wrap(
@@ -2476,9 +2493,9 @@ class _AnalysisSeriesRow extends StatelessWidget {
           Text(
             '분석 제외 ${series.excludedCount}개 · ${series.excludedWellLabels.join(', ')}',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.error,
-              fontWeight: FontWeight.w700,
-            ),
+                  color: Theme.of(context).colorScheme.error,
+                  fontWeight: FontWeight.w700,
+                ),
           ),
         ],
       ],
@@ -2546,16 +2563,16 @@ class _PlateValidationCard extends StatelessWidget {
                   child: Text(
                     '실험 준비 점검',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                          fontWeight: FontWeight.w700,
+                        ),
                   ),
                 ),
                 Text(
                   hasWarnings ? '경고 ${report.warningCount}' : '필수 경고 없음',
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: hasWarnings ? colorScheme.error : Colors.green,
-                    fontWeight: FontWeight.w700,
-                  ),
+                        color: hasWarnings ? colorScheme.error : Colors.green,
+                        fontWeight: FontWeight.w700,
+                      ),
                 ),
               ],
             ),
@@ -2675,8 +2692,8 @@ class _PlateContextActionBar extends StatelessWidget {
                 child: Text(
                   hasSelection
                       ? isRangeActive
-                            ? '범위의 끝 well을 선택하세요'
-                            : '$selectedCount개 well 선택됨'
+                          ? '범위의 끝 well을 선택하세요'
+                          : '$selectedCount개 well 선택됨'
                       : 'Plate 작업',
                   style: Theme.of(
                     context,
@@ -2713,9 +2730,8 @@ class _PlateContextActionBar extends StatelessWidget {
                             key: const ValueKey('start-range-action'),
                             icon: Icons.select_all_outlined,
                             label: isRangeActive ? '범위 선택 중' : '범위',
-                            onPressed: isSaving || isRangeActive
-                                ? null
-                                : onStartRange,
+                            onPressed:
+                                isSaving || isRangeActive ? null : onStartRange,
                           ),
                           _ContextActionButton(
                             key: const ValueKey('apply-dilution-action'),
@@ -2843,8 +2859,8 @@ class _WellRecordSheetState extends State<_WellRecordSheet> {
     final nextRole = concentration == 0
         ? WellRole.vehicleControl
         : well.role == WellRole.empty && concentration != null
-        ? WellRole.treatment
-        : well.role;
+            ? WellRole.treatment
+            : well.role;
 
     Navigator.of(context).pop(
       well.copyWith(
@@ -3014,8 +3030,8 @@ class _WellDetailCard extends StatelessWidget {
               selected == null
                   ? 'plate에서 well을 선택하면 처리 조건과 측정 결과를 확인합니다.'
                   : selected.concentrationValue == null
-                  ? '${group?.name ?? '그룹 없음'} · 농도 미지정'
-                  : '${group?.name ?? selected.role.label} · ${_formatConcentrationLabel(selected.concentrationValue!, selected.concentrationUnit)}',
+                      ? '${group?.name ?? '그룹 없음'} · 농도 미지정'
+                      : '${group?.name ?? selected.role.label} · ${_formatConcentrationLabel(selected.concentrationValue!, selected.concentrationUnit)}',
             ),
             if (selected != null) ...[
               const SizedBox(height: 10),
@@ -3024,10 +3040,10 @@ class _WellDetailCard extends StatelessWidget {
                     ? '측정 결과 미입력'
                     : '결과 · ${_formatDose(selected.resultValue!)} ${selected.resultUnit ?? ''}',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: selected.resultValue == null
-                      ? FontWeight.w400
-                      : FontWeight.w700,
-                ),
+                      fontWeight: selected.resultValue == null
+                          ? FontWeight.w400
+                          : FontWeight.w700,
+                    ),
               ),
               if (selected.note.isNotEmpty) ...[
                 const SizedBox(height: 6),
@@ -3486,9 +3502,8 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
     }
 
     final requiredWellCount = _requiredWellCount!;
-    final availableWellCount = widget.selectedCount == 0
-        ? 96
-        : widget.selectedCount;
+    final availableWellCount =
+        widget.selectedCount == 0 ? 96 : widget.selectedCount;
     if (availableWellCount < requiredWellCount) {
       setState(
         () => _errorMessage =
@@ -3576,11 +3591,12 @@ class _PipettingPlanPreview extends StatelessWidget {
               Text(
                 '필요 well $required개${selectedCount == 0 ? ' · plate 앞쪽부터 자동 배치' : ' · 선택 $selectedCount개'}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: insufficientSelection
-                      ? Theme.of(context).colorScheme.error
-                      : null,
-                  fontWeight: insufficientSelection ? FontWeight.w700 : null,
-                ),
+                      color: insufficientSelection
+                          ? Theme.of(context).colorScheme.error
+                          : null,
+                      fontWeight:
+                          insufficientSelection ? FontWeight.w700 : null,
+                    ),
               ),
             ],
             const Divider(height: 20),
@@ -3619,9 +3635,9 @@ class _PipettingPlanPreview extends StatelessWidget {
               Text(
                 '경고: 1 ${currentPlan.volumeUnit} 미만 stock 분주가 있습니다. 실제 피펫 범위를 확인하고 필요하면 중간 희석액을 준비하세요.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.error,
-                  fontWeight: FontWeight.w700,
-                ),
+                      color: Theme.of(context).colorScheme.error,
+                      fontWeight: FontWeight.w700,
+                    ),
               ),
             ],
           ],
@@ -3705,9 +3721,9 @@ class _SerialTransferPlanPreview extends StatelessWidget {
               Text(
                 '경고: 1 ${currentPlan.volumeUnit} 미만 분주가 있습니다. 중간 희석액과 실제 피펫 범위를 확인하세요.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.error,
-                  fontWeight: FontWeight.w700,
-                ),
+                      color: Theme.of(context).colorScheme.error,
+                      fontWeight: FontWeight.w700,
+                    ),
               ),
             ],
           ],
@@ -4066,11 +4082,10 @@ class _PlateTemplateManagementDialogState
 
   void _replaceLocal(PlateTemplate updated) {
     setState(() {
-      _templates =
-          _templates
-              .map((template) => template.id == updated.id ? updated : template)
-              .toList()
-            ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      _templates = _templates
+          .map((template) => template.id == updated.id ? updated : template)
+          .toList()
+        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     });
   }
 }

@@ -29,7 +29,7 @@ void main() {
       'Changed title',
     );
     await tester.pump();
-    expect(find.byKey(const ValueKey('unsaved-experiment-changes')), findsOne);
+    expect(find.text('저장되지 않은 변경'), findsWidgets);
 
     await tester.pageBack();
     await tester.pumpAndSettle();
@@ -75,6 +75,46 @@ void main() {
 
     expect(saved?.title, 'After');
     expect(find.text('상세 열기'), findsOneWidget);
+  });
+
+  testWidgets('shows a persistent experiment save failure and retries', (
+    tester,
+  ) async {
+    var saveCalls = 0;
+    Experiment? saved;
+    final experiment = Experiment(
+      id: 'experiment-save-retry',
+      title: 'Before',
+      createdAt: DateTime.utc(2026, 9, 17),
+      updatedAt: DateTime.utc(2026, 9, 17),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ExperimentDetailScreen(
+          experiment: experiment,
+          onChanged: (value) async {
+            saveCalls++;
+            if (saveCalls == 1) throw StateError('simulated save failure');
+            saved = value;
+          },
+        ),
+      ),
+    );
+    await tester.enterText(find.widgetWithText(TextField, 'Before'), 'After');
+    await tester.pump();
+    await tester.tap(find.widgetWithText(TextButton, '저장'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('저장 실패'), findsWidgets);
+    expect(find.byKey(const ValueKey('retry-save-button')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('retry-save-button')));
+    await tester.pumpAndSettle();
+
+    expect(saveCalls, 2);
+    expect(saved?.title, 'After');
+    expect(find.text('저장 실패'), findsNothing);
+    expect(find.textContaining('저장됨'), findsOneWidget);
   });
 
   testWidgets('tracks and saves experiment execution tasks', (tester) async {

@@ -16,6 +16,7 @@ import '../../../support/fake_document_exchange_service.dart';
 class FakePlateRepository implements PlateRepository {
   Plate? plate;
   int saveCount = 0;
+  bool failNextSave = false;
 
   @override
   Future<void> deletePlate(String experimentId) async {
@@ -28,6 +29,10 @@ class FakePlateRepository implements PlateRepository {
   @override
   Future<void> savePlate(Plate plate) async {
     saveCount++;
+    if (failNextSave) {
+      failNextSave = false;
+      throw StateError('simulated save failure');
+    }
     this.plate = plate;
   }
 }
@@ -649,6 +654,47 @@ void main() {
     expect(find.text('마지막 Plate 변경을 취소했습니다.'), findsOneWidget);
   });
 
+  testWidgets('keeps a failed Plate save visible and retries it', (
+    tester,
+  ) async {
+    final repository = FakePlateRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlateEditorScreen(
+          experimentId: 'experiment-save-retry',
+          repository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    repository.failNextSave = true;
+    await tester.tap(find.byKey(const ValueKey('well-A1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('edit-selected-well-action')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('well-result-value-field')),
+      '1.23',
+    );
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('save-well-record-button')),
+    );
+    await tester.tap(find.byKey(const ValueKey('save-well-record-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('저장 실패'), findsWidgets);
+    expect(find.byKey(const ValueKey('retry-save-button')), findsOneWidget);
+    expect(repository.plate!.wells.first.resultValue, isNull);
+
+    await tester.tap(find.byKey(const ValueKey('retry-save-button')));
+    await tester.pumpAndSettle();
+
+    expect(repository.plate!.wells.first.resultValue, 1.23);
+    expect(find.text('저장 실패'), findsNothing);
+    expect(find.textContaining('저장됨'), findsOneWidget);
+  });
+
   testWidgets('shows blank-corrected group analysis and exclusions', (
     tester,
   ) async {
@@ -835,24 +881,23 @@ void main() {
           createdAt: DateTime.utc(2026, 6, 12),
           plate: Plate(id: 'source', experimentId: 'source', name: 'Source')
               .copyWith(
-                wells:
-                    Plate(
-                      id: 'source-wells',
-                      experimentId: 'source',
-                      name: 'Source',
-                    ).wells.map((well) {
-                      if (well.position ==
-                          const WellPosition(rowIndex: 0, columnIndex: 0)) {
-                        return well.copyWith(
-                          role: WellRole.treatment,
-                          concentrationValue: 10,
-                          resultValue: 9.9,
-                          excluded: true,
-                        );
-                      }
-                      return well;
-                    }).toList(),
-              ),
+            wells: Plate(
+              id: 'source-wells',
+              experimentId: 'source',
+              name: 'Source',
+            ).wells.map((well) {
+              if (well.position ==
+                  const WellPosition(rowIndex: 0, columnIndex: 0)) {
+                return well.copyWith(
+                  role: WellRole.treatment,
+                  concentrationValue: 10,
+                  resultValue: 9.9,
+                  excluded: true,
+                );
+              }
+              return well;
+            }).toList(),
+          ),
         ),
       );
 

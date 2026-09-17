@@ -44,6 +44,7 @@ PlateNote는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 - Plate 선택·범위·확대 상태를 UI에서 분리한 테스트 가능한 상태관리 controller
 - Plate 상단은 저장 상태·실행 취소·더보기로 단순화하고 선택 작업은 하단 상황별 액션으로 제공
 - Plate grid 중심 작업 화면과 요약·준비 점검·well 상세·분석·이력 바텀시트 분리
+- 실험과 Plate에 공통 저장됨·미저장·저장 중·저장 실패 상태와 실패 재시도 제공
 - 실험 담당자와 시약 제조사·catalog·lot, 장비 model·serial 정보를 저장하는 사용 자원 기록
 - Blank/Control 누락, 반복 well 부족, 농도 단위 혼용, 일부 결과 누락을 알려주는 실험 준비 점검
 - 분석 제외 well을 반영한 농도별 평균·표본 표준편차·CV·blank 보정·control 대비 정규화

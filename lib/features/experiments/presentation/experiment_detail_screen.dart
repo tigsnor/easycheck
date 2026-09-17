@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../../../shared/presentation/save_status_indicator.dart';
 import '../../plates/presentation/plate_editor_screen.dart';
 import '../domain/experiment.dart';
 
@@ -36,11 +37,14 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   late String _savedFingerprint;
   bool _isSaving = false;
   bool _allowPop = false;
+  DateTime? _lastSavedAt;
+  Object? _saveError;
 
   @override
   void initState() {
     super.initState();
     _persistedExperiment = widget.experiment;
+    _lastSavedAt = widget.experiment.updatedAt;
     _isLocked = widget.experiment.status == ExperimentStatus.completed;
     _titleController = TextEditingController(text: widget.experiment.title);
     _projectController = TextEditingController(
@@ -101,7 +105,17 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('실험 노트'),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('실험 노트'),
+              SaveStatusIndicator(
+                status: _saveStatus,
+                savedAt: _lastSavedAt,
+                compact: true,
+              ),
+            ],
+          ),
           actions: [
             if (_isLocked)
               TextButton(
@@ -119,8 +133,12 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
           child: ListView(
             padding: const EdgeInsets.all(20),
             children: [
-              if (_hasUnsavedChanges) ...[
-                const _UnsavedChangesBanner(),
+              if (_hasUnsavedChanges || _saveError != null) ...[
+                SaveStatusIndicator(
+                  status: _saveStatus,
+                  savedAt: _lastSavedAt,
+                  onRetry: _saveError == null ? null : () => _save(),
+                ),
                 const SizedBox(height: 12),
               ],
               if (_isLocked) ...[
@@ -131,8 +149,8 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                 controller: _titleController,
                 enabled: !_isLocked,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+                      fontWeight: FontWeight.w800,
+                    ),
                 decoration: const InputDecoration(
                   border: InputBorder.none,
                   hintText: '실험 제목',
@@ -169,8 +187,8 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                         onChanged: _isLocked
                             ? null
                             : (value) => setState(
-                                () => _experimentType = value ?? 'Custom',
-                              ),
+                                  () => _experimentType = value ?? 'Custom',
+                                ),
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<ExperimentStatus>(
@@ -201,8 +219,9 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                         onChanged: _isLocked
                             ? null
                             : (value) => setState(
-                                () => _status = value ?? ExperimentStatus.draft,
-                              ),
+                                  () =>
+                                      _status = value ?? ExperimentStatus.draft,
+                                ),
                       ),
                       const SizedBox(height: 12),
                       TextField(
@@ -288,17 +307,24 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       !_isLocked &&
       (_editReason != null || _fingerprint() != _savedFingerprint);
 
+  SaveStatus get _saveStatus {
+    if (_isSaving) return SaveStatus.saving;
+    if (_saveError != null) return SaveStatus.failed;
+    if (_hasUnsavedChanges) return SaveStatus.unsaved;
+    return SaveStatus.saved;
+  }
+
   String _fingerprint() => jsonEncode({
-    'title': _titleController.text.trim(),
-    'project': _projectController.text.trim(),
-    'cellCount': _cellCountController.text.trim(),
-    'researcher': _researcherController.text.trim(),
-    'notes': _notesController.text.trim(),
-    'status': _status.name,
-    'experimentType': _experimentType,
-    'tasks': _tasks.map((task) => task.toJson()).toList(),
-    'resources': _resources.map((resource) => resource.toJson()).toList(),
-  });
+        'title': _titleController.text.trim(),
+        'project': _projectController.text.trim(),
+        'cellCount': _cellCountController.text.trim(),
+        'researcher': _researcherController.text.trim(),
+        'notes': _notesController.text.trim(),
+        'status': _status.name,
+        'experimentType': _experimentType,
+        'tasks': _tasks.map((task) => task.toJson()).toList(),
+        'resources': _resources.map((resource) => resource.toJson()).toList(),
+      });
 
   void _onFormChanged() {
     if (mounted) setState(() {});
@@ -373,7 +399,10 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       return false;
     }
 
-    setState(() => _isSaving = true);
+    setState(() {
+      _isSaving = true;
+      _saveError = null;
+    });
     final now = DateTime.now();
     final revisions = [..._persistedExperiment.revisions];
     DateTime? completedAt = _persistedExperiment.completedAt;
@@ -422,10 +451,10 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       await widget.onChanged(updated);
     } on Object catch (error) {
       if (mounted) {
-        setState(() => _isSaving = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('실험 노트를 저장하지 못했습니다: $error')));
+        setState(() {
+          _isSaving = false;
+          _saveError = error;
+        });
       }
       return false;
     }
@@ -435,6 +464,8 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     if (mounted) {
       setState(() {
         _isSaving = false;
+        _lastSavedAt = now;
+        _saveError = null;
         if (_status == ExperimentStatus.completed) _isLocked = true;
       });
     }
@@ -501,23 +532,23 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   List<ExperimentTask> _defaultTasks(String experimentType) {
     final titles = switch (experimentType) {
       'CCK-8' || 'MTT' => const [
-        '세포 seeding',
-        '세포 부착 incubation',
-        'Treatment 처리',
-        'Assay reagent 투입',
-        '발색 incubation',
-        'Plate reader 측정',
-        '결과 파일 가져오기',
-      ],
+          '세포 seeding',
+          '세포 부착 incubation',
+          'Treatment 처리',
+          'Assay reagent 투입',
+          '발색 incubation',
+          'Plate reader 측정',
+          '결과 파일 가져오기',
+        ],
       'ELISA' => const [
-        '시료 및 standard 준비',
-        '시료 반응',
-        '세척',
-        'Detection reagent 반응',
-        '기질 반응',
-        'Plate reader 측정',
-        '결과 파일 가져오기',
-      ],
+          '시료 및 standard 준비',
+          '시료 반응',
+          '세척',
+          'Detection reagent 반응',
+          '기질 반응',
+          'Plate reader 측정',
+          '결과 파일 가져오기',
+        ],
       _ => const ['실험 준비', 'Treatment 처리', '결과 측정', '결과 파일 가져오기'],
     };
     return [
@@ -528,29 +559,6 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
 }
 
 enum _ExperimentExitAction { save, discard }
-
-class _UnsavedChangesBanner extends StatelessWidget {
-  const _UnsavedChangesBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      key: const ValueKey('unsaved-experiment-changes'),
-      color: Theme.of(context).colorScheme.tertiaryContainer,
-      borderRadius: BorderRadius.circular(12),
-      child: const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Row(
-          children: [
-            Icon(Icons.edit_note_outlined),
-            SizedBox(width: 8),
-            Expanded(child: Text('저장하지 않은 변경이 있습니다.')),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _CompletionLockBanner extends StatelessWidget {
   const _CompletionLockBanner();
@@ -897,8 +905,8 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                     child: Text(
                       '실험 실행 체크리스트',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                            fontWeight: FontWeight.w800,
+                          ),
                     ),
                   ),
                   Text('$completedCount/${tasks.length} 완료'),
