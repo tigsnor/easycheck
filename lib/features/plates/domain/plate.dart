@@ -65,11 +65,11 @@ class PlateRevision {
   final PlateSnapshot? snapshot;
 
   Map<String, Object?> toJson() => {
-    'id': id,
-    'changedAt': changedAt.toUtc().toIso8601String(),
-    'summary': summary,
-    'snapshot': snapshot?.toJson(),
-  };
+        'id': id,
+        'changedAt': changedAt.toUtc().toIso8601String(),
+        'summary': summary,
+        'snapshot': snapshot?.toJson(),
+      };
 }
 
 class PlateSnapshot {
@@ -84,32 +84,36 @@ class PlateSnapshot {
   });
 
   factory PlateSnapshot.fromPlate(Plate plate) => PlateSnapshot(
-    name: plate.name,
-    rowCount: plate.rowCount,
-    columnCount: plate.columnCount,
-    wells: plate.wells,
-    groups: plate.groups,
-    notes: plate.notes,
-    importHistory: plate.importHistory,
-  );
+        name: plate.name,
+        rowCount: plate.rowCount,
+        columnCount: plate.columnCount,
+        wells: plate.wells,
+        groups: plate.groups,
+        notes: plate.notes,
+        importHistory: plate.importHistory,
+      );
 
   factory PlateSnapshot.fromJson(Map<String, Object?> json) {
     final snapshot = PlateSnapshot(
-    name: json['name'] as String? ?? '96-well Plate',
-    rowCount: json['rowCount'] as int? ?? 8,
-    columnCount: json['columnCount'] as int? ?? 12,
-    wells: jsonObjectList(json['wells'], 'wells', required: true)
-        .map(Well.fromJson)
-        .toList(),
-    groups: jsonObjectList(json['groups'], 'groups')
-        .map(WellGroup.fromJson)
-        .toList(),
-    notes: json['notes'] as String? ?? '',
-    importHistory: jsonObjectList(json['importHistory'], 'importHistory')
-        .map(PlateResultImportRecord.fromJson)
-        .toList(),
-  );
-    validatePlateLayout(rowCount: snapshot.rowCount, columnCount: snapshot.columnCount, wells: snapshot.wells, groups: snapshot.groups);
+      name: json['name'] as String? ?? '96-well Plate',
+      rowCount: json['rowCount'] as int? ?? 8,
+      columnCount: json['columnCount'] as int? ?? 12,
+      wells: jsonObjectList(json['wells'], 'wells', required: true)
+          .map(Well.fromJson)
+          .toList(),
+      groups: jsonObjectList(json['groups'], 'groups')
+          .map(WellGroup.fromJson)
+          .toList(),
+      notes: json['notes'] as String? ?? '',
+      importHistory: jsonObjectList(json['importHistory'], 'importHistory')
+          .map(PlateResultImportRecord.fromJson)
+          .toList(),
+    );
+    validatePlateLayout(
+        rowCount: snapshot.rowCount,
+        columnCount: snapshot.columnCount,
+        wells: snapshot.wells,
+        groups: snapshot.groups);
     return snapshot;
   }
 
@@ -122,26 +126,26 @@ class PlateSnapshot {
   final List<PlateResultImportRecord> importHistory;
 
   Map<String, Object?> toJson() => {
-    'name': name,
-    'rowCount': rowCount,
-    'columnCount': columnCount,
-    'wells': wells.map((well) => well.toJson()).toList(),
-    'groups': groups.map((group) => group.toJson()).toList(),
-    'notes': notes,
-    'importHistory': importHistory.map((item) => item.toJson()).toList(),
-  };
+        'name': name,
+        'rowCount': rowCount,
+        'columnCount': columnCount,
+        'wells': wells.map((well) => well.toJson()).toList(),
+        'groups': groups.map((group) => group.toJson()).toList(),
+        'notes': notes,
+        'importHistory': importHistory.map((item) => item.toJson()).toList(),
+      };
 
   Plate restore({required String id, required String experimentId}) => Plate(
-    id: id,
-    experimentId: experimentId,
-    name: name,
-    rowCount: rowCount,
-    columnCount: columnCount,
-    wells: wells,
-    groups: groups,
-    notes: notes,
-    importHistory: importHistory,
-  );
+        id: id,
+        experimentId: experimentId,
+        name: name,
+        rowCount: rowCount,
+        columnCount: columnCount,
+        wells: wells,
+        groups: groups,
+        notes: notes,
+        importHistory: importHistory,
+      );
 }
 
 class Plate {
@@ -182,7 +186,11 @@ class Plate {
     if (plate.id.trim().isEmpty || plate.experimentId.trim().isEmpty) {
       throw const FormatException('Plate IDs must not be empty.');
     }
-    validatePlateLayout(rowCount: plate.rowCount, columnCount: plate.columnCount, wells: plate.wells, groups: plate.groups);
+    validatePlateLayout(
+        rowCount: plate.rowCount,
+        columnCount: plate.columnCount,
+        wells: plate.wells,
+        groups: plate.groups);
     return plate;
   }
 

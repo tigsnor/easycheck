@@ -37,6 +37,18 @@ void main() {
     },
   );
 
+  test('concurrent saves preserve every experiment across repository instances',
+      () async {
+    await Future.wait(List.generate(
+        20,
+        (index) => FileExperimentRepository(rootDirectory: directory.path)
+            .saveExperiment(_experiment(title: 'Experiment $index')
+                .copyWith(id: 'id-$index'))));
+    final experiments = await repository.loadExperiments();
+    expect(experiments, hasLength(20));
+    expect(experiments.map((item) => item.id).toSet(), hasLength(20));
+  });
+
   test('recovers experiments from the last valid backup', () async {
     await repository.saveExperiment(_experiment(title: 'First'));
     await repository.saveExperiment(_experiment(title: 'Second'));

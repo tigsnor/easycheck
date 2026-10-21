@@ -21,6 +21,61 @@ void main() {
     }
   });
 
+  test('recovers a missing primary after an interrupted rotation', () async {
+    await File('${file.path}.bak').writeAsString('{"value":1}');
+    await File('${file.path}.tmp').writeAsString('{"value":2}');
+    expect(await store.read(file), {'value': 1});
+    expect(jsonDecode(await file.readAsString()), {'value': 1});
+  });
+
+  test('recovers a validated first write from a temporary file', () async {
+    await File('${file.path}.tmp').writeAsString('{"value":2}');
+    expect(await store.read(file), {'value': 2});
+    expect(await File('${file.path}.tmp').exists(), isFalse);
+  });
+
+  test('does not treat an invalid pending write as an empty store', () async {
+    await File('${file.path}.tmp').writeAsString('{broken');
+    await expectLater(
+        store.read(file), throwsA(isA<JsonFileCorruptionException>()));
+    expect(await File('${file.path}.tmp').readAsString(), '{broken');
+  });
+
+  test('preserves a corrupt primary before recovery', () async {
+    await file.writeAsString('{broken');
+    await File('${file.path}.bak').writeAsString('{"value":1}');
+    await store.read(file);
+    final preserved = await directory
+        .list()
+        .where((f) => f.path.contains('.corrupt-'))
+        .toList();
+    expect(preserved, hasLength(1));
+    expect(await File(preserved.single.path).readAsString(), '{broken');
+  });
+
+  test('serializes updates from different store instances', () async {
+    await store.write(file, {'value': 0});
+    await Future.wait(List.generate(
+        25,
+        (_) => const SafeJsonFileStore().update(
+              file,
+              (current) => {'value': (current as Map)['value'] + 1},
+            )));
+    expect(await store.read(file), {'value': 25});
+  });
+
+  test('a failed update does not block later writes or replace valid data',
+      () async {
+    bool valid(Object? value) => value is Map && value['value'] is int;
+    await store.write(file, {'value': 1}, validator: valid);
+    await expectLater(
+        store.update(file, (_) => {'value': 'invalid'}, validator: valid),
+        throwsFormatException);
+    expect(await store.read(file, validator: valid), {'value': 1});
+    await store.update(file, (_) => {'value': 2}, validator: valid);
+    expect(await store.read(file, validator: valid), {'value': 2});
+  });
+
   test('rotates the last valid primary file to a backup', () async {
     await store.write(file, {'value': 1});
     await store.write(file, {'value': 2});

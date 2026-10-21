@@ -67,6 +67,89 @@ class FakePlateTemplateRepository implements PlateTemplateRepository {
 }
 
 void main() {
+  testWidgets(
+      'rejects invalid numeric edits and preserves exact values and roles',
+      (tester) async {
+    final plate = Plate(id: 'p', experimentId: 'e', name: 'Plate');
+    final wells = plate.wells.toList();
+    wells[0] = wells[0].copyWith(
+        resultValue: 0.123456789123,
+        concentrationValue: 0,
+        role: WellRole.blank);
+    final repository = FakePlateRepository()
+      ..plate = plate.copyWith(wells: wells);
+    await tester.pumpWidget(MaterialApp(
+        home: PlateEditorScreen(experimentId: 'e', repository: repository)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('well-A1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('edit-selected-well-action')));
+    await tester.pumpAndSettle();
+    final input = find.byKey(const ValueKey('well-result-value-field'));
+    expect(tester.widget<TextField>(input).controller!.text, '0.123456789123');
+    for (final value in ['oops', 'NaN', 'Infinity']) {
+      await tester.enterText(input, value);
+      await tester
+          .ensureVisible(find.byKey(const ValueKey('save-well-record-button')));
+      await tester.tap(find.byKey(const ValueKey('save-well-record-button')));
+      await tester.pumpAndSettle();
+      expect(find.text('유한한 숫자를 입력해주세요.'), findsOneWidget);
+      expect(repository.saveCount, 0);
+      expect(repository.plate!.wells.first.resultValue, 0.123456789123);
+    }
+    await tester.enterText(input, '0.123456789123');
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('save-well-record-button')));
+    await tester.tap(find.byKey(const ValueKey('save-well-record-button')));
+    await tester.pumpAndSettle();
+    expect(repository.plate!.wells.first.resultValue, 0.123456789123);
+    expect(repository.plate!.wells.first.role, WellRole.blank);
+  });
+
+  testWidgets('a failed plate save blocks exit and preserves its retry draft',
+      (tester) async {
+    final repository = FakePlateRepository();
+    await tester.pumpWidget(MaterialApp(
+        home: Builder(
+            builder: (context) => Scaffold(
+                  body: TextButton(
+                      onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute<void>(
+                              builder: (_) => PlateEditorScreen(
+                                  experimentId: 'e', repository: repository))),
+                      child: const Text('Open plate')),
+                ))));
+    await tester.tap(find.text('Open plate'));
+    await tester.pumpAndSettle();
+    repository.failNextSave = true;
+    await tester.tap(find.byKey(const ValueKey('well-A1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('edit-selected-well-action')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const ValueKey('well-result-value-field')), '1.23');
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('save-well-record-button')));
+    await tester.tap(find.byKey(const ValueKey('save-well-record-button')));
+    await tester.pumpAndSettle();
+    final editButton = find.descendant(
+        of: find.byKey(const ValueKey('edit-selected-well-action')),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton));
+    expect(tester.widget<ButtonStyleButton>(editButton).onPressed, isNull);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('저장되지 않은 Plate 변경이 있습니다'), findsOneWidget);
+    await tester.tap(find.text('계속 확인'));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('다시 저장'));
+    await tester.pumpAndSettle();
+    expect(repository.plate!.wells.first.resultValue, 1.23);
+    expect(find.text('Open plate'), findsOneWidget);
+  });
+
   testWidgets('shows Plate load failure in place and retries', (tester) async {
     final repository = FakePlateRepository()..failNextLoad = true;
     await tester.pumpWidget(
@@ -916,24 +999,23 @@ void main() {
           createdAt: DateTime.utc(2026, 6, 12),
           plate: Plate(id: 'source', experimentId: 'source', name: 'Source')
               .copyWith(
-                wells:
-                    Plate(
-                      id: 'source-wells',
-                      experimentId: 'source',
-                      name: 'Source',
-                    ).wells.map((well) {
-                      if (well.position ==
-                          const WellPosition(rowIndex: 0, columnIndex: 0)) {
-                        return well.copyWith(
-                          role: WellRole.treatment,
-                          concentrationValue: 10,
-                          resultValue: 9.9,
-                          excluded: true,
-                        );
-                      }
-                      return well;
-                    }).toList(),
-              ),
+            wells: Plate(
+              id: 'source-wells',
+              experimentId: 'source',
+              name: 'Source',
+            ).wells.map((well) {
+              if (well.position ==
+                  const WellPosition(rowIndex: 0, columnIndex: 0)) {
+                return well.copyWith(
+                  role: WellRole.treatment,
+                  concentrationValue: 10,
+                  resultValue: 9.9,
+                  excluded: true,
+                );
+              }
+              return well;
+            }).toList(),
+          ),
         ),
       );
 

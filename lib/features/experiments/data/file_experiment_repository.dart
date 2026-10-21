@@ -55,7 +55,8 @@ class FileExperimentRepository implements ExperimentRepository {
   @override
   Future<void> deleteExperiment(String id) async {
     await _updateExperiments(
-      (experiments) => experiments.removeWhere((experiment) => experiment.id == id),
+      (experiments) =>
+          experiments.removeWhere((experiment) => experiment.id == id),
     );
   }
 

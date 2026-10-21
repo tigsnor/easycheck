@@ -39,7 +39,8 @@ class SafeJsonFileStore {
   Future<Object?> read(
     File file, {
     bool Function(Object? decoded)? validator,
-  }) => _serialize(file, () => _read(file, validator));
+  }) =>
+      _serialize(file, () => _read(file, validator));
 
   Future<T> _serialize<T>(File file, Future<T> Function() action) async {
     final key = file.absolute.uri.normalizePath().toString();
@@ -60,10 +61,11 @@ class SafeJsonFileStore {
     File file,
     Object? Function(Object? current) transform, {
     bool Function(Object? decoded)? validator,
-  }) => _serialize(file, () async {
-    final current = await _read(file, validator);
-    await _write(file, transform(current), validator);
-  });
+  }) =>
+      _serialize(file, () async {
+        final current = await _read(file, validator);
+        await _write(file, transform(current), validator);
+      });
 
   Future<Object?> _read(
     File file,
@@ -72,9 +74,7 @@ class SafeJsonFileStore {
     final primaryExists = await file.exists();
     final backup = _backupFile(file);
     final temporary = _temporaryFile(file);
-    if (!primaryExists &&
-        !await backup.exists() &&
-        !await temporary.exists()) {
+    if (!primaryExists && !await backup.exists() && !await temporary.exists()) {
       return null;
     }
 
@@ -121,7 +121,8 @@ class SafeJsonFileStore {
     File file,
     Object? value, {
     bool Function(Object? decoded)? validator,
-  }) => _serialize(file, () => _write(file, value, validator));
+  }) =>
+      _serialize(file, () => _write(file, value, validator));
 
   Future<void> _write(
     File file,
@@ -159,20 +160,20 @@ class SafeJsonFileStore {
   }
 
   Future<void> delete(File file) => _serialize(file, () async {
-    // Remove recovery candidates first so an interrupted deletion cannot
-    // resurrect an already deleted primary.
-    for (final candidate in [
-      _backupFile(file),
-      File('${file.path}.bak.tmp'),
-      _temporaryFile(file),
-      File('${file.path}.recovery.tmp'),
-      file,
-    ]) {
-      if (await candidate.exists()) {
-        await candidate.delete();
-      }
-    }
-  });
+        // Remove recovery candidates first so an interrupted deletion cannot
+        // resurrect an already deleted primary.
+        for (final candidate in [
+          _backupFile(file),
+          File('${file.path}.bak.tmp'),
+          _temporaryFile(file),
+          File('${file.path}.recovery.tmp'),
+          file,
+        ]) {
+          if (await candidate.exists()) {
+            await candidate.delete();
+          }
+        }
+      });
 
   Future<Object?> _decodeAndValidate(
     File file,

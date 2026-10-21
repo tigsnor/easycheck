@@ -54,7 +54,11 @@ class PlateTemplate {
           .toList(),
       notes: json['notes'] as String? ?? '',
     );
-    validatePlateLayout(rowCount: template.rowCount, columnCount: template.columnCount, wells: template.wells, groups: template.groups);
+    validatePlateLayout(
+        rowCount: template.rowCount,
+        columnCount: template.columnCount,
+        wells: template.wells,
+        groups: template.groups);
     return template;
   }
 

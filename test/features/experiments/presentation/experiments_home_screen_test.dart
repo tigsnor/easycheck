@@ -1,3 +1,4 @@
+import 'package:easycheck/features/plates/presentation/plate_editor_screen.dart';
 import 'package:easycheck/features/backup/domain/easycheck_backup_service.dart';
 import 'package:easycheck/features/experiments/data/experiment_repository.dart';
 import 'package:easycheck/features/experiments/domain/experiment.dart';
@@ -107,6 +108,33 @@ class FakePlateTemplateRepository implements PlateTemplateRepository {
 }
 
 void main() {
+  testWidgets('home opens completed experiments with a read-only plate',
+      (tester) async {
+    final experiment = Experiment(
+        id: 'e',
+        title: 'Completed',
+        createdAt: DateTime.utc(2026),
+        updatedAt: DateTime.utc(2026),
+        status: ExperimentStatus.completed);
+    await tester.pumpWidget(MaterialApp(
+        home: ExperimentsHomeScreen(
+      repository: FakeExperimentRepository([experiment]),
+      plateRepository: FakePlateRepository()
+        ..plate = Plate(id: 'p', experimentId: 'e', name: 'Plate'),
+      plateTemplateRepository: FakePlateTemplateRepository(),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Plate 열기'));
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<PlateEditorScreen>(find.byType(PlateEditorScreen))
+            .readOnly,
+        isTrue);
+    expect(
+        find.byKey(const ValueKey('edit-selected-well-action')), findsNothing);
+  });
+
   testWidgets('renders saved experiments and filters by search query', (
     tester,
   ) async {

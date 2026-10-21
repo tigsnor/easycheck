@@ -72,31 +72,40 @@ class PlateResultImportService {
     final issues = <PlateResultImportIssue>[];
     final firstCell = rows.first.first.trim().toLowerCase();
     final isHeader = _isColumnHeader(rows.first, columnCount);
-    final explicitHeader = isHeader && (firstCell.isEmpty || firstCell == 'well');
+    final explicitHeader =
+        isHeader && (firstCell.isEmpty || firstCell == 'well');
 
     if (headerMode == MatrixHeaderMode.present ||
         (headerMode == MatrixHeaderMode.automatic && explicitHeader)) {
       if (!isHeader) {
         issues.add(const PlateResultImportIssue(
-          rowNumber: 1, columnNumber: 1, value: '',
+          rowNumber: 1,
+          columnNumber: 1,
+          value: '',
           message: '열 제목은 1부터 순서대로 지정해야 합니다.',
         ));
       }
       rows = rows.skip(1).toList();
     } else if (headerMode == MatrixHeaderMode.automatic && isHeader) {
       issues.add(const PlateResultImportIssue(
-        rowNumber: 1, columnNumber: 1, value: '',
+        rowNumber: 1,
+        columnNumber: 1,
+        value: '',
         message: '첫 행이 측정값인지 열 제목인지 선택해주세요.',
       ));
     }
 
     final values = <WellPosition, double>{};
     final seenRows = <int>{};
-    final nonemptyRows = rows.where((row) => row.any((cell) => cell.trim().isNotEmpty));
-    final labeledCount = nonemptyRows.where((row) => _rowIndex(row.first) != null).length;
+    final nonemptyRows =
+        rows.where((row) => row.any((cell) => cell.trim().isNotEmpty));
+    final labeledCount =
+        nonemptyRows.where((row) => _rowIndex(row.first) != null).length;
     if (labeledCount > 0 && labeledCount != nonemptyRows.length) {
       issues.add(const PlateResultImportIssue(
-        rowNumber: 1, columnNumber: 1, value: '',
+        rowNumber: 1,
+        columnNumber: 1,
+        value: '',
         message: '행 좌표가 있는 행과 없는 행을 함께 사용할 수 없습니다.',
       ));
     }
@@ -104,13 +113,18 @@ class PlateResultImportService {
 
     for (var sourceRow = 0; sourceRow < rows.length; sourceRow++) {
       final originalCells = rows[sourceRow];
+      if (labeledCount > 0 &&
+          originalCells.every((cell) => cell.trim().isEmpty)) {
+        continue;
+      }
       final hasRowLabel =
           originalCells.isNotEmpty && _rowIndex(originalCells.first) != null;
       final targetRow =
           hasRowLabel ? _rowIndex(originalCells.first)! : sourceRow;
       if (!seenRows.add(targetRow)) {
         issues.add(PlateResultImportIssue(
-          rowNumber: sourceRow + 1, columnNumber: 1,
+          rowNumber: sourceRow + 1,
+          columnNumber: 1,
           value: originalCells.first,
           message: '같은 행 좌표가 두 번 나타납니다.',
         ));
