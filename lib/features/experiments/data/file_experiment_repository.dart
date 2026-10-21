@@ -42,23 +42,22 @@ class FileExperimentRepository implements ExperimentRepository {
 
   @override
   Future<void> saveExperiment(Experiment experiment) async {
-    final experiments = await loadExperiments();
-    final index = experiments.indexWhere((item) => item.id == experiment.id);
-
-    if (index == -1) {
-      experiments.insert(0, experiment);
-    } else {
-      experiments[index] = experiment;
-    }
-
-    await _writeExperiments(experiments);
+    await _updateExperiments((experiments) {
+      final index = experiments.indexWhere((item) => item.id == experiment.id);
+      if (index == -1) {
+        experiments.insert(0, experiment);
+      } else {
+        experiments[index] = experiment;
+      }
+    });
   }
 
   @override
   Future<void> deleteExperiment(String id) async {
-    final experiments = await loadExperiments();
-    experiments.removeWhere((experiment) => experiment.id == id);
-    await _writeExperiments(experiments);
+    await _updateExperiments(
+      (experiments) =>
+          experiments.removeWhere((experiment) => experiment.id == id),
+    );
   }
 
   Future<File> get _file async {
@@ -113,13 +112,22 @@ class FileExperimentRepository implements ExperimentRepository {
     }).toList();
   }
 
-  Future<void> _writeExperiments(List<Experiment> experiments) async {
-    await fileStore.write(
-        await _file,
-        {
+  Future<void> _updateExperiments(
+    void Function(List<Experiment>) mutate,
+  ) async {
+    await fileStore.update(
+      await _file,
+      (current) {
+        final experiments = current == null
+            ? <Experiment>[]
+            : _recordsFromJson(current).map(Experiment.fromJson).toList();
+        mutate(experiments);
+        return {
           'schemaVersion': schemaVersion,
           'data': experiments.map((experiment) => experiment.toJson()).toList(),
-        },
-        validator: _isSupportedFile);
+        };
+      },
+      validator: _isSupportedFile,
+    );
   }
 }

@@ -1,9 +1,48 @@
+import 'dart:async';
 import 'package:easycheck/features/experiments/domain/experiment.dart';
 import 'package:easycheck/features/experiments/presentation/experiment_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets(
+      'edits made during a save stay dirty and cannot be silently discarded',
+      (tester) async {
+    final gate = Completer<void>();
+    Experiment? saved;
+    final experiment = Experiment(
+        id: 'e',
+        title: 'Original',
+        createdAt: DateTime.utc(2026),
+        updatedAt: DateTime.utc(2026));
+    await tester.pumpWidget(MaterialApp(
+        home: _DetailRouteHarness(
+            experiment: experiment,
+            onChanged: (value) async {
+              saved = value;
+              await gate.future;
+            })));
+    await tester.tap(find.text('상세 열기'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Original'), 'First edit');
+    await tester.tap(find.widgetWithText(TextButton, '저장'));
+    await tester.pump();
+    await tester.enterText(
+        find.widgetWithText(TextField, 'First edit'), 'Second edit');
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(saved!.title, 'First edit');
+    expect(find.text('저장되지 않은 변경'), findsWidgets);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('저장하지 않은 변경이 있습니다'), findsOneWidget);
+    await tester.tap(find.text('저장 후 나가기'));
+    await tester.pumpAndSettle();
+    expect(saved!.title, 'Second edit');
+    expect(find.text('상세 열기'), findsOneWidget);
+  });
+
   testWidgets('warns before leaving with unsaved experiment changes', (
     tester,
   ) async {

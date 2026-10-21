@@ -1,3 +1,5 @@
+import '../../../shared/data/json_validation.dart';
+import 'plate_layout_validation.dart';
 import '../../../shared/models/well_position.dart';
 import 'well.dart';
 import 'well_group.dart';
@@ -63,11 +65,11 @@ class PlateRevision {
   final PlateSnapshot? snapshot;
 
   Map<String, Object?> toJson() => {
-    'id': id,
-    'changedAt': changedAt.toUtc().toIso8601String(),
-    'summary': summary,
-    'snapshot': snapshot?.toJson(),
-  };
+        'id': id,
+        'changedAt': changedAt.toUtc().toIso8601String(),
+        'summary': summary,
+        'snapshot': snapshot?.toJson(),
+      };
 }
 
 class PlateSnapshot {
@@ -82,33 +84,38 @@ class PlateSnapshot {
   });
 
   factory PlateSnapshot.fromPlate(Plate plate) => PlateSnapshot(
-    name: plate.name,
-    rowCount: plate.rowCount,
-    columnCount: plate.columnCount,
-    wells: plate.wells,
-    groups: plate.groups,
-    notes: plate.notes,
-    importHistory: plate.importHistory,
-  );
+        name: plate.name,
+        rowCount: plate.rowCount,
+        columnCount: plate.columnCount,
+        wells: plate.wells,
+        groups: plate.groups,
+        notes: plate.notes,
+        importHistory: plate.importHistory,
+      );
 
-  factory PlateSnapshot.fromJson(Map<String, Object?> json) => PlateSnapshot(
-    name: json['name'] as String? ?? '96-well Plate',
-    rowCount: json['rowCount'] as int? ?? 8,
-    columnCount: json['columnCount'] as int? ?? 12,
-    wells: (json['wells'] as List<dynamic>? ?? const [])
-        .whereType<Map<String, Object?>>()
-        .map(Well.fromJson)
-        .toList(),
-    groups: (json['groups'] as List<dynamic>? ?? const [])
-        .whereType<Map<String, Object?>>()
-        .map(WellGroup.fromJson)
-        .toList(),
-    notes: json['notes'] as String? ?? '',
-    importHistory: (json['importHistory'] as List<dynamic>? ?? const [])
-        .whereType<Map<String, Object?>>()
-        .map(PlateResultImportRecord.fromJson)
-        .toList(),
-  );
+  factory PlateSnapshot.fromJson(Map<String, Object?> json) {
+    final snapshot = PlateSnapshot(
+      name: json['name'] as String? ?? '96-well Plate',
+      rowCount: json['rowCount'] as int? ?? 8,
+      columnCount: json['columnCount'] as int? ?? 12,
+      wells: jsonObjectList(json['wells'], 'wells', required: true)
+          .map(Well.fromJson)
+          .toList(),
+      groups: jsonObjectList(json['groups'], 'groups')
+          .map(WellGroup.fromJson)
+          .toList(),
+      notes: json['notes'] as String? ?? '',
+      importHistory: jsonObjectList(json['importHistory'], 'importHistory')
+          .map(PlateResultImportRecord.fromJson)
+          .toList(),
+    );
+    validatePlateLayout(
+        rowCount: snapshot.rowCount,
+        columnCount: snapshot.columnCount,
+        wells: snapshot.wells,
+        groups: snapshot.groups);
+    return snapshot;
+  }
 
   final String name;
   final int rowCount;
@@ -119,26 +126,26 @@ class PlateSnapshot {
   final List<PlateResultImportRecord> importHistory;
 
   Map<String, Object?> toJson() => {
-    'name': name,
-    'rowCount': rowCount,
-    'columnCount': columnCount,
-    'wells': wells.map((well) => well.toJson()).toList(),
-    'groups': groups.map((group) => group.toJson()).toList(),
-    'notes': notes,
-    'importHistory': importHistory.map((item) => item.toJson()).toList(),
-  };
+        'name': name,
+        'rowCount': rowCount,
+        'columnCount': columnCount,
+        'wells': wells.map((well) => well.toJson()).toList(),
+        'groups': groups.map((group) => group.toJson()).toList(),
+        'notes': notes,
+        'importHistory': importHistory.map((item) => item.toJson()).toList(),
+      };
 
   Plate restore({required String id, required String experimentId}) => Plate(
-    id: id,
-    experimentId: experimentId,
-    name: name,
-    rowCount: rowCount,
-    columnCount: columnCount,
-    wells: wells,
-    groups: groups,
-    notes: notes,
-    importHistory: importHistory,
-  );
+        id: id,
+        experimentId: experimentId,
+        name: name,
+        rowCount: rowCount,
+        columnCount: columnCount,
+        wells: wells,
+        groups: groups,
+        notes: notes,
+        importHistory: importHistory,
+      );
 }
 
 class Plate {
@@ -156,30 +163,35 @@ class Plate {
   }) : wells = wells ?? _buildEmptyWells(rowCount, columnCount);
 
   factory Plate.fromJson(Map<String, Object?> json) {
-    return Plate(
+    final plate = Plate(
       id: json['id'] as String,
       experimentId: json['experimentId'] as String,
       name: json['name'] as String? ?? '96-well Plate',
       rowCount: json['rowCount'] as int? ?? 8,
       columnCount: json['columnCount'] as int? ?? 12,
-      wells: (json['wells'] as List<dynamic>? ?? const [])
-          .whereType<Map<String, Object?>>()
+      wells: jsonObjectList(json['wells'], 'wells', required: true)
           .map(Well.fromJson)
           .toList(),
-      groups: (json['groups'] as List<dynamic>? ?? const [])
-          .whereType<Map<String, Object?>>()
+      groups: jsonObjectList(json['groups'], 'groups')
           .map(WellGroup.fromJson)
           .toList(),
       notes: json['notes'] as String? ?? '',
-      importHistory: (json['importHistory'] as List<dynamic>? ?? const [])
-          .whereType<Map<String, Object?>>()
+      importHistory: jsonObjectList(json['importHistory'], 'importHistory')
           .map(PlateResultImportRecord.fromJson)
           .toList(),
-      revisions: (json['revisions'] as List<dynamic>? ?? const [])
-          .whereType<Map<String, Object?>>()
+      revisions: jsonObjectList(json['revisions'], 'revisions')
           .map(PlateRevision.fromJson)
           .toList(),
     );
+    if (plate.id.trim().isEmpty || plate.experimentId.trim().isEmpty) {
+      throw const FormatException('Plate IDs must not be empty.');
+    }
+    validatePlateLayout(
+        rowCount: plate.rowCount,
+        columnCount: plate.columnCount,
+        wells: plate.wells,
+        groups: plate.groups);
+    return plate;
   }
 
   final String id;

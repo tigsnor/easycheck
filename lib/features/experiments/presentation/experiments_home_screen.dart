@@ -230,6 +230,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
         builder: (_) => PlateEditorScreen(
           experimentId: experiment.id,
           experimentTitle: experiment.title,
+          readOnly: experiment.status == ExperimentStatus.completed,
           repository: widget.plateRepository,
           templateRepository: widget.plateTemplateRepository,
         ),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -31,44 +32,79 @@ typedef LocalDataRecoverySink = void Function(LocalDataRecoveryEvent event);
 class SafeJsonFileStore {
   const SafeJsonFileStore({this.recoverySink});
 
+  // Shared across repository instances in the app isolate.
+  static final _pending = <String, Future<void>>{};
   final LocalDataRecoverySink? recoverySink;
 
   Future<Object?> read(
     File file, {
     bool Function(Object? decoded)? validator,
-  }) async {
-    if (!await file.exists()) {
+  }) =>
+      _serialize(file, () => _read(file, validator));
+
+  Future<T> _serialize<T>(File file, Future<T> Function() action) async {
+    final key = file.absolute.uri.normalizePath().toString();
+    final previous = _pending[key];
+    final completed = Completer<void>();
+    _pending[key] = completed.future;
+    try {
+      if (previous != null) await previous;
+      return await action();
+    } finally {
+      completed.complete();
+      if (identical(_pending[key], completed.future)) _pending.remove(key);
+    }
+  }
+
+  /// Read-modify-write must hold the same lock as individual file operations.
+  Future<void> update(
+    File file,
+    Object? Function(Object? current) transform, {
+    bool Function(Object? decoded)? validator,
+  }) =>
+      _serialize(file, () async {
+        final current = await _read(file, validator);
+        await _write(file, transform(current), validator);
+      });
+
+  Future<Object?> _read(
+    File file,
+    bool Function(Object? decoded)? validator,
+  ) async {
+    final primaryExists = await file.exists();
+    final backup = _backupFile(file);
+    final temporary = _temporaryFile(file);
+    if (!primaryExists && !await backup.exists() && !await temporary.exists()) {
       return null;
     }
 
     try {
       return await _decodeAndValidate(file, validator);
     } on Object catch (primaryError) {
-      final backup = _backupFile(file);
-      if (await backup.exists()) {
+      Object? recoveryError;
+      // Prefer the last committed backup. A temporary file can recover a
+      // first write interrupted before the primary was installed.
+      for (final candidate in [backup, temporary]) {
+        if (!await candidate.exists()) continue;
         try {
-          final decoded = await _decodeAndValidate(backup, validator);
-          await _restorePrimary(file, await backup.readAsString());
+          final decoded = await _decodeAndValidate(candidate, validator);
+          await _restorePrimary(file, await candidate.readAsString());
           final event = LocalDataRecoveryEvent(
             filePath: file.path,
-            backupPath: backup.path,
+            backupPath: candidate.path,
             recoveredAt: DateTime.now().toUtc(),
           );
           _reportRecovery(event);
           return decoded;
-        } on Object catch (backupError) {
-          throw JsonFileCorruptionException(
-            filePath: file.path,
-            backupPath: backup.path,
-            primaryError: primaryError,
-            backupError: backupError,
-          );
+        } on Object catch (error) {
+          recoveryError = error;
         }
       }
       throw JsonFileCorruptionException(
         filePath: file.path,
         backupPath: backup.path,
         primaryError: primaryError,
+        backupError: recoveryError,
       );
     }
   }
@@ -85,7 +121,14 @@ class SafeJsonFileStore {
     File file,
     Object? value, {
     bool Function(Object? decoded)? validator,
-  }) async {
+  }) =>
+      _serialize(file, () => _write(file, value, validator));
+
+  Future<void> _write(
+    File file,
+    Object? value,
+    bool Function(Object? decoded)? validator,
+  ) async {
     await file.parent.create(recursive: true);
     final temporary = _temporaryFile(file);
     final backup = _backupFile(file);
@@ -97,37 +140,40 @@ class SafeJsonFileStore {
     await temporary.writeAsString(encoded, flush: true);
     await _decodeAndValidate(temporary, validator);
 
-    var rotatedPrimary = false;
     if (await file.exists()) {
       final primaryIsValid = await _isValidJson(file, validator);
       if (primaryIsValid) {
-        if (await backup.exists()) {
-          await backup.delete();
-        }
-        await file.rename(backup.path);
-        rotatedPrimary = true;
+        // Keep the primary in place until the new file is ready. Never leave
+        // a gap between moving away the primary and installing its replacement.
+        final backupTemporary = File('${backup.path}.tmp');
+        await backupTemporary.writeAsString(
+          await file.readAsString(),
+          flush: true,
+        );
+        await backupTemporary.rename(backup.path);
       } else {
-        await file.delete();
+        await _preservePrimary(file);
       }
     }
 
-    try {
-      await temporary.rename(file.path);
-    } on Object {
-      if (rotatedPrimary && !await file.exists() && await backup.exists()) {
-        await backup.copy(file.path);
-      }
-      rethrow;
-    }
+    await temporary.rename(file.path);
   }
 
-  Future<void> delete(File file) async {
-    for (final candidate in [file, _backupFile(file), _temporaryFile(file)]) {
-      if (await candidate.exists()) {
-        await candidate.delete();
-      }
-    }
-  }
+  Future<void> delete(File file) => _serialize(file, () async {
+        // Remove recovery candidates first so an interrupted deletion cannot
+        // resurrect an already deleted primary.
+        for (final candidate in [
+          _backupFile(file),
+          File('${file.path}.bak.tmp'),
+          _temporaryFile(file),
+          File('${file.path}.recovery.tmp'),
+          file,
+        ]) {
+          if (await candidate.exists()) {
+            await candidate.delete();
+          }
+        }
+      });
 
   Future<Object?> _decodeAndValidate(
     File file,
@@ -163,16 +209,22 @@ class SafeJsonFileStore {
   }
 
   Future<void> _restorePrimary(File file, String encodedBackup) async {
-    final temporary = _temporaryFile(file);
+    final temporary = File('${file.path}.recovery.tmp');
     if (await temporary.exists()) {
       await temporary.delete();
     }
     await temporary.writeAsString(encodedBackup, flush: true);
     await _decode(temporary);
-    if (await file.exists()) {
-      await file.delete();
-    }
+    if (await file.exists()) await _preservePrimary(file);
     await temporary.rename(file.path);
+    final pendingWrite = _temporaryFile(file);
+    if (await pendingWrite.exists()) await pendingWrite.delete();
+  }
+
+  Future<void> _preservePrimary(File file) async {
+    await file.copy(
+      '${file.path}.corrupt-${DateTime.now().microsecondsSinceEpoch}',
+    );
   }
 
   File _backupFile(File file) => File('${file.path}.bak');

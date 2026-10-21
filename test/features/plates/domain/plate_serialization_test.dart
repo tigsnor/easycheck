@@ -33,28 +33,26 @@ void main() {
       }).toList();
 
       final restored = Plate.fromJson(
-        plate
-            .copyWith(
-              wells: updatedWells,
-              importHistory: [
-                PlateResultImportRecord(
-                  id: 'import-1',
-                  sourceName: 'reader-results.tsv',
-                  importedAt: DateTime.utc(2026, 6, 17, 12),
-                  valueCount: 4,
-                  resultUnit: 'OD450',
-                ),
-              ],
-              revisions: [
-                PlateRevision(
-                  id: 'revision-1',
-                  changedAt: DateTime.utc(2026, 6, 17, 13),
-                  summary: 'well 수정: A1',
-                  snapshot: PlateSnapshot.fromPlate(plate),
-                ),
-              ],
-            )
-            .toJson(),
+        plate.copyWith(
+          wells: updatedWells,
+          importHistory: [
+            PlateResultImportRecord(
+              id: 'import-1',
+              sourceName: 'reader-results.tsv',
+              importedAt: DateTime.utc(2026, 6, 17, 12),
+              valueCount: 4,
+              resultUnit: 'OD450',
+            ),
+          ],
+          revisions: [
+            PlateRevision(
+              id: 'revision-1',
+              changedAt: DateTime.utc(2026, 6, 17, 13),
+              summary: 'well 수정: A1',
+              snapshot: PlateSnapshot.fromPlate(plate),
+            ),
+          ],
+        ).toJson(),
       );
       final a1 = restored.wellAt(
         const WellPosition(rowIndex: 0, columnIndex: 0),
@@ -88,11 +86,69 @@ void main() {
       );
     });
 
+    test('rejects missing, duplicate, out-of-range and malformed wells', () {
+      final json = Plate(id: 'p', experimentId: 'e', name: 'Plate').toJson();
+      final wells = json['wells'] as List;
+      expect(() => Plate.fromJson({...json}..remove('wells')),
+          throwsFormatException);
+      expect(
+          () => Plate.fromJson({
+                ...json,
+                'wells': [wells.first]
+              }),
+          throwsFormatException);
+      expect(
+          () => Plate.fromJson({
+                ...json,
+                'wells': [wells.first, ...wells.take(95)]
+              }),
+          throwsFormatException);
+      expect(
+          () => Plate.fromJson({
+                ...json,
+                'wells': ['bad', ...wells.skip(1)]
+              }),
+          throwsFormatException);
+      expect(
+          () => Plate.fromJson({
+                ...json,
+                'wells': [
+                  {...wells.first as Map<String, Object?>, 'rowIndex': 8},
+                  ...wells.skip(1)
+                ]
+              }),
+          throwsFormatException);
+      expect(
+          () => Plate.fromJson({
+                ...json,
+                'wells': [
+                  {
+                    ...wells.first as Map<String, Object?>,
+                    'resultValue': double.infinity
+                  },
+                  ...wells.skip(1)
+                ]
+              }),
+          throwsFormatException);
+    });
+
+    test('rejects missing group references and corrupt snapshots', () {
+      final plate = Plate(id: 'p', experimentId: 'e', name: 'Plate');
+      final wells = plate.wells.toList();
+      wells[0] = wells[0].copyWith(groupId: 'missing');
+      expect(() => Plate.fromJson(plate.copyWith(wells: wells).toJson()),
+          throwsFormatException);
+      final snapshot = PlateSnapshot.fromPlate(plate).toJson()..remove('wells');
+      expect(() => PlateSnapshot.fromJson(snapshot), throwsFormatException);
+    });
+
     test('loads legacy plates without revision history', () {
       final restored = Plate.fromJson({
         'id': 'legacy-plate',
         'experimentId': 'experiment-1',
         'name': 'Legacy Plate',
+        'wells': Plate(id: 'legacy', experimentId: 'e', name: 'Legacy')
+            .toJson()['wells'],
       });
 
       expect(restored.revisions, isEmpty);

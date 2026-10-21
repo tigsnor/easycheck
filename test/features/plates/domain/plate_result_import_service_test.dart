@@ -23,6 +23,52 @@ void main() {
     );
   });
 
+  test('rejects duplicate and mixed row coordinates', () {
+    for (final text in ['A\t0.1\nA\t0.9', 'A\t0.1\n0.9']) {
+      expect(service.parseMatrix(text: text).canApply, isFalse);
+    }
+  });
+
+  test('preserves leading and interior blank rows in unlabeled matrices', () {
+    final preview = service.parseMatrix(text: '\t\n0.1\t0.2\n\t\n0.3\t0.4\n');
+    expect(preview.canApply, isTrue);
+    expect(
+        preview.values[const WellPosition(rowIndex: 1, columnIndex: 0)], 0.1);
+    expect(
+        preview.values[const WellPosition(rowIndex: 3, columnIndex: 0)], 0.3);
+    expect(preview.valueCount, 4);
+  });
+
+  test('requires an explicit choice for a numeric first row', () {
+    const text = '1\t2\t3\n4\t5\t6';
+    final automatic = service.parseMatrix(text: text);
+    expect(automatic.canApply, isFalse);
+    expect(automatic.valueCount, 6);
+    final data =
+        service.parseMatrix(text: text, headerMode: MatrixHeaderMode.absent);
+    expect(data.canApply, isTrue);
+    expect(data.valueCount, 6);
+    final header =
+        service.parseMatrix(text: text, headerMode: MatrixHeaderMode.present);
+    expect(header.canApply, isTrue);
+    expect(header.valueCount, 3);
+    expect(header.values[const WellPosition(rowIndex: 0, columnIndex: 0)], 4);
+  });
+
+  test('rejects an invalid explicitly selected column header', () {
+    expect(
+        service
+            .parseMatrix(
+                text: '1\t3\n0.1\t0.2', headerMode: MatrixHeaderMode.present)
+            .canApply,
+        isFalse);
+  });
+
+  test('accepts a UTF-8 BOM before an explicit header', () {
+    expect(service.parseMatrix(text: '\uFEFF\t1\t2\nA\t0.1\t0.2').canApply,
+        isTrue);
+  });
+
   test('reports invalid values and cells outside a 96-well plate', () {
     final tooManyColumns = List.generate(
       13,

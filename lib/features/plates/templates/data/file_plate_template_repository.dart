@@ -30,21 +30,21 @@ class FilePlateTemplateRepository implements PlateTemplateRepository {
 
   @override
   Future<void> saveTemplate(PlateTemplate template) async {
-    final templates = await loadTemplates();
-    final index = templates.indexWhere((item) => item.id == template.id);
-    if (index == -1) {
-      templates.add(template);
-    } else {
-      templates[index] = template;
-    }
-    await _write(templates);
+    await _update((templates) {
+      final index = templates.indexWhere((item) => item.id == template.id);
+      if (index == -1) {
+        templates.add(template);
+      } else {
+        templates[index] = template;
+      }
+    });
   }
 
   @override
   Future<void> deleteTemplate(String id) async {
-    final templates = await loadTemplates();
-    templates.removeWhere((template) => template.id == id);
-    await _write(templates);
+    await _update(
+      (templates) => templates.removeWhere((template) => template.id == id),
+    );
   }
 
   Future<File> get _file async {
@@ -81,13 +81,20 @@ class FilePlateTemplateRepository implements PlateTemplateRepository {
     }).toList();
   }
 
-  Future<void> _write(List<PlateTemplate> templates) async {
-    await fileStore.write(
-        await _file,
-        {
+  Future<void> _update(void Function(List<PlateTemplate>) mutate) async {
+    await fileStore.update(
+      await _file,
+      (current) {
+        final templates = current == null
+            ? <PlateTemplate>[]
+            : _records(current).map(PlateTemplate.fromJson).toList();
+        mutate(templates);
+        return {
           'schemaVersion': schemaVersion,
           'data': templates.map((template) => template.toJson()).toList(),
-        },
-        validator: _isValidFile);
+        };
+      },
+      validator: _isValidFile,
+    );
   }
 }

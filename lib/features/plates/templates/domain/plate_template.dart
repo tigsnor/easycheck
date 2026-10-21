@@ -1,3 +1,5 @@
+import '../../../../shared/data/json_validation.dart';
+import '../../domain/plate_layout_validation.dart';
 import '../../domain/plate.dart';
 import '../../domain/well.dart';
 import '../../domain/well_group.dart';
@@ -36,24 +38,28 @@ class PlateTemplate {
   }
 
   factory PlateTemplate.fromJson(Map<String, Object?> json) {
-    return PlateTemplate(
+    final template = PlateTemplate(
       id: json['id'] as String,
       name: json['name'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String).toUtc(),
       updatedAt: DateTime.parse(json['updatedAt'] as String).toUtc(),
       rowCount: json['rowCount'] as int? ?? 8,
       columnCount: json['columnCount'] as int? ?? 12,
-      wells: (json['wells'] as List<dynamic>? ?? const [])
-          .whereType<Map<String, Object?>>()
+      wells: jsonObjectList(json['wells'], 'wells', required: true)
           .map(Well.fromJson)
           .map(_withoutResult)
           .toList(),
-      groups: (json['groups'] as List<dynamic>? ?? const [])
-          .whereType<Map<String, Object?>>()
+      groups: jsonObjectList(json['groups'], 'groups')
           .map(WellGroup.fromJson)
           .toList(),
       notes: json['notes'] as String? ?? '',
     );
+    validatePlateLayout(
+        rowCount: template.rowCount,
+        columnCount: template.columnCount,
+        wells: template.wells,
+        groups: template.groups);
+    return template;
   }
 
   final String id;

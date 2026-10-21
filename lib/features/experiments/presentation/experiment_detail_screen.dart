@@ -150,8 +150,8 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                 controller: _titleController,
                 enabled: !_isLocked,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+                      fontWeight: FontWeight.w800,
+                    ),
                 decoration: InputDecoration(
                   border: InputBorder.none,
                   hintText: '실험 제목',
@@ -189,8 +189,8 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                         onChanged: _isLocked
                             ? null
                             : (value) => setState(
-                                () => _experimentType = value ?? 'Custom',
-                              ),
+                                  () => _experimentType = value ?? 'Custom',
+                                ),
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<ExperimentStatus>(
@@ -221,8 +221,9 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                         onChanged: _isLocked
                             ? null
                             : (value) => setState(
-                                () => _status = value ?? ExperimentStatus.draft,
-                              ),
+                                  () =>
+                                      _status = value ?? ExperimentStatus.draft,
+                                ),
                       ),
                       const SizedBox(height: 12),
                       TextField(
@@ -316,16 +317,16 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   }
 
   String _fingerprint() => jsonEncode({
-    'title': _titleController.text.trim(),
-    'project': _projectController.text.trim(),
-    'cellCount': _cellCountController.text.trim(),
-    'researcher': _researcherController.text.trim(),
-    'notes': _notesController.text.trim(),
-    'status': _status.name,
-    'experimentType': _experimentType,
-    'tasks': _tasks.map((task) => task.toJson()).toList(),
-    'resources': _resources.map((resource) => resource.toJson()).toList(),
-  });
+        'title': _titleController.text.trim(),
+        'project': _projectController.text.trim(),
+        'cellCount': _cellCountController.text.trim(),
+        'researcher': _researcherController.text.trim(),
+        'notes': _notesController.text.trim(),
+        'status': _status.name,
+        'experimentType': _experimentType,
+        'tasks': _tasks.map((task) => task.toJson()).toList(),
+        'resources': _resources.map((resource) => resource.toJson()).toList(),
+      });
 
   void _onFormChanged() {
     if (mounted) {
@@ -364,6 +365,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
         !await _save(showMessage: false)) {
       return;
     }
+    if (action == _ExperimentExitAction.save && _hasUnsavedChanges) return;
     if (mounted) {
       setState(() => _allowPop = true);
       Navigator.of(context).pop();
@@ -374,12 +376,14 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     if (!await _save(showMessage: false)) {
       return;
     }
+    if (_hasUnsavedChanges) return;
 
     if (!mounted) {
       return;
     }
 
-    await _openPlate(readOnly: false);
+    await _openPlate(
+        readOnly: _persistedExperiment.status == ExperimentStatus.completed);
   }
 
   Future<void> _openPlate({required bool readOnly}) async {
@@ -450,6 +454,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       completedAt: completedAt,
       revisions: revisions,
     );
+    final savingFingerprint = _fingerprint();
     try {
       await widget.onChanged(updated);
     } on Object catch (error) {
@@ -463,13 +468,14 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     }
     _persistedExperiment = updated;
     _editReason = null;
-    _savedFingerprint = _fingerprint();
+    _savedFingerprint = savingFingerprint;
     if (mounted) {
       setState(() {
         _isSaving = false;
         _lastSavedAt = now;
         _saveError = null;
-        if (_status == ExperimentStatus.completed) _isLocked = true;
+        _isLocked = updated.status == ExperimentStatus.completed &&
+            _fingerprint() == savingFingerprint;
       });
     }
 
@@ -535,23 +541,23 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   List<ExperimentTask> _defaultTasks(String experimentType) {
     final titles = switch (experimentType) {
       'CCK-8' || 'MTT' => const [
-        '세포 seeding',
-        '세포 부착 incubation',
-        'Treatment 처리',
-        'Assay reagent 투입',
-        '발색 incubation',
-        'Plate reader 측정',
-        '결과 파일 가져오기',
-      ],
+          '세포 seeding',
+          '세포 부착 incubation',
+          'Treatment 처리',
+          'Assay reagent 투입',
+          '발색 incubation',
+          'Plate reader 측정',
+          '결과 파일 가져오기',
+        ],
       'ELISA' => const [
-        '시료 및 standard 준비',
-        '시료 반응',
-        '세척',
-        'Detection reagent 반응',
-        '기질 반응',
-        'Plate reader 측정',
-        '결과 파일 가져오기',
-      ],
+          '시료 및 standard 준비',
+          '시료 반응',
+          '세척',
+          'Detection reagent 반응',
+          '기질 반응',
+          'Plate reader 측정',
+          '결과 파일 가져오기',
+        ],
       _ => const ['실험 준비', 'Treatment 처리', '결과 측정', '결과 파일 가져오기'],
     };
     return [
@@ -908,8 +914,8 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                     child: Text(
                       '실험 실행 체크리스트',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                            fontWeight: FontWeight.w800,
+                          ),
                     ),
                   ),
                   Text('$completedCount/${tasks.length} 완료'),

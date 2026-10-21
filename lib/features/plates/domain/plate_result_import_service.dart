@@ -1,6 +1,8 @@
 import '../../../shared/models/well_position.dart';
 import 'plate.dart';
 
+enum MatrixHeaderMode { automatic, present, absent }
+
 class PlateResultImportIssue {
   const PlateResultImportIssue({
     required this.rowNumber,
@@ -39,13 +41,19 @@ class PlateResultImportService {
     required String text,
     int rowCount = 8,
     int columnCount = 12,
+    MatrixHeaderMode headerMode = MatrixHeaderMode.automatic,
   }) {
     final rawLines = text
+        .replaceFirst(RegExp(r'^\uFEFF'), '')
         .replaceAll('\r\n', '\n')
         .replaceAll('\r', '\n')
         .split('\n')
-        .where((line) => line.trim().isNotEmpty)
         .toList();
+    // Interior (and leading) blank rows carry coordinates in an unlabeled
+    // matrix. Only trailing empty lines can be safely ignored.
+    while (rawLines.isNotEmpty && rawLines.last.trim().isEmpty) {
+      rawLines.removeLast();
+    }
     if (rawLines.isEmpty) {
       return const PlateResultImportPreview(
         values: {},
@@ -61,21 +69,67 @@ class PlateResultImportService {
             ? ','
             : null;
     var rows = rawLines.map((line) => _split(line, delimiter)).toList();
+    final issues = <PlateResultImportIssue>[];
+    final firstCell = rows.first.first.trim().toLowerCase();
+    final isHeader = _isColumnHeader(rows.first, columnCount);
+    final explicitHeader =
+        isHeader && (firstCell.isEmpty || firstCell == 'well');
 
-    if (_isColumnHeader(rows.first, columnCount)) {
+    if (headerMode == MatrixHeaderMode.present ||
+        (headerMode == MatrixHeaderMode.automatic && explicitHeader)) {
+      if (!isHeader) {
+        issues.add(const PlateResultImportIssue(
+          rowNumber: 1,
+          columnNumber: 1,
+          value: '',
+          message: '열 제목은 1부터 순서대로 지정해야 합니다.',
+        ));
+      }
       rows = rows.skip(1).toList();
+    } else if (headerMode == MatrixHeaderMode.automatic && isHeader) {
+      issues.add(const PlateResultImportIssue(
+        rowNumber: 1,
+        columnNumber: 1,
+        value: '',
+        message: '첫 행이 측정값인지 열 제목인지 선택해주세요.',
+      ));
     }
 
     final values = <WellPosition, double>{};
-    final issues = <PlateResultImportIssue>[];
+    final seenRows = <int>{};
+    final nonemptyRows =
+        rows.where((row) => row.any((cell) => cell.trim().isNotEmpty));
+    final labeledCount =
+        nonemptyRows.where((row) => _rowIndex(row.first) != null).length;
+    if (labeledCount > 0 && labeledCount != nonemptyRows.length) {
+      issues.add(const PlateResultImportIssue(
+        rowNumber: 1,
+        columnNumber: 1,
+        value: '',
+        message: '행 좌표가 있는 행과 없는 행을 함께 사용할 수 없습니다.',
+      ));
+    }
     var detectedColumnCount = 0;
 
     for (var sourceRow = 0; sourceRow < rows.length; sourceRow++) {
       final originalCells = rows[sourceRow];
+      if (labeledCount > 0 &&
+          originalCells.every((cell) => cell.trim().isEmpty)) {
+        continue;
+      }
       final hasRowLabel =
           originalCells.isNotEmpty && _rowIndex(originalCells.first) != null;
       final targetRow =
           hasRowLabel ? _rowIndex(originalCells.first)! : sourceRow;
+      if (!seenRows.add(targetRow)) {
+        issues.add(PlateResultImportIssue(
+          rowNumber: sourceRow + 1,
+          columnNumber: 1,
+          value: originalCells.first,
+          message: '같은 행 좌표가 두 번 나타납니다.',
+        ));
+        continue;
+      }
       final cells =
           hasRowLabel ? originalCells.skip(1).toList() : originalCells;
       detectedColumnCount = detectedColumnCount < cells.length
@@ -186,7 +240,7 @@ class PlateResultImportService {
 
   int? _rowIndex(String value) {
     final normalized = value.trim().toUpperCase();
-    if (normalized.length != 1) {
+    if (!RegExp(r'^[A-Z]$').hasMatch(normalized)) {
       return null;
     }
     final index = normalized.codeUnitAt(0) - 'A'.codeUnitAt(0);
