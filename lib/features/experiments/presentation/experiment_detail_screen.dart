@@ -379,7 +379,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       return;
     }
 
-    await _openPlate(readOnly: false);
+    await _openPlate(readOnly: _persistedExperiment.status == ExperimentStatus.completed);
   }
 
   Future<void> _openPlate({required bool readOnly}) async {
@@ -450,6 +450,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       completedAt: completedAt,
       revisions: revisions,
     );
+    final savingFingerprint = _fingerprint();
     try {
       await widget.onChanged(updated);
     } on Object catch (error) {
@@ -463,13 +464,14 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     }
     _persistedExperiment = updated;
     _editReason = null;
-    _savedFingerprint = _fingerprint();
+    _savedFingerprint = savingFingerprint;
     if (mounted) {
       setState(() {
         _isSaving = false;
         _lastSavedAt = now;
         _saveError = null;
-        if (_status == ExperimentStatus.completed) _isLocked = true;
+        _isLocked = updated.status == ExperimentStatus.completed &&
+            _fingerprint() == savingFingerprint;
       });
     }
 

@@ -89,6 +89,8 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   String? _failedSuccessMessage;
   String? _failedChangeSummary;
   bool _failedRecordHistory = true;
+  bool _allowPop = false;
+  bool _confirmingExit = false;
   final List<Plate> _undoHistory = [];
 
   @override
@@ -128,7 +130,12 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   Widget build(BuildContext context) {
     final plate = _plate;
 
-    return Scaffold(
+    return PopScope(
+      canPop: _allowPop || (!_isSaving && _failedPlate == null),
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && !_isSaving) _confirmFailedSaveExit();
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -148,7 +155,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         actions: [
           IconButton(
             tooltip: '마지막 Plate 변경 실행 취소',
-            onPressed: widget.readOnly || _undoHistory.isEmpty || _isSaving
+            onPressed: widget.readOnly || _undoHistory.isEmpty || _isSaving || _failedPlate != null
                 ? null
                 : _undoLastChange,
             icon: const Icon(Icons.undo),
@@ -156,7 +163,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
           PopupMenuButton<_PlateMoreAction>(
             key: const ValueKey('plate-more-menu'),
             tooltip: 'Plate 더보기',
-            enabled: plate != null && !_isSaving,
+            enabled: plate != null && !_isSaving && _failedPlate == null,
             onSelected: (action) {
               switch (action) {
                 case _PlateMoreAction.export:
@@ -232,7 +239,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
               selectedCount: _selectedPositions.length,
               hasSingleSelection: _selectedPositions.length == 1,
               isRangeActive: _rangeAnchor != null,
-              isSaving: _isSaving,
+              isSaving: _isSaving || _failedPlate != null,
               onEdit: _editSelectedWell,
               onAssignGroup: _assignGroupToSelection,
               onStartRange: _editorController.startRange,
@@ -257,6 +264,10 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                       status: SaveStatus.failed,
                       savedAt: _lastSavedAt,
                       onRetry: _retryPlateSave,
+                    ),
+                    TextButton(
+                      onPressed: _isSaving ? null : () => _confirmFailedSaveExit(exitAfter: false),
+                      child: const Text('실패한 변경 처리'),
                     ),
                     const SizedBox(height: 12),
                   ],
@@ -287,7 +298,42 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                 ],
               ),
       ),
+      ),
     );
+  }
+
+  Future<void> _confirmFailedSaveExit({bool exitAfter = true}) async {
+    if (_confirmingExit || _failedPlate == null) return;
+    _confirmingExit = true;
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('저장되지 않은 Plate 변경이 있습니다'),
+        content: const Text('변경을 다시 저장하거나 명시적으로 폐기해야 합니다.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('계속 확인')),
+          TextButton(onPressed: () => Navigator.pop(context, 'discard'), child: const Text('변경 폐기')),
+          FilledButton(onPressed: () => Navigator.pop(context, 'retry'), child: const Text('다시 저장')),
+        ],
+      ),
+    );
+    _confirmingExit = false;
+    if (!mounted || action == null) return;
+    if (action == 'retry') {
+      await _retryPlateSave();
+      if (!mounted || _failedPlate != null) return;
+    } else {
+      setState(() {
+        _failedPlate = null;
+        _saveError = null;
+        _failedSuccessMessage = null;
+        _failedChangeSummary = null;
+      });
+    }
+    if (exitAfter && mounted) {
+      setState(() => _allowPop = true);
+      Navigator.pop(context);
+    }
   }
 
   Well? get _selectedWell {
@@ -877,6 +923,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   }
 
   Future<void> _editSelectedWell() async {
+    if (widget.readOnly || _isSaving || _failedPlate != null) return;
     final well = _selectedWell;
     final plate = _plate;
     if (well == null || plate == null) {
@@ -912,6 +959,8 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     bool recordHistory = true,
     String changeSummary = 'Plate 수정',
   }) async {
+    if (widget.readOnly || _isSaving ||
+        (_failedPlate != null && !identical(plate, _failedPlate))) return false;
     final previous = _plate;
     final savedAt = DateTime.now().toUtc();
     final revisions = previous?.revisions ?? plate.revisions;
@@ -1556,6 +1605,7 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
   final _unitController = TextEditingController(text: 'OD');
   final _wavelengthController = TextEditingController(text: '450');
   String _sourceName = '클립보드';
+  MatrixHeaderMode _headerMode = MatrixHeaderMode.automatic;
   late PlateResultImportPreview _preview;
 
   @override
@@ -1587,6 +1637,7 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
         text: _matrixController.text,
         rowCount: widget.plate.rowCount,
         columnCount: widget.plate.columnCount,
+        headerMode: _headerMode,
       );
     });
   }
@@ -1703,7 +1754,7 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
             const _SheetHeader(title: 'Plate 결과 일괄 입력'),
             const SizedBox(height: 8),
             const Text(
-              'Excel이나 Plate reader에서 복사한 행렬을 붙여넣거나 CSV/TSV/TXT 파일을 선택하세요. 첫 행의 1–12와 첫 열의 A–H 좌표는 자동으로 인식합니다.',
+              'Excel이나 Plate reader의 행렬을 붙여넣거나 CSV/TSV/TXT 파일을 선택하세요. A–H 행 좌표를 인식하며, 숫자만 있는 첫 행은 측정값인지 열 제목인지 확인해야 합니다.',
             ),
             const SizedBox(height: 16),
             TextField(
@@ -1718,6 +1769,21 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
                 hintText:
                     r'\t1\t2\t3\nA\t0.82\t0.79\t0.85\nB\t0.80\t0.81\t0.83',
               ),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<MatrixHeaderMode>(
+              key: const ValueKey('bulk-result-header-mode'),
+              initialValue: _headerMode,
+              decoration: const InputDecoration(labelText: '첫 행 해석'),
+              items: const [
+                DropdownMenuItem(value: MatrixHeaderMode.automatic, child: Text('자동 확인')),
+                DropdownMenuItem(value: MatrixHeaderMode.present, child: Text('열 제목 있음')),
+                DropdownMenuItem(value: MatrixHeaderMode.absent, child: Text('첫 행부터 측정값')),
+              ],
+              onChanged: (value) {
+                _headerMode = value ?? MatrixHeaderMode.automatic;
+                _updatePreview();
+              },
             ),
             const SizedBox(height: 8),
             Wrap(
@@ -2859,6 +2925,8 @@ class _WellRecordSheetState extends State<_WellRecordSheet> {
   late final TextEditingController _resultUnitController;
   late final TextEditingController _noteController;
   late bool _excluded;
+  String? _concentrationError;
+  String? _resultError;
 
   @override
   void initState() {
@@ -2867,13 +2935,13 @@ class _WellRecordSheetState extends State<_WellRecordSheet> {
     _concentrationController = TextEditingController(
       text: well.concentrationValue == null
           ? ''
-          : _formatDose(well.concentrationValue!),
+          : well.concentrationValue!.toString(),
     );
     _concentrationUnitController = TextEditingController(
       text: well.concentrationUnit ?? 'µM',
     );
     _resultController = TextEditingController(
-      text: well.resultValue == null ? '' : _formatDose(well.resultValue!),
+      text: well.resultValue?.toString() ?? '',
     );
     _resultUnitController = TextEditingController(
       text: well.resultUnit ?? 'OD450',
@@ -2896,11 +2964,18 @@ class _WellRecordSheetState extends State<_WellRecordSheet> {
     final well = widget.well;
     final concentration = double.tryParse(_concentrationController.text.trim());
     final result = double.tryParse(_resultController.text.trim());
+    setState(() {
+      _concentrationError = _concentrationController.text.trim().isNotEmpty &&
+          (concentration == null || !concentration.isFinite || concentration < 0)
+          ? '0 이상의 유한한 농도를 입력해주세요.' : null;
+      _resultError = _resultController.text.trim().isNotEmpty &&
+          (result == null || !result.isFinite)
+          ? '유한한 숫자를 입력해주세요.' : null;
+    });
+    if (_concentrationError != null || _resultError != null) return;
     final concentrationUnit = _concentrationUnitController.text.trim();
     final resultUnit = _resultUnitController.text.trim();
-    final nextRole = concentration == 0
-        ? WellRole.vehicleControl
-        : well.role == WellRole.empty && concentration != null
+    final nextRole = well.role == WellRole.empty && concentration != null
         ? WellRole.treatment
         : well.role;
 
@@ -2952,7 +3027,7 @@ class _WellRecordSheetState extends State<_WellRecordSheet> {
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration: const InputDecoration(labelText: '농도'),
+                    decoration: InputDecoration(labelText: '농도', errorText: _concentrationError),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -2983,9 +3058,10 @@ class _WellRecordSheetState extends State<_WellRecordSheet> {
                       decimal: true,
                       signed: true,
                     ),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: '결과값',
                       hintText: '예: 0.82',
+                      errorText: _resultError,
                     ),
                   ),
                 ),
