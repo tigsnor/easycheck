@@ -1,3 +1,5 @@
+import '../../plates/templates/data/plate_template_repository.dart';
+import '../../plates/templates/domain/plate_template.dart';
 import '../../experiments/data/experiment_repository.dart';
 import '../../experiments/domain/experiment.dart';
 import '../../plates/data/plate_repository.dart';
@@ -29,13 +31,18 @@ class BackupRestoreService {
   const BackupRestoreService({
     required this.experimentRepository,
     required this.plateRepository,
+    this.templateRepository,
   });
 
   final ExperimentRepository experimentRepository;
   final PlateRepository plateRepository;
+  final PlateTemplateRepository? templateRepository;
 
   Future<void> restore(EasyCheckBackup backup) async {
-    _validate(backup);
+    const EasyCheckBackupService().validate(backup);
+    if (backup.templates.isNotEmpty && templateRepository == null) {
+      throw StateError('템플릿 저장소가 필요합니다.');
+    }
 
     final existingExperiments = await experimentRepository.loadExperiments();
     final experimentSnapshots = <String, Experiment?>{
@@ -49,6 +56,17 @@ class BackupRestoreService {
       );
     }
 
+    final existingTemplates = backup.templates.isEmpty
+        ? <PlateTemplate>[]
+        : await templateRepository!.loadTemplates();
+    final templatesById = {
+      for (final template in existingTemplates) template.id: template
+    };
+    final templateSnapshots = <String, PlateTemplate?>{
+      for (final template in backup.templates)
+        template.id: templatesById[template.id],
+    };
+
     try {
       for (final experiment in backup.experiments) {
         await experimentRepository.saveExperiment(experiment);
@@ -56,10 +74,14 @@ class BackupRestoreService {
       for (final plate in backup.plates) {
         await plateRepository.savePlate(plate);
       }
+      for (final template in backup.templates) {
+        await templateRepository!.saveTemplate(template);
+      }
     } on Object catch (restoreError) {
       final rollbackErrors = await _rollback(
         experimentSnapshots: experimentSnapshots,
         plateSnapshots: plateSnapshots,
+        templateSnapshots: templateSnapshots,
       );
       throw BackupRestoreException(
         restoreError: restoreError,
@@ -77,39 +99,23 @@ class BackupRestoreService {
     return null;
   }
 
-  void _validate(EasyCheckBackup backup) {
-    if (backup.schemaVersion < 1 ||
-        backup.schemaVersion > EasyCheckBackupService.currentSchemaVersion) {
-      throw FormatException(
-        '지원하지 않는 백업 schemaVersion입니다: ${backup.schemaVersion}',
-      );
-    }
-
-    final experimentIds = backup.experiments.map((item) => item.id).toList();
-    final plateIds = backup.plates.map((item) => item.id).toList();
-    final plateExperimentIds =
-        backup.plates.map((item) => item.experimentId).toList();
-
-    if (experimentIds.toSet().length != experimentIds.length) {
-      throw const FormatException('중복된 실험 ID가 있습니다.');
-    }
-    if (plateIds.toSet().length != plateIds.length) {
-      throw const FormatException('중복된 Plate ID가 있습니다.');
-    }
-    if (plateExperimentIds.toSet().length != plateExperimentIds.length) {
-      throw const FormatException('한 실험에 Plate가 두 개 이상 포함되어 있습니다.');
-    }
-    final experimentIdSet = experimentIds.toSet();
-    if (plateExperimentIds.any((id) => !experimentIdSet.contains(id))) {
-      throw const FormatException('연결된 실험이 없는 Plate가 있습니다.');
-    }
-  }
-
   Future<List<Object>> _rollback({
     required Map<String, Experiment?> experimentSnapshots,
     required Map<String, Plate?> plateSnapshots,
+    required Map<String, PlateTemplate?> templateSnapshots,
   }) async {
     final errors = <Object>[];
+    for (final entry in templateSnapshots.entries) {
+      try {
+        if (entry.value == null) {
+          await templateRepository!.deleteTemplate(entry.key);
+        } else {
+          await templateRepository!.saveTemplate(entry.value!);
+        }
+      } on Object catch (error) {
+        errors.add(error);
+      }
+    }
 
     for (final entry in plateSnapshots.entries) {
       try {

@@ -35,10 +35,10 @@ jobs:
         run: flutter --version
 
       - name: Install dependencies
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
 
       - name: Check formatting
-        run: dart format --set-exit-if-changed .
+        run: dart format --output=none --set-exit-if-changed lib test
 
       - name: Analyze project
         run: flutter analyze
@@ -69,7 +69,7 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
 
       - name: Build Android debug APK
         run: flutter build apk --debug
@@ -109,7 +109,7 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
 
       - name: Build iOS Simulator app
         run: flutter build ios --simulator --debug

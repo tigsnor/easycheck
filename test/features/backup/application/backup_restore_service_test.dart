@@ -1,3 +1,5 @@
+import 'package:easycheck/features/plates/templates/data/plate_template_repository.dart';
+import 'package:easycheck/features/plates/templates/domain/plate_template.dart';
 import 'package:easycheck/features/backup/application/backup_restore_service.dart';
 import 'package:easycheck/features/backup/domain/easycheck_backup_service.dart';
 import 'package:easycheck/features/experiments/data/experiment_repository.dart';
@@ -73,6 +75,49 @@ void main() {
     expect(experiments.byId('new'), isNull);
     expect(plates.byExperimentId('existing')!.name, 'Before restore plate');
     expect(plates.byExperimentId('new'), isNull);
+  });
+
+  test('merges user templates and preserves unrelated templates', () async {
+    final templates = _MemoryTemplates(
+        [_template('same', 'Old'), _template('other', 'Other')]);
+    final service = BackupRestoreService(
+        experimentRepository: _MemoryExperimentRepository([]),
+        plateRepository: _MemoryPlateRepository({}),
+        templateRepository: templates);
+    await service.restore(EasyCheckBackup(
+        schemaVersion: 2,
+        exportedAt: DateTime.now(),
+        experiments: [],
+        plates: [],
+        templates: [_template('same', 'Updated'), _template('new', 'New')]));
+    expect(templates.items.map((t) => t.name),
+        containsAll(['Updated', 'Other', 'New']));
+    await service.restore(_backup(experiments: [], plates: []));
+    expect(templates.items, hasLength(3));
+  });
+
+  test('template save failure rolls back experiments, plates and templates',
+      () async {
+    final experiments = _MemoryExperimentRepository([_experiment('e', 'Old')]);
+    final plates = _MemoryPlateRepository({'e': _plate('e', 'Old plate')});
+    final templates = _MemoryTemplates([_template('old', 'Old template')])
+      ..failNext = true;
+    await expectLater(
+        BackupRestoreService(
+                experimentRepository: experiments,
+                plateRepository: plates,
+                templateRepository: templates)
+            .restore(EasyCheckBackup(
+                schemaVersion: 2,
+                exportedAt: DateTime.now(),
+                experiments: [_experiment('e', 'Updated')],
+                plates: [_plate('e', 'Updated plate')],
+                templates: [_template('new', 'New')])),
+        throwsA(isA<BackupRestoreException>()
+            .having((e) => e.rollbackCompleted, 'rollback', isTrue)));
+    expect(experiments.byId('e')!.title, 'Old');
+    expect(plates.byExperimentId('e')!.name, 'Old plate');
+    expect(templates.items.single.name, 'Old template');
   });
 
   test('rejects invalid references before changing repositories', () async {
@@ -188,5 +233,28 @@ class _MemoryPlateRepository implements PlateRepository {
       throw StateError('simulated plate write failure');
     }
     _plates[plate.experimentId] = plate;
+  }
+}
+
+PlateTemplate _template(String id, String name) =>
+    PlateTemplate.fromPlate(id: id, name: name, plate: _plate('e', 'Plate'));
+
+class _MemoryTemplates implements PlateTemplateRepository {
+  _MemoryTemplates(this.items);
+  final List<PlateTemplate> items;
+  bool failNext = false;
+  @override
+  Future<List<PlateTemplate>> loadTemplates() async => [...items];
+  @override
+  Future<void> deleteTemplate(String id) async =>
+      items.removeWhere((t) => t.id == id);
+  @override
+  Future<void> saveTemplate(PlateTemplate template) async {
+    items.removeWhere((t) => t.id == template.id);
+    items.add(template);
+    if (failNext) {
+      failNext = false;
+      throw StateError('template write failed');
+    }
   }
 }

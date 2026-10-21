@@ -1,3 +1,4 @@
+import 'package:easycheck/features/backup/data/file_backup_recovery_service.dart';
 import 'package:easycheck/features/plates/presentation/plate_editor_screen.dart';
 import 'package:easycheck/features/backup/domain/easycheck_backup_service.dart';
 import 'package:easycheck/features/experiments/data/experiment_repository.dart';
@@ -258,6 +259,7 @@ void main() {
         home: ExperimentsHomeScreen(
           repository: repository,
           plateRepository: plateRepository,
+          plateTemplateRepository: FakePlateTemplateRepository(),
         ),
       ),
     );
@@ -283,6 +285,58 @@ void main() {
     expect(repository.experiments.single.id, experiment.id);
     expect(plateRepository.plate?.experimentId, experiment.id);
     expect(find.text('Delete safety test'), findsOneWidget);
+  });
+
+  testWidgets(
+      'opens recovery when existing data cannot be read and requires explicit confirmation',
+      (tester) async {
+    final repository = FlakyExperimentRepository([], remainingLoadFailures: 2);
+    final recovered = Experiment(
+        id: 'e',
+        title: 'Recovered experiment',
+        createdAt: DateTime.utc(2026),
+        updatedAt: DateTime.utc(2026));
+    final exchange = FakeDocumentExchangeService()
+      ..documentToPick = ImportedTextDocument(
+          name: 'backup.json',
+          content: const EasyCheckBackupService()
+              .encode(experiments: [recovered], plates: []));
+    final recovery = _CallbackRecovery((backup) async {
+      repository.experiments.addAll(backup.experiments);
+    });
+    await tester.pumpWidget(MaterialApp(
+        home: ExperimentsHomeScreen(
+            repository: repository,
+            plateRepository: FakePlateRepository(),
+            plateTemplateRepository: FakePlateTemplateRepository(),
+            documentExchangeService: exchange,
+            recoveryService: recovery)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('전체 데이터 백업 및 복원'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('backup-export-unavailable')),
+        findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('share-backup-file-button')), findsNothing);
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('pick-backup-file-button')));
+    await tester.tap(find.byKey(const ValueKey('pick-backup-file-button')));
+    await tester.pumpAndSettle();
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('backup-replace-mode')));
+    await tester.tap(find.byKey(const ValueKey('backup-replace-mode')));
+    await tester.pumpAndSettle();
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('restore-backup-button')));
+    await tester.tap(find.byKey(const ValueKey('restore-backup-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('백업으로 전체 복구할까요?'), findsOneWidget);
+    expect(recovery.calls, 0);
+    await tester
+        .tap(find.byKey(const ValueKey('confirm-restore-backup-button')));
+    await tester.pumpAndSettle();
+    expect(recovery.calls, 1);
+    expect(find.text('Recovered experiment'), findsOneWidget);
   });
 
   testWidgets('exports and merges a full backup with connected plates', (
@@ -320,6 +374,7 @@ void main() {
         home: ExperimentsHomeScreen(
           repository: repository,
           plateRepository: plateRepository,
+          plateTemplateRepository: FakePlateTemplateRepository(),
         ),
       ),
     );
@@ -378,6 +433,7 @@ void main() {
           repository: FakeExperimentRepository([]),
           plateRepository: FakePlateRepository(),
           documentExchangeService: exchange,
+          plateTemplateRepository: FakePlateTemplateRepository(),
         ),
       ),
     );
@@ -606,4 +662,15 @@ void main() {
       );
     },
   );
+}
+
+class _CallbackRecovery implements BackupRecoveryService {
+  _CallbackRecovery(this.callback);
+  final Future<void> Function(EasyCheckBackup) callback;
+  int calls = 0;
+  @override
+  Future<void> recover(EasyCheckBackup backup) async {
+    calls++;
+    await callback(backup);
+  }
 }

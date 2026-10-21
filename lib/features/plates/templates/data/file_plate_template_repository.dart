@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:path_provider/path_provider.dart';
+import '../../../../shared/data/local_data_directory.dart';
 
 import '../../../../shared/data/safe_json_file_store.dart';
 import '../domain/plate_template.dart';
@@ -18,15 +18,15 @@ class FilePlateTemplateRepository implements PlateTemplateRepository {
   final SafeJsonFileStore fileStore;
 
   @override
-  Future<List<PlateTemplate>> loadTemplates() async {
-    final decoded = await fileStore.read(await _file, validator: _isValidFile);
-    if (decoded == null) {
-      return [];
-    }
-    final templates = _records(decoded).map(PlateTemplate.fromJson).toList()
-      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    return templates;
-  }
+  Future<List<PlateTemplate>> loadTemplates() => _withFile((file) async {
+        final decoded = await fileStore.read(file, validator: _isValidFile);
+        if (decoded == null) {
+          return [];
+        }
+        final templates = _records(decoded).map(PlateTemplate.fromJson).toList()
+          ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        return templates;
+      });
 
   @override
   Future<void> saveTemplate(PlateTemplate template) async {
@@ -47,12 +47,11 @@ class FilePlateTemplateRepository implements PlateTemplateRepository {
     );
   }
 
-  Future<File> get _file async {
-    final directory = rootDirectory == null
-        ? await getApplicationDocumentsDirectory()
-        : Directory(rootDirectory!);
-    return File('${directory.path}/plate_templates.json');
-  }
+  Future<T> _withFile<T>(Future<T> Function(File file) action) =>
+      LocalDataDirectory.access(
+          rootDirectory,
+          (directory) =>
+              action(File('${directory.path}/plate_templates.json')));
 
   bool _isValidFile(Object? decoded) {
     try {
@@ -81,20 +80,21 @@ class FilePlateTemplateRepository implements PlateTemplateRepository {
     }).toList();
   }
 
-  Future<void> _update(void Function(List<PlateTemplate>) mutate) async {
-    await fileStore.update(
-      await _file,
-      (current) {
-        final templates = current == null
-            ? <PlateTemplate>[]
-            : _records(current).map(PlateTemplate.fromJson).toList();
-        mutate(templates);
-        return {
-          'schemaVersion': schemaVersion,
-          'data': templates.map((template) => template.toJson()).toList(),
-        };
-      },
-      validator: _isValidFile,
-    );
-  }
+  Future<void> _update(void Function(List<PlateTemplate>) mutate) =>
+      _withFile((file) async {
+        await fileStore.update(
+          file,
+          (current) {
+            final templates = current == null
+                ? <PlateTemplate>[]
+                : _records(current).map(PlateTemplate.fromJson).toList();
+            mutate(templates);
+            return {
+              'schemaVersion': schemaVersion,
+              'data': templates.map((template) => template.toJson()).toList(),
+            };
+          },
+          validator: _isValidFile,
+        );
+      });
 }

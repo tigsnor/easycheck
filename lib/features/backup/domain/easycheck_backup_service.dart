@@ -1,7 +1,9 @@
 import 'dart:convert';
 
+import '../../../shared/data/json_validation.dart';
 import '../../experiments/domain/experiment.dart';
 import '../../plates/domain/plate.dart';
+import '../../plates/templates/domain/plate_template.dart';
 
 class EasyCheckBackup {
   const EasyCheckBackup({
@@ -9,12 +11,16 @@ class EasyCheckBackup {
     required this.exportedAt,
     required this.experiments,
     required this.plates,
+    this.templates = const [],
   });
 
   final int schemaVersion;
   final DateTime exportedAt;
   final List<Experiment> experiments;
   final List<Plate> plates;
+  final List<PlateTemplate> templates;
+
+  bool get includesTemplates => schemaVersion >= 2;
 }
 
 class EasyCheckBackupService {
@@ -22,30 +28,29 @@ class EasyCheckBackupService {
 
   static const backupFormat = 'platenote-backup';
   static const legacyBackupFormat = 'easycheck-backup';
-  static const currentSchemaVersion = 1;
+  static const currentSchemaVersion = 2;
 
   String encode({
     required List<Experiment> experiments,
     required List<Plate> plates,
+    List<PlateTemplate> templates = const [],
     DateTime? exportedAt,
   }) {
-    final experimentIds = experiments.map((item) => item.id).toSet();
-    final orphanPlates = plates
-        .where((plate) => !experimentIds.contains(plate.experimentId))
-        .toList();
-    if (orphanPlates.isNotEmpty) {
-      final orphanPlate = orphanPlates.first;
-      throw ArgumentError(
-        'Plate ${orphanPlate.id} has no matching experiment.',
-      );
-    }
-
+    final backup = EasyCheckBackup(
+      schemaVersion: currentSchemaVersion,
+      exportedAt: exportedAt ?? DateTime.now(),
+      experiments: experiments,
+      plates: plates,
+      templates: templates,
+    );
+    validate(backup);
     return const JsonEncoder.withIndent('  ').convert({
       'format': backupFormat,
-      'schemaVersion': currentSchemaVersion,
-      'exportedAt': (exportedAt ?? DateTime.now()).toUtc().toIso8601String(),
+      'schemaVersion': backup.schemaVersion,
+      'exportedAt': backup.exportedAt.toUtc().toIso8601String(),
       'experiments': experiments.map((item) => item.toJson()).toList(),
       'plates': plates.map((item) => item.toJson()).toList(),
+      'templates': templates.map((item) => item.toJson()).toList(),
     });
   }
 
@@ -53,7 +58,6 @@ class EasyCheckBackupService {
     if (source.trim().isEmpty) {
       throw const FormatException('백업 JSON이 비어 있습니다.');
     }
-
     final Object? decoded;
     try {
       decoded = jsonDecode(source);
@@ -67,35 +71,29 @@ class EasyCheckBackupService {
         decoded['format'] != legacyBackupFormat) {
       throw const FormatException('PlateNote 백업 파일이 아닙니다.');
     }
-
-    final schemaVersion = decoded['schemaVersion'];
-    if (schemaVersion is! int || schemaVersion < 1) {
-      throw const FormatException('백업 schemaVersion이 올바르지 않습니다.');
+    final version = decoded['schemaVersion'];
+    if (version is! int || version < 1 || version > currentSchemaVersion) {
+      throw const FormatException('지원하지 않는 백업 버전입니다. 앱 버전을 확인해주세요.');
     }
-    if (schemaVersion > currentSchemaVersion) {
-      throw FormatException(
-        '이 앱보다 새로운 백업 버전입니다. 앱을 업데이트한 뒤 다시 시도하세요. ($schemaVersion)',
-      );
-    }
-
     try {
-      final experiments = _mapList(
-        decoded['experiments'],
-        'experiments',
-      ).map(Experiment.fromJson).toList();
-      final plates = _mapList(
-        decoded['plates'],
-        'plates',
-      ).map(Plate.fromJson).toList();
-      final exportedAt = DateTime.parse(decoded['exportedAt'] as String);
-      _validateUniqueIds(experiments, plates);
-      _validatePlateReferences(experiments, plates);
-      return EasyCheckBackup(
-        schemaVersion: schemaVersion,
-        exportedAt: exportedAt,
-        experiments: experiments,
-        plates: plates,
+      final backup = EasyCheckBackup(
+        schemaVersion: version,
+        exportedAt: DateTime.parse(decoded['exportedAt'] as String),
+        experiments: jsonObjectList(decoded['experiments'], 'experiments',
+                required: true)
+            .map(Experiment.fromJson)
+            .toList(),
+        plates: jsonObjectList(decoded['plates'], 'plates', required: true)
+            .map(Plate.fromJson)
+            .toList(),
+        templates: version >= 2
+            ? jsonObjectList(decoded['templates'], 'templates', required: true)
+                .map(PlateTemplate.fromJson)
+                .toList()
+            : const [],
       );
+      validate(backup);
+      return backup;
     } on FormatException {
       rethrow;
     } on Object catch (error) {
@@ -103,39 +101,51 @@ class EasyCheckBackupService {
     }
   }
 
-  List<Map<String, Object?>> _mapList(Object? value, String field) {
-    if (value is! List) {
-      throw FormatException('$field 항목이 배열이 아닙니다.');
+  /// Also validates programmatically constructed backups before any writes.
+  void validate(EasyCheckBackup backup) {
+    if (backup.schemaVersion < 1 ||
+        backup.schemaVersion > currentSchemaVersion ||
+        (!backup.includesTemplates && backup.templates.isNotEmpty)) {
+      throw const FormatException('백업 버전과 데이터 구성이 일치하지 않습니다.');
     }
-    return value.map((item) {
-      if (item is! Map) {
-        throw FormatException('$field 배열에 object가 아닌 값이 있습니다.');
+    void uniqueIds(Iterable<String> ids, String label) {
+      final seen = <String>{};
+      for (final id in ids) {
+        if (id.trim().isEmpty || !seen.add(id)) {
+          throw FormatException('$label ID가 비어 있거나 중복되었습니다.');
+        }
       }
-      return item.map((key, value) => MapEntry(key.toString(), value));
-    }).toList();
-  }
+    }
 
-  void _validateUniqueIds(List<Experiment> experiments, List<Plate> plates) {
-    if (experiments.map((item) => item.id).toSet().length !=
-        experiments.length) {
-      throw const FormatException('중복된 실험 ID가 있습니다.');
+    uniqueIds(backup.experiments.map((e) => e.id), '실험');
+    uniqueIds(backup.plates.map((p) => p.id), 'Plate');
+    uniqueIds(backup.plates.map((p) => p.experimentId), 'Plate 연결 실험');
+    uniqueIds(backup.templates.map((t) => t.id), '템플릿');
+    final ids = backup.experiments.map((e) => e.id).toSet();
+    // Plate filenames currently use these normalized IDs. Reject collisions
+    // before either merge or replacement can overwrite another experiment.
+    final filenames =
+        ids.map((id) => id.replaceAll(RegExp(r'[^A-Za-z0-9_.-]'), '_')).toSet();
+    if (filenames.length != ids.length) {
+      throw const FormatException('파일 이름이 충돌하는 실험 ID가 있습니다.');
     }
-    if (plates.map((item) => item.id).toSet().length != plates.length) {
-      throw const FormatException('중복된 Plate ID가 있습니다.');
+    for (final experiment in backup.experiments) {
+      Experiment.fromJson(experiment.toJson());
     }
-    if (plates.map((item) => item.experimentId).toSet().length !=
-        plates.length) {
-      throw const FormatException('한 실험에 Plate가 두 개 이상 포함되어 있습니다.');
+    for (final plate in backup.plates) {
+      if (!ids.contains(plate.experimentId)) {
+        throw const FormatException('연결된 실험이 없는 Plate가 있습니다.');
+      }
+      Plate.fromJson(plate.toJson());
     }
-  }
-
-  void _validatePlateReferences(
-    List<Experiment> experiments,
-    List<Plate> plates,
-  ) {
-    final experimentIds = experiments.map((item) => item.id).toSet();
-    if (plates.any((plate) => !experimentIds.contains(plate.experimentId))) {
-      throw const FormatException('연결된 실험이 없는 Plate가 있습니다.');
+    for (final template in backup.templates) {
+      PlateTemplate.fromJson(template.toJson());
     }
+    // Catches non-JSON values in optional nested model fields as well.
+    jsonEncode([
+      ...backup.experiments.map((e) => e.toJson()),
+      ...backup.plates.map((p) => p.toJson()),
+      ...backup.templates.map((t) => t.toJson()),
+    ]);
   }
 }

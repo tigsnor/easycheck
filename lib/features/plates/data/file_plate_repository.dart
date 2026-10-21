@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:path_provider/path_provider.dart';
+import '../../../shared/data/local_data_directory.dart';
 
 import '../../../shared/data/safe_json_file_store.dart';
 import '../domain/plate.dart';
@@ -18,41 +18,41 @@ class FilePlateRepository implements PlateRepository {
   final SafeJsonFileStore fileStore;
 
   @override
-  Future<void> deletePlate(String experimentId) async {
-    await fileStore.delete(await _file(experimentId));
-  }
+  Future<void> deletePlate(String experimentId) =>
+      _withFile(experimentId, fileStore.delete);
 
   @override
-  Future<Plate?> loadPlate(String experimentId) async {
-    final decoded = await fileStore.read(
-      await _file(experimentId),
-      validator: _isSupportedFile,
-    );
-    if (decoded == null) {
-      return null;
-    }
+  Future<Plate?> loadPlate(String experimentId) =>
+      _withFile(experimentId, (file) async {
+        final decoded = await fileStore.read(
+          file,
+          validator: _isSupportedFile,
+        );
+        if (decoded == null) {
+          return null;
+        }
 
-    return Plate.fromJson(_plateFromJson(decoded));
-  }
+        return Plate.fromJson(_plateFromJson(decoded));
+      });
 
   @override
-  Future<void> savePlate(Plate plate) async {
-    await fileStore.write(
-        await _file(plate.experimentId),
-        {
-          'schemaVersion': schemaVersion,
-          'data': plate.toJson(),
-        },
-        validator: _isSupportedFile);
-  }
+  Future<void> savePlate(Plate plate) =>
+      _withFile(plate.experimentId, (file) async {
+        await fileStore.write(
+            file,
+            {
+              'schemaVersion': schemaVersion,
+              'data': plate.toJson(),
+            },
+            validator: _isSupportedFile);
+      });
 
-  Future<File> _file(String experimentId) async {
-    final directory = rootDirectory == null
-        ? await getApplicationDocumentsDirectory()
-        : Directory(rootDirectory!);
-    final safeId = experimentId.replaceAll(RegExp(r'[^A-Za-z0-9_.-]'), '_');
-    return File('${directory.path}/plates/$safeId.json');
-  }
+  Future<T> _withFile<T>(
+          String experimentId, Future<T> Function(File file) action) =>
+      LocalDataDirectory.access(rootDirectory, (directory) {
+        final safeId = experimentId.replaceAll(RegExp(r'[^A-Za-z0-9_.-]'), '_');
+        return action(File('${directory.path}/plates/$safeId.json'));
+      });
 
   bool _isSupportedFile(Object? decoded) {
     try {
