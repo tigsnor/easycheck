@@ -1,5 +1,6 @@
 import 'package:easycheck/features/plates/domain/plate.dart';
 import 'package:easycheck/features/plates/domain/plate_analysis_service.dart';
+import 'package:easycheck/features/plates/domain/plate_analysis_export_service.dart';
 import 'package:easycheck/features/plates/domain/well.dart';
 import 'package:easycheck/features/plates/domain/well_group.dart';
 import 'package:easycheck/features/plates/domain/well_role.dart';
@@ -98,6 +99,41 @@ void main() {
       report.series.map((item) => item.resultUnit),
       containsAll(['OD450', 'RFU']),
     );
+  });
+
+  test('keeps well roles separate within the same group and concentration', () {
+    final plate = _plateWithWells([
+      _well('A1', 0.1,
+          groupId: treatment.id, concentration: 0, role: WellRole.blank),
+      _well('A2', 1.1,
+          groupId: treatment.id,
+          concentration: 0,
+          role: WellRole.untreatedControl),
+      _well('A3', 0.6, groupId: treatment.id, concentration: 0),
+      _well('A4', 99,
+          groupId: treatment.id,
+          concentration: 0,
+          role: WellRole.untreatedControl,
+          excluded: true),
+    ], groups: const [
+      treatment
+    ]);
+    final report = service.analyze(plate);
+    expect(report.series, hasLength(3));
+    final result =
+        report.series.singleWhere((s) => s.role == WellRole.treatment);
+    final control =
+        report.series.singleWhere((s) => s.role == WellRole.untreatedControl);
+    expect(result.includedWellLabels, ['A3']);
+    expect(result.normalizedPercent, closeTo(50, 0.000001));
+    expect(control.includedWellLabels, ['A2']);
+    expect(control.excludedWellLabels, ['A4']);
+    expect(report.blankMeanByUnit['OD450'], 0.1);
+    expect(report.controlByUnit['OD450']?.role, WellRole.untreatedControl);
+    final tsv = const PlateAnalysisExportService().buildTsv(plate, report);
+    expect(tsv, contains('Drug A\tblank\t0'));
+    expect(tsv, contains('Drug A\tuntreatedControl\t0'));
+    expect(tsv, contains('Drug A\ttreatment\t0'));
   });
 }
 

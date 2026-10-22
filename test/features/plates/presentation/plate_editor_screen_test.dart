@@ -439,6 +439,42 @@ void main() {
     expect(find.text('희석 계산 적용'), findsOneWidget);
   });
 
+  testWidgets('requires and persists the chosen zero control role',
+      (tester) async {
+    final repository = FakePlateRepository()
+      ..plate = Plate(id: 'p', experimentId: 'e', name: 'Plate');
+    await tester.pumpWidget(MaterialApp(
+      home: PlateEditorScreen(experimentId: 'e', repository: repository),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('apply-dilution-action')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, '단계 수'), '1');
+    await tester.enterText(find.widgetWithText(TextField, '반복 well 수'), '1');
+    final apply = find.byKey(const ValueKey('confirm-dilution-apply'));
+    await tester.ensureVisible(apply);
+    await tester.tap(apply);
+    await tester.pumpAndSettle();
+    expect(find.text('0 농도 대조군 역할을 선택해주세요.'), findsOneWidget);
+    expect(repository.saveCount, 0);
+    final role = find.byKey(const ValueKey('zero-control-role-field'));
+    await tester.ensureVisible(role);
+    await tester.tap(role);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Untreated control').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(apply);
+    await tester.tap(apply);
+    await tester.pumpAndSettle();
+    expect(repository.saveCount, 1);
+    final persisted = Plate.fromJson(repository.plate!.toJson());
+    expect(persisted.wells[0].role, WellRole.treatment);
+    expect(persisted.wells[0].concentrationValue, 1000);
+    expect(persisted.wells[1].role, WellRole.untreatedControl);
+    expect(persisted.wells[1].concentrationValue, 0);
+    expect(persisted.wells[2].role, WellRole.empty);
+  });
+
   testWidgets('previews a serial transfer plan', (tester) async {
     final repository = FakePlateRepository();
 
@@ -813,113 +849,129 @@ void main() {
     expect(find.textContaining('저장됨'), findsOneWidget);
   });
 
-  testWidgets('shows blank-corrected group analysis and exclusions', (
-    tester,
-  ) async {
-    final exchange = FakeDocumentExchangeService();
-    const group = WellGroup(
-      id: 'drug-a',
-      name: 'Drug A',
-      shortLabel: 'A',
-      color: Colors.purple,
-    );
-    final repository = FakePlateRepository();
-    final base = Plate(
-      id: 'plate-1',
-      experimentId: 'experiment-1',
-      name: '96-well Plate',
-      groups: const [group],
-    );
-    final replacements = <WellPosition, Well>{
-      const WellPosition(rowIndex: 0, columnIndex: 0): const Well(
-        position: WellPosition(rowIndex: 0, columnIndex: 0),
-        role: WellRole.blank,
-        resultValue: 0.1,
-        resultUnit: 'OD450',
-      ),
-      const WellPosition(rowIndex: 0, columnIndex: 1): const Well(
-        position: WellPosition(rowIndex: 0, columnIndex: 1),
-        role: WellRole.vehicleControl,
-        resultValue: 1.1,
-        resultUnit: 'OD450',
-      ),
-      const WellPosition(rowIndex: 1, columnIndex: 0): const Well(
-        position: WellPosition(rowIndex: 1, columnIndex: 0),
-        groupId: 'drug-a',
-        role: WellRole.treatment,
-        concentrationValue: 100,
-        concentrationUnit: 'µM',
-        resultValue: 0.6,
-        resultUnit: 'OD450',
-      ),
-      const WellPosition(rowIndex: 1, columnIndex: 1): const Well(
-        position: WellPosition(rowIndex: 1, columnIndex: 1),
-        groupId: 'drug-a',
-        role: WellRole.treatment,
-        concentrationValue: 100,
-        concentrationUnit: 'µM',
-        resultValue: 0.8,
-        resultUnit: 'OD450',
-      ),
-      const WellPosition(rowIndex: 1, columnIndex: 2): const Well(
-        position: WellPosition(rowIndex: 1, columnIndex: 2),
-        groupId: 'drug-a',
-        role: WellRole.treatment,
-        concentrationValue: 100,
-        concentrationUnit: 'µM',
-        resultValue: 99,
-        resultUnit: 'OD450',
-        excluded: true,
-      ),
-    };
-    repository.plate = base.copyWith(
-      wells: [
-        for (final well in base.wells) replacements[well.position] ?? well,
-      ],
-    );
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: PlateEditorScreen(
-          experimentId: 'experiment-1',
-          repository: repository,
-          documentExchangeService: exchange,
+  for (final readOnly in [false, true]) {
+    testWidgets('shows and exports analysis with readOnly=$readOnly', (
+      tester,
+    ) async {
+      final exchange = FakeDocumentExchangeService();
+      const group = WellGroup(
+        id: 'drug-a',
+        name: 'Drug A',
+        shortLabel: 'A',
+        color: Colors.purple,
+      );
+      final repository = FakePlateRepository();
+      final base = Plate(
+        id: 'plate-1',
+        experimentId: 'experiment-1',
+        name: '96-well Plate',
+        groups: const [group],
+      );
+      final replacements = <WellPosition, Well>{
+        const WellPosition(rowIndex: 0, columnIndex: 0): const Well(
+          position: WellPosition(rowIndex: 0, columnIndex: 0),
+          role: WellRole.blank,
+          resultValue: 0.1,
+          resultUnit: 'OD450',
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('show-analysis-action')));
-    await tester.pumpAndSettle();
+        const WellPosition(rowIndex: 0, columnIndex: 1): const Well(
+          position: WellPosition(rowIndex: 0, columnIndex: 1),
+          role: WellRole.vehicleControl,
+          resultValue: 1.1,
+          resultUnit: 'OD450',
+        ),
+        const WellPosition(rowIndex: 1, columnIndex: 0): const Well(
+          position: WellPosition(rowIndex: 1, columnIndex: 0),
+          groupId: 'drug-a',
+          role: WellRole.treatment,
+          concentrationValue: 100,
+          concentrationUnit: 'µM',
+          resultValue: 0.6,
+          resultUnit: 'OD450',
+        ),
+        const WellPosition(rowIndex: 1, columnIndex: 1): const Well(
+          position: WellPosition(rowIndex: 1, columnIndex: 1),
+          groupId: 'drug-a',
+          role: WellRole.treatment,
+          concentrationValue: 100,
+          concentrationUnit: 'µM',
+          resultValue: 0.8,
+          resultUnit: 'OD450',
+        ),
+        const WellPosition(rowIndex: 1, columnIndex: 2): const Well(
+          position: WellPosition(rowIndex: 1, columnIndex: 2),
+          groupId: 'drug-a',
+          role: WellRole.treatment,
+          concentrationValue: 100,
+          concentrationUnit: 'µM',
+          resultValue: 99,
+          resultUnit: 'OD450',
+          excluded: true,
+        ),
+      };
+      repository.plate = base.copyWith(
+        wells: [
+          for (final well in base.wells) replacements[well.position] ?? well,
+        ],
+      );
 
-    expect(find.text('기본 결과 분석'), findsOneWidget);
-    expect(find.text('사용 4 · 제외 1'), findsOneWidget);
-    expect(find.text('Drug A · 100 µM'), findsOneWidget);
-    expect(find.text('평균 · 0.7'), findsOneWidget);
-    expect(find.text('Blank 보정 · 0.6'), findsOneWidget);
-    expect(find.text('Control 대비 · 60%'), findsOneWidget);
-    expect(find.text('분석 제외 1개 · B3'), findsOneWidget);
-    expect(find.text('농도별 차트'), findsOneWidget);
-    expect(find.text('Control 대비 (%)'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('analysis-chart-Drug A-OD450')),
-      findsOneWidget,
-    );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PlateEditorScreen(
+            experimentId: 'experiment-1',
+            repository: repository,
+            documentExchangeService: exchange,
+            readOnly: readOnly,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      if (!readOnly) {
+        await tester.tap(find.byKey(const ValueKey('well-A1')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('edit-selected-well-action')),
+            findsOneWidget);
+      } else {
+        expect(find.byKey(const ValueKey('edit-selected-well-action')),
+            findsNothing);
+        expect(
+            find.byKey(const ValueKey('apply-dilution-action')), findsNothing);
+      }
+      await tester.tap(find.byKey(const ValueKey('show-analysis-action')));
+      await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('share-analysis-file-button')),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('share-analysis-file-button')));
-    await tester.pumpAndSettle();
+      expect(find.text('기본 결과 분석'), findsOneWidget);
+      expect(find.text('사용 4 · 제외 1'), findsOneWidget);
+      expect(find.text('Drug A · 100 µM'), findsOneWidget);
+      expect(find.text('평균 · 0.7'), findsOneWidget);
+      expect(find.text('Blank 보정 · 0.6'), findsOneWidget);
+      expect(find.text('Control 대비 · 60%'), findsOneWidget);
+      expect(find.text('분석 제외 1개 · B3'), findsOneWidget);
+      expect(find.text('농도별 차트'), findsOneWidget);
+      expect(find.text('Control 대비 (%)'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('analysis-chart-Drug A-OD450')),
+        findsOneWidget,
+      );
 
-    expect(exchange.shareCalls, 1);
-    expect(exchange.sharedFileName, '96-well-Plate-analysis.tsv');
-    expect(exchange.sharedMimeType, 'text/tab-separated-values');
-    expect(exchange.sharedContent, contains('PlateNote analysis export'));
-    expect(exchange.sharedContent, contains('Drug A\ttreatment\t100'));
-  });
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('share-analysis-file-button')),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester
+          .tap(find.byKey(const ValueKey('share-analysis-file-button')));
+      await tester.pumpAndSettle();
+
+      expect(exchange.shareCalls, 1);
+      expect(exchange.sharedFileName, '96-well-Plate-analysis.tsv');
+      expect(exchange.sharedMimeType, 'text/tab-separated-values');
+      expect(exchange.sharedContent, contains('PlateNote analysis export'));
+      expect(exchange.sharedContent, contains('Drug A\ttreatment\t100'));
+      expect(repository.saveCount, 0);
+    });
+  }
 
   testWidgets('opens a plate export sheet and shares a TSV file', (
     tester,
