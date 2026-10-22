@@ -4,22 +4,37 @@ import '../../dilution/domain/dilution_plan.dart';
 import '../../dilution/domain/dilution_service.dart';
 import 'plate.dart';
 import 'well_group.dart';
+import 'well_role.dart';
 
 class PlateDilutionService {
   const PlateDilutionService({this.dilutionService = const DilutionService()});
 
   final DilutionService dilutionService;
 
+  static const zeroControlRoles = [
+    WellRole.vehicleControl,
+    WellRole.untreatedControl,
+    WellRole.negativeControl,
+    WellRole.positiveControl,
+    WellRole.blank,
+  ];
+
   Plate applySeries({
     required Plate plate,
     required DilutionPlan plan,
     required WellGroup group,
     required int replicateCount,
+    WellRole? zeroControlRole,
     double? volumePerWell,
     String volumeUnit = 'µL',
     Set<WellPosition> selectedPositions = const {},
   }) {
     assert(replicateCount > 0);
+    if (plan.includeZeroControl &&
+        !zeroControlRoles.contains(zeroControlRole)) {
+      throw ArgumentError.value(
+          zeroControlRole, 'zeroControlRole', '추가할 0 농도 대조군의 역할을 선택해주세요.');
+    }
 
     final series = dilutionService.buildSeries(plan);
     final positions = _targetPositions(
@@ -35,10 +50,15 @@ class PlateDilutionService {
         return well;
       }
 
-      final concentration = series[targetIndex ~/ replicateCount];
+      final seriesIndex = targetIndex ~/ replicateCount;
+      final concentration = series[seriesIndex];
+      // Only the explicitly appended control receives the selected role.
+      // A treatment concentration may also be zero (or round down to zero).
+      final isZeroControl =
+          plan.includeZeroControl && seriesIndex == plan.steps;
       return well.copyWith(
         groupId: group.id,
-        role: group.role,
+        role: isZeroControl ? zeroControlRole! : group.role,
         concentrationValue: concentration,
         concentrationUnit: group.concentrationUnit,
         replicateIndex: (targetIndex % replicateCount) + 1,

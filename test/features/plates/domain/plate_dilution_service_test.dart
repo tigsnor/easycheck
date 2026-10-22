@@ -34,6 +34,7 @@ void main() {
       ),
       group: group,
       replicateCount: 2,
+      zeroControlRole: WellRole.vehicleControl,
       volumePerWell: 100,
       volumeUnit: 'µL',
     );
@@ -43,7 +44,9 @@ void main() {
       updated.wells.take(8).map((well) => well.concentrationValue).toList(),
       [100, 100, 50, 50, 25, 25, 0, 0],
     );
-    expect(updated.wells[6].role, WellRole.treatment);
+    expect(updated.wells[0].role, WellRole.treatment);
+    expect(updated.wells[6].role, WellRole.vehicleControl);
+    expect(updated.wells[7].role, WellRole.vehicleControl);
     expect(updated.wells[7].replicateIndex, 2);
     expect(updated.wells[0].volumeValue, 100);
     expect(updated.wells[0].volumeUnit, 'µL');
@@ -94,4 +97,66 @@ void main() {
       );
     },
   );
+
+  test('requires an explicit valid role for an appended zero control', () {
+    for (final role in [null, WellRole.treatment, WellRole.empty]) {
+      expect(
+        () => service.applySeries(
+          plate: Plate(id: 'p', experimentId: 'e', name: 'Plate'),
+          plan: const DilutionPlan(
+            startConcentration: 10,
+            dilutionFactor: 2,
+            steps: 1,
+            includeZeroControl: true,
+          ),
+          group: group,
+          replicateCount: 1,
+          zeroControlRole: role,
+        ),
+        throwsArgumentError,
+      );
+    }
+  });
+
+  test('only appended controls receive the selected role, even at zero dose',
+      () {
+    for (final role in PlateDilutionService.zeroControlRoles) {
+      final updated = service.applySeries(
+        plate: Plate(id: 'p', experimentId: 'e', name: 'Plate'),
+        plan: const DilutionPlan(
+          startConcentration: 0,
+          dilutionFactor: 2,
+          steps: 2,
+          includeZeroControl: true,
+        ),
+        group: group,
+        replicateCount: 2,
+        zeroControlRole: role,
+      );
+      expect(updated.wells.take(6).map((w) => w.concentrationValue),
+          everyElement(0));
+      expect(updated.wells.take(4).map((w) => w.role),
+          everyElement(WellRole.treatment));
+      expect(
+          updated.wells.skip(4).take(2).map((w) => w.role), everyElement(role));
+      expect(updated.wells[6].role, WellRole.empty);
+      expect(updated.wells[5].replicateIndex, 2);
+    }
+  });
+
+  test('zero treatment remains treatment when no control is requested', () {
+    final updated = service.applySeries(
+      plate: Plate(id: 'p', experimentId: 'e', name: 'Plate'),
+      plan: const DilutionPlan(
+        startConcentration: 0,
+        dilutionFactor: 2,
+        steps: 1,
+      ),
+      group: group,
+      replicateCount: 1,
+    );
+    expect(updated.wells.first.concentrationValue, 0);
+    expect(updated.wells.first.role, WellRole.treatment);
+    expect(updated.wells[1].role, WellRole.empty);
+  });
 }

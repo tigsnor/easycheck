@@ -154,6 +154,14 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
           ),
           actions: [
             IconButton(
+              key: const ValueKey('show-analysis-action'),
+              tooltip: 'Plate 분석 보기',
+              onPressed: plate == null || _isSaving || _failedPlate != null
+                  ? null
+                  : _showPlateAnalysis,
+              icon: const Icon(Icons.analytics_outlined),
+            ),
+            IconButton(
               tooltip: '마지막 Plate 변경 실행 취소',
               onPressed: widget.readOnly ||
                       _undoHistory.isEmpty ||
@@ -250,7 +258,6 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                 onClearSelection: _clearSelection,
                 onBulkResultImport: _openBulkResultImport,
                 onShowDetails: _showSelectedWellDetails,
-                onShowAnalysis: _showPlateAnalysis,
               ),
         body: SafeArea(
           child: _isLoading
@@ -855,6 +862,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       plan: draft.plan,
       group: group,
       replicateCount: draft.replicateCount,
+      zeroControlRole: draft.zeroControlRole,
       volumePerWell: draft.volumePerWell,
       volumeUnit: draft.volumeUnit,
       selectedPositions: _selectedPositions,
@@ -2264,7 +2272,7 @@ class _PlateAnalysisCard extends StatelessWidget {
               const Text('측정 결과를 입력하면 실험군·농도별 평균과 반복 오차를 계산합니다.')
             else ...[
               Text(
-                '분석 제외 well은 계산에서 빼고, 같은 실험군·농도·결과 단위를 반복 측정으로 묶습니다. 정규화 기준은 Vehicle → Untreated → Negative control 순으로 선택합니다.',
+                '분석 제외 well은 계산에서 빼고, 같은 실험군·역할·농도·결과 단위를 반복 측정으로 묶습니다. 정규화 기준은 Vehicle → Untreated → Negative control 순으로 선택합니다.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 10),
@@ -2568,7 +2576,7 @@ class _AnalysisSeriesRow extends StatelessWidget {
         : '${_formatDose(series.concentrationValue!)} ${series.concentrationUnit ?? ''}';
     return Column(
       key: ValueKey(
-        'analysis-${series.label}-${series.concentrationValue}-${series.resultUnit}',
+        'analysis-${series.label}-${series.role.name}-${series.concentrationValue}-${series.resultUnit}',
       ),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2580,7 +2588,7 @@ class _AnalysisSeriesRow extends StatelessWidget {
         ),
         const SizedBox(height: 3),
         Text(
-          '${series.resultUnit} · n=${series.replicateCount} · ${series.includedWellLabels.join(', ')}',
+          '${series.role.label} · ${series.resultUnit} · n=${series.replicateCount} · ${series.includedWellLabels.join(', ')}',
           style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 8),
@@ -2784,7 +2792,6 @@ class _PlateContextActionBar extends StatelessWidget {
     required this.onClearSelection,
     required this.onBulkResultImport,
     required this.onShowDetails,
-    required this.onShowAnalysis,
   });
 
   final int selectedCount;
@@ -2798,7 +2805,6 @@ class _PlateContextActionBar extends StatelessWidget {
   final VoidCallback onClearSelection;
   final VoidCallback onBulkResultImport;
   final VoidCallback onShowDetails;
-  final VoidCallback onShowAnalysis;
 
   @override
   Widget build(BuildContext context) {
@@ -2886,12 +2892,6 @@ class _PlateContextActionBar extends StatelessWidget {
                             icon: Icons.water_drop_outlined,
                             label: '희석 적용',
                             onPressed: isSaving ? null : onApplyDilution,
-                          ),
-                          _ContextActionButton(
-                            key: const ValueKey('show-analysis-action'),
-                            icon: Icons.analytics_outlined,
-                            label: '분석 보기',
-                            onPressed: onShowAnalysis,
                           ),
                         ],
                 ),
@@ -3248,6 +3248,7 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
   final _pipettingPlanService = const PipettingPlanService();
   late Color _color = widget.suggestedColor;
   bool _includeZeroControl = true;
+  WellRole? _zeroControlRole;
   bool _useSerialTransfer = false;
   DilutionDirection _direction = DilutionDirection.topToBottom;
   String? _errorMessage;
@@ -3393,6 +3394,24 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
               value: _includeZeroControl,
               onChanged: (value) => setState(() => _includeZeroControl = value),
             ),
+            if (_includeZeroControl) ...[
+              DropdownButtonFormField<WellRole>(
+                key: const ValueKey('zero-control-role-field'),
+                initialValue: _zeroControlRole,
+                decoration: const InputDecoration(
+                  labelText: '0 농도 대조군 역할',
+                  helperText: '실험 조건에 맞는 역할을 선택하세요.',
+                ),
+                items: PlateDilutionService.zeroControlRoles
+                    .map((role) => DropdownMenuItem(
+                          value: role,
+                          child: Text(role.label),
+                        ))
+                    .toList(),
+                onChanged: (value) => setState(() => _zeroControlRole = value),
+              ),
+              const SizedBox(height: 8),
+            ],
             const SizedBox(height: 8),
             Text(
               '피펫팅 계획',
@@ -3649,6 +3668,11 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
       return;
     }
 
+    if (_includeZeroControl && _zeroControlRole == null) {
+      setState(() => _errorMessage = '0 농도 대조군 역할을 선택해주세요.');
+      return;
+    }
+
     Navigator.of(context).pop(
       _DilutionDraft(
         groupName: groupName,
@@ -3658,6 +3682,7 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
         color: _color,
         unit: unit,
         replicateCount: replicateCount,
+        zeroControlRole: _includeZeroControl ? _zeroControlRole : null,
         volumePerWell: volumePerWell,
         volumeUnit: 'µL',
         plan: DilutionPlan(
@@ -3884,6 +3909,7 @@ class _DilutionDraft {
     required this.color,
     required this.unit,
     required this.replicateCount,
+    required this.zeroControlRole,
     required this.volumePerWell,
     required this.volumeUnit,
     required this.plan,
@@ -3894,6 +3920,7 @@ class _DilutionDraft {
   final Color color;
   final String unit;
   final int replicateCount;
+  final WellRole? zeroControlRole;
   final double volumePerWell;
   final String volumeUnit;
   final DilutionPlan plan;

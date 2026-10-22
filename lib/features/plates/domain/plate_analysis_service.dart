@@ -192,7 +192,7 @@ class PlateAnalysisService {
     return _SeriesKey(
       groupId: group?.id,
       label: group?.name ?? well.role.analysisLabel,
-      role: group?.role ?? well.role,
+      role: well.role,
       concentrationValue: well.concentrationValue,
       concentrationUnit: well.concentrationUnit ?? group?.concentrationUnit,
       resultUnit: _resultUnit(well),
