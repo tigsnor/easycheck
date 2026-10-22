@@ -1,3 +1,4 @@
+import 'widgets/plate_grid.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -28,6 +29,7 @@ import '../templates/domain/default_plate_templates.dart';
 import '../templates/domain/plate_template.dart';
 
 enum _PlateMoreAction {
+  importResults,
   export,
   history,
   saveTemplate,
@@ -167,6 +169,9 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
               enabled: plate != null && !_isSaving && _failedPlate == null,
               onSelected: (action) {
                 switch (action) {
+                  case _PlateMoreAction.importResults:
+                    _openBulkResultImport();
+                    return;
                   case _PlateMoreAction.export:
                     _showPlateExport();
                     return;
@@ -185,6 +190,16 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                 }
               },
               itemBuilder: (context) => [
+                if (!widget.readOnly)
+                  const PopupMenuItem(
+                    key: ValueKey('bulk-result-import-menu'),
+                    value: _PlateMoreAction.importResults,
+                    child: ListTile(
+                      leading: Icon(Icons.table_view_outlined),
+                      title: Text('결과 일괄 입력'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
                 const PopupMenuItem(
                   value: _PlateMoreAction.export,
                   child: ListTile(
@@ -237,7 +252,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         bottomNavigationBar: plate == null || widget.readOnly
             ? null
             : _PlateContextActionBar(
-                selectedCount: _selectedPositions.length,
+                selectedPositions: _selectedPositions,
                 hasSingleSelection: _selectedPositions.length == 1,
                 isRangeActive: _rangeAnchor != null,
                 isSaving: _isSaving || _failedPlate != null,
@@ -284,7 +299,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                               onOpenOverview: _showPlateOverview,
                             ),
                             const SizedBox(height: 18),
-                            _PlateGrid(
+                            PlateGrid(
                               plate: plate,
                               selectedPositions: _selectedPositions,
                               requestedCellSize: _plateCellSize,
@@ -1258,283 +1273,6 @@ class _PlateWorkspaceHint extends StatelessWidget {
   }
 }
 
-class _PlateGrid extends StatelessWidget {
-  const _PlateGrid({
-    required this.plate,
-    required this.selectedPositions,
-    required this.requestedCellSize,
-    required this.onZoomOut,
-    required this.onFit,
-    required this.onZoomIn,
-    required this.onSelected,
-    required this.onRangeSelected,
-    required this.onRowSelected,
-    required this.onColumnSelected,
-  });
-
-  static const _spacing = 6.0;
-  static const _cardPadding = 14.0;
-
-  final Plate plate;
-  final Set<WellPosition> selectedPositions;
-  final double? requestedCellSize;
-  final VoidCallback? onZoomOut;
-  final VoidCallback? onFit;
-  final VoidCallback? onZoomIn;
-  final ValueChanged<WellPosition> onSelected;
-  final ValueChanged<WellPosition> onRangeSelected;
-  final ValueChanged<int> onRowSelected;
-  final ValueChanged<int> onColumnSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(_cardPadding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    requestedCellSize == null
-                        ? 'Plate 화면 맞춤'
-                        : 'Plate ${requestedCellSize!.round()}px',
-                    key: const ValueKey('plate-zoom-label'),
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                  ),
-                ),
-                IconButton(
-                  key: const ValueKey('plate-zoom-out-button'),
-                  tooltip: 'Plate 축소',
-                  onPressed: onZoomOut,
-                  icon: const Icon(Icons.remove_circle_outline),
-                ),
-                IconButton(
-                  key: const ValueKey('plate-fit-button'),
-                  tooltip: 'Plate 화면 맞춤',
-                  onPressed: onFit,
-                  icon: const Icon(Icons.fit_screen_outlined),
-                ),
-                IconButton(
-                  key: const ValueKey('plate-zoom-in-button'),
-                  tooltip: 'Plate 확대',
-                  onPressed: onZoomIn,
-                  icon: const Icon(Icons.add_circle_outline),
-                ),
-              ],
-            ),
-            if (requestedCellSize != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  '좌우로 밀어 숨겨진 well을 확인하세요.',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: Colors.black54),
-                ),
-              ),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final gridColumnCount = plate.columnCount + 1;
-                final gridRowCount = plate.rowCount + 1;
-                final fitCellSize =
-                    (constraints.maxWidth - _spacing * (gridColumnCount - 1)) /
-                        gridColumnCount;
-                final cellSize = requestedCellSize ?? fitCellSize;
-                final gridWidth = cellSize * gridColumnCount +
-                    _spacing * (gridColumnCount - 1);
-                final gridHeight =
-                    cellSize * gridRowCount + _spacing * (gridRowCount - 1);
-
-                return Scrollbar(
-                  child: SingleChildScrollView(
-                    key: const ValueKey('plate-horizontal-scroll'),
-                    scrollDirection: Axis.horizontal,
-                    child: SizedBox(
-                      width: gridWidth,
-                      height: gridHeight,
-                      child: GridView.builder(
-                        key: const ValueKey('plate-grid'),
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: gridRowCount * gridColumnCount,
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: gridColumnCount,
-                          mainAxisSpacing: _spacing,
-                          crossAxisSpacing: _spacing,
-                        ),
-                        itemBuilder: (context, index) =>
-                            _buildCell(context, index, gridColumnCount),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCell(BuildContext context, int index, int gridColumnCount) {
-    final row = index ~/ gridColumnCount;
-    final column = index % gridColumnCount;
-
-    if (row == 0 && column == 0) {
-      return const SizedBox.shrink();
-    }
-    if (row == 0) {
-      final columnIndex = column - 1;
-      return _HeaderCell(
-        key: ValueKey('column-header-${columnIndex + 1}'),
-        label: '${columnIndex + 1}',
-        semanticLabel: '${columnIndex + 1}열 전체 선택',
-        onTap: () => onColumnSelected(columnIndex),
-      );
-    }
-    if (column == 0) {
-      final rowIndex = row - 1;
-      final rowLabel = String.fromCharCode('A'.codeUnitAt(0) + rowIndex);
-      return _HeaderCell(
-        key: ValueKey('row-header-$rowLabel'),
-        label: rowLabel,
-        semanticLabel: '$rowLabel행 전체 선택',
-        onTap: () => onRowSelected(rowIndex),
-      );
-    }
-
-    final position = WellPosition(rowIndex: row - 1, columnIndex: column - 1);
-    final well = plate.wellAt(position);
-    final group = well.groupId == null
-        ? null
-        : plate.groups.cast<WellGroup?>().firstWhere(
-              (candidate) => candidate?.id == well.groupId,
-              orElse: () => null,
-            );
-
-    return _WellCell(
-      key: ValueKey('well-${well.label}'),
-      well: well,
-      group: group,
-      selected: selectedPositions.contains(position),
-      onTap: () => onSelected(position),
-      onLongPress: () => onRangeSelected(position),
-    );
-  }
-}
-
-class _HeaderCell extends StatelessWidget {
-  const _HeaderCell({
-    required this.label,
-    required this.semanticLabel,
-    required this.onTap,
-    super.key,
-  });
-
-  final String label;
-  final String semanticLabel;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: semanticLabel,
-      button: true,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: onTap,
-        child: Container(
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFF7D6),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _WellCell extends StatelessWidget {
-  const _WellCell({
-    required this.well,
-    required this.group,
-    required this.selected,
-    required this.onTap,
-    required this.onLongPress,
-    super.key,
-  });
-
-  final Well well;
-  final WellGroup? group;
-  final bool selected;
-  final VoidCallback onTap;
-  final VoidCallback onLongPress;
-
-  @override
-  Widget build(BuildContext context) {
-    final hasDose = well.concentrationValue != null;
-    final background = group?.color ??
-        (hasDose ? const Color(0xFFE6D9FF) : const Color(0xFFF2F2F7));
-    final borderColor = selected ? Colors.black : Colors.transparent;
-    final label = group?.shortLabel.isNotEmpty == true ? group!.shortLabel : '';
-
-    final concentrationLabel = hasDose
-        ? ', 농도 ${_formatDose(well.concentrationValue!)} ${well.concentrationUnit}'
-        : '';
-    final groupLabel = group == null ? '' : ', 그룹 ${group!.name}';
-
-    return Semantics(
-      label: '${well.label} well$concentrationLabel$groupLabel',
-      hint: '탭하여 선택, 길게 눌러 범위 선택',
-      button: true,
-      selected: selected,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        onLongPress: onLongPress,
-        child: Container(
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: borderColor, width: 2),
-          ),
-          child: Text(
-            hasDose
-                ? '${label.isEmpty ? '' : '$label\n'}${_formatDose(well.concentrationValue!)}'
-                : label.isEmpty
-                    ? well.label
-                    : label,
-            maxLines: 2,
-            overflow: TextOverflow.fade,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: hasDose ? 8 : 7,
-              height: 0.9,
-              fontWeight: hasDose || label.isNotEmpty
-                  ? FontWeight.w700
-                  : FontWeight.w500,
-              color: hasDose || label.isNotEmpty
-                  ? const Color(0xFF4B208C)
-                  : const Color(0xFF8E8E93),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _SheetHeader extends StatelessWidget {
   const _SheetHeader({required this.title});
 
@@ -1752,7 +1490,7 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
                 labelText: '결과 행렬',
                 alignLabelWithHint: true,
                 hintText:
-                    r'\t1\t2\t3\nA\t0.82\t0.79\t0.85\nB\t0.80\t0.81\t0.83',
+                    'well\t1\t2\t3\nA\t0.82\t0.79\t0.85\nB\t0.80\t0.81\t0.83',
               ),
             ),
             const SizedBox(height: 8),
@@ -2743,7 +2481,7 @@ class _PlateValidationIssueRow extends StatelessWidget {
 
 class _PlateContextActionBar extends StatelessWidget {
   const _PlateContextActionBar({
-    required this.selectedCount,
+    required this.selectedPositions,
     required this.hasSingleSelection,
     required this.isRangeActive,
     required this.isSaving,
@@ -2756,7 +2494,9 @@ class _PlateContextActionBar extends StatelessWidget {
     required this.onShowDetails,
   });
 
-  final int selectedCount;
+  final Set<WellPosition> selectedPositions;
+
+  int get selectedCount => selectedPositions.length;
   final bool hasSingleSelection;
   final bool isRangeActive;
   final bool isSaving;
@@ -2771,6 +2511,12 @@ class _PlateContextActionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasSelection = selectedCount > 0;
+    final labels = selectedPositions.map((p) => p.label).toList();
+    final selectionLabel = labels.isEmpty
+        ? ''
+        : labels.length == 1
+            ? labels.first
+            : '${labels.first}–${labels.last}';
     return Material(
       key: const ValueKey('plate-context-action-bar'),
       elevation: 8,
@@ -2788,8 +2534,8 @@ class _PlateContextActionBar extends StatelessWidget {
                 child: Text(
                   hasSelection
                       ? isRangeActive
-                          ? '범위의 끝 well을 선택하세요'
-                          : '$selectedCount개 well 선택됨'
+                          ? '범위 끝 선택 · 시작 ${labels.first}'
+                          : '$selectedCount개 well 선택됨 · $selectionLabel'
                       : 'Plate 작업',
                   style: Theme.of(
                     context,

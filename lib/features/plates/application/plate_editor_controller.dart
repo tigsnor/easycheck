@@ -17,20 +17,20 @@ class PlateEditorController extends ChangeNotifier {
   WellPosition? _rangeAnchor;
 
   double? get requestedCellSize => _requestedCellSize;
-  double? _requestedCellSize;
+  double? _requestedCellSize = 48;
 
-  bool get canZoomOut => _requestedCellSize != null && _requestedCellSize! > 32;
-  bool get canZoomIn => _requestedCellSize == null || _requestedCellSize! < 64;
+  bool get canZoomOut => _requestedCellSize != null && _requestedCellSize! > 48;
+  bool get canZoomIn => _requestedCellSize == null || _requestedCellSize! < 80;
 
   void zoomOut() {
-    final current = _requestedCellSize ?? 32;
-    _requestedCellSize = (current - 8).clamp(32, 64).toDouble();
+    final current = _requestedCellSize ?? 56;
+    _requestedCellSize = (current - 8).clamp(48, 80).toDouble();
     notifyListeners();
   }
 
   void zoomIn() {
-    final current = _requestedCellSize ?? 32;
-    _requestedCellSize = (current + 8).clamp(32, 64).toDouble();
+    final current = _requestedCellSize ?? 40;
+    _requestedCellSize = (current + 8).clamp(48, 80).toDouble();
     notifyListeners();
   }
 
