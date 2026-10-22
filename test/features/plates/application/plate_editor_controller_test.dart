@@ -39,20 +39,22 @@ void main() {
       final controller = PlateEditorController();
       addTearDown(controller.dispose);
 
-      expect(controller.requestedCellSize, isNull);
+      expect(controller.requestedCellSize, 48);
       expect(controller.canZoomOut, isFalse);
       controller.zoomIn();
-      expect(controller.requestedCellSize, 40);
+      expect(controller.requestedCellSize, 56);
       expect(controller.canZoomOut, isTrue);
 
       for (var index = 0; index < 10; index++) {
         controller.zoomIn();
       }
-      expect(controller.requestedCellSize, 64);
+      expect(controller.requestedCellSize, 80);
       expect(controller.canZoomIn, isFalse);
 
       controller.fitToScreen();
       expect(controller.requestedCellSize, isNull);
+      controller.zoomIn();
+      expect(controller.requestedCellSize, 48);
     });
 
     test('notifies listeners for meaningful interaction changes', () {

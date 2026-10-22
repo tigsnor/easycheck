@@ -204,9 +204,14 @@ void main() {
       find.byKey(const ValueKey('plate-context-action-bar')),
       findsNothing,
     );
+    await tester.tap(find.byKey(const ValueKey('plate-results-view')));
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey('plate-results-progress')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('plate-more-menu')));
     await tester.pumpAndSettle();
     expect(find.text('현재 Plate를 템플릿으로 저장'), findsNothing);
+    expect(find.byKey(const ValueKey('bulk-result-import-menu')), findsNothing);
     expect(find.text('Plate 전체 내보내기'), findsOneWidget);
     expect(repository.saveCount, 0);
   });
@@ -267,7 +272,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Plate 화면 맞춤'), findsOneWidget);
+    expect(find.text('Plate 작업 보기'), findsOneWidget);
+    expect(tester.getSize(find.byKey(const ValueKey('well-A1'))).width,
+        closeTo(48, 0.1));
     final zoomOutAtFit = tester.widget<IconButton>(
       find.byKey(const ValueKey('plate-zoom-out-button')),
     );
@@ -275,20 +282,21 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('plate-zoom-in-button')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Plate 40px'), findsOneWidget);
-    expect(find.text('좌우로 밀어 숨겨진 well을 확인하세요.'), findsOneWidget);
+    expect(find.text('Plate 작업 보기'), findsOneWidget);
+    expect(find.textContaining('좌우로 밀어 숨겨진 well을 확인하세요.'), findsOneWidget);
     expect(
       tester.getSize(find.byKey(const ValueKey('well-A1'))).width,
-      closeTo(40, 0.1),
+      closeTo(56, 0.1),
     );
 
     await tester.tap(find.byKey(const ValueKey('plate-zoom-in-button')));
     await tester.pumpAndSettle();
-    expect(find.text('Plate 48px'), findsOneWidget);
+    expect(tester.getSize(find.byKey(const ValueKey('well-A1'))).width,
+        closeTo(64, 0.1));
 
     await tester.tap(find.byKey(const ValueKey('plate-fit-button')));
     await tester.pumpAndSettle();
-    expect(find.text('Plate 화면 맞춤'), findsOneWidget);
+    expect(find.text('Plate 전체 보기'), findsOneWidget);
   });
 
   testWidgets('keeps row selection while changing plate zoom', (tester) async {
@@ -305,6 +313,9 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('row-header-A')));
+    await tester.pumpAndSettle();
+    expect(find.text('12개 well 선택됨 · A1–A12'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('plate-results-view')));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('plate-zoom-in-button')));
@@ -344,7 +355,7 @@ void main() {
     expect(find.byKey(const ValueKey('plate-zoom-in-button')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('plate-zoom-in-button')));
     await tester.pumpAndSettle();
-    expect(find.text('Plate 40px'), findsOneWidget);
+    expect(find.text('Plate 작업 보기'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -529,7 +540,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('bulk-result-import-button')));
+    await tester.tap(find.byKey(const ValueKey('well-A1')));
+    await tester.pumpAndSettle();
+    expect(find.text('1개 well 선택됨 · A1'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('plate-more-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('bulk-result-import-menu')));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey('bulk-result-matrix-field')),
