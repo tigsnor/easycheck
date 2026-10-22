@@ -1211,15 +1211,28 @@ class _PlateWorkspaceIntro extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasWarnings = report.warningCount > 0;
+    final isEmpty = report.issues.any((issue) => issue.code == 'layout_empty');
     return ListTile(
       contentPadding: EdgeInsets.zero,
       title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(
-        hasWarnings ? '준비 점검 경고 ${report.warningCount}개' : '준비 점검 완료',
+        isEmpty
+            ? '빈 Plate · 배치를 시작하세요'
+            : hasWarnings
+                ? '준비 점검 경고 ${report.warningCount}개'
+                : '준비 점검 완료',
       ),
       leading: Icon(
-        hasWarnings ? Icons.warning_amber_rounded : Icons.task_alt_rounded,
-        color: hasWarnings ? Theme.of(context).colorScheme.error : Colors.green,
+        isEmpty
+            ? Icons.grid_on_outlined
+            : hasWarnings
+                ? Icons.warning_amber_rounded
+                : Icons.task_alt_rounded,
+        color: isEmpty
+            ? Theme.of(context).colorScheme.onSurfaceVariant
+            : hasWarnings
+                ? Theme.of(context).colorScheme.error
+                : Colors.green,
       ),
       trailing: TextButton(
         key: const ValueKey('open-plate-overview'),

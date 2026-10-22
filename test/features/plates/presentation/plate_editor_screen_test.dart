@@ -230,6 +230,8 @@ void main() {
     expect(find.text('Drug A CCK-8'), findsOneWidget);
     expect(find.text('96-well Plate'), findsOneWidget);
     expect(find.textContaining('1000'), findsNothing);
+    expect(find.text('빈 Plate · 배치를 시작하세요'), findsOneWidget);
+    expect(find.text('준비 점검 완료'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('open-plate-overview')));
     await tester.pumpAndSettle();
     expect(find.text('실험군 · 농도 요약'), findsOneWidget);
