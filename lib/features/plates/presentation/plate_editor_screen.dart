@@ -70,14 +70,12 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     Color(0xFFFFF2CC),
   ];
 
-  final _dilutionService = const DilutionService();
   final _plateDilutionService = const PlateDilutionService();
   final _plateExportService = const PlateExportService();
   final _plateResultImportService = const PlateResultImportService();
   final _plateValidationService = const PlateValidationService();
   final _plateAnalysisService = const PlateAnalysisService();
   final _plateAnalysisExportService = const PlateAnalysisExportService();
-  late final List<double> _demoConcentrations;
   late final PlateEditorController _editorController;
   Plate? _plate;
   bool _isLoading = true;
@@ -96,14 +94,6 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   @override
   void initState() {
     super.initState();
-    _demoConcentrations = _dilutionService.buildSeries(
-      const DilutionPlan(
-        startConcentration: 1000,
-        dilutionFactor: 2,
-        steps: 6,
-        includeZeroControl: true,
-      ),
-    );
     _editorController = PlateEditorController()..addListener(_onEditorChanged);
     _loadPlate();
   }
@@ -418,12 +408,11 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   }
 
   Plate _buildDefaultPlate() {
-    final emptyPlate = Plate(
+    return Plate(
       id: 'plate-${widget.experimentId}',
       experimentId: widget.experimentId,
       name: '96-well Plate',
     );
-    return _plateWithDemoDilution(emptyPlate);
   }
 
   bool get _canZoomPlateOut => _editorController.canZoomOut;
@@ -870,35 +859,6 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     await _savePlate(updated, changeSummary: '희석 계산 적용: ${group.name}');
   }
 
-  Plate _plateWithDemoDilution(Plate plate) {
-    final group = WellGroup(
-      id: 'drug-a-demo',
-      name: 'Drug A',
-      shortLabel: 'A',
-      color: _groupColors.first,
-      role: WellRole.treatment,
-      concentrationUnit: 'µM',
-    );
-    final groups = _upsertGroup(plate.groups, group);
-    final updatedWells = plate.wells.map((well) {
-      final row = well.position.rowIndex;
-      final column = well.position.columnIndex;
-      if (column < 2 && row < _demoConcentrations.length) {
-        return well.copyWith(
-          groupId: group.id,
-          concentrationValue: _demoConcentrations[row],
-          concentrationUnit: group.concentrationUnit,
-          role: _demoConcentrations[row] == 0
-              ? WellRole.vehicleControl
-              : WellRole.treatment,
-        );
-      }
-      return well;
-    }).toList();
-
-    return plate.copyWith(groups: groups, wells: updatedWells);
-  }
-
   Future<void> _assignGroupToSelection() async {
     final plate = _plate;
     if (plate == null || _selectedPositions.isEmpty) {
@@ -1162,17 +1122,6 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     );
     if (mounted) _clearSelection();
   }
-
-  List<WellGroup> _upsertGroup(List<WellGroup> groups, WellGroup group) {
-    final updated = [...groups];
-    final index = updated.indexWhere((candidate) => candidate.id == group.id);
-    if (index == -1) {
-      updated.add(group);
-    } else {
-      updated[index] = group;
-    }
-    return updated;
-  }
 }
 
 String _plateRevisionDate(DateTime value) {
@@ -1262,15 +1211,28 @@ class _PlateWorkspaceIntro extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasWarnings = report.warningCount > 0;
+    final isEmpty = report.issues.any((issue) => issue.code == 'layout_empty');
     return ListTile(
       contentPadding: EdgeInsets.zero,
       title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(
-        hasWarnings ? '준비 점검 경고 ${report.warningCount}개' : '준비 점검 완료',
+        isEmpty
+            ? '빈 Plate · 배치를 시작하세요'
+            : hasWarnings
+                ? '준비 점검 경고 ${report.warningCount}개'
+                : '준비 점검 완료',
       ),
       leading: Icon(
-        hasWarnings ? Icons.warning_amber_rounded : Icons.task_alt_rounded,
-        color: hasWarnings ? Theme.of(context).colorScheme.error : Colors.green,
+        isEmpty
+            ? Icons.grid_on_outlined
+            : hasWarnings
+                ? Icons.warning_amber_rounded
+                : Icons.task_alt_rounded,
+        color: isEmpty
+            ? Theme.of(context).colorScheme.onSurfaceVariant
+            : hasWarnings
+                ? Theme.of(context).colorScheme.error
+                : Colors.green,
       ),
       trailing: TextButton(
         key: const ValueKey('open-plate-overview'),

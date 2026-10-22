@@ -211,7 +211,7 @@ void main() {
     expect(repository.saveCount, 0);
   });
 
-  testWidgets('creates a default plate and renders dilution values', (
+  testWidgets('creates an empty plate without saving example data', (
     tester,
   ) async {
     final repository = FakePlateRepository();
@@ -229,21 +229,29 @@ void main() {
 
     expect(find.text('Drug A CCK-8'), findsOneWidget);
     expect(find.text('96-well Plate'), findsOneWidget);
-    expect(find.textContaining('1000'), findsWidgets);
+    expect(find.textContaining('1000'), findsNothing);
+    expect(find.text('빈 Plate · 배치를 시작하세요'), findsOneWidget);
+    expect(find.text('준비 점검 완료'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('open-plate-overview')));
     await tester.pumpAndSettle();
     expect(find.text('실험군 · 농도 요약'), findsOneWidget);
-    expect(find.text('Drug A (A)'), findsOneWidget);
+    expect(find.text('Drug A (A)'), findsNothing);
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('plate-validation-card')),
       400,
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('실험 준비 점검'), findsOneWidget);
-    expect(find.text('Blank가 없습니다'), findsOneWidget);
-    expect(find.text('Control이 없습니다'), findsNothing);
+    expect(find.text('Plate layout이 비어 있습니다'), findsOneWidget);
     expect(repository.plate, isNotNull);
     expect(repository.plate!.wells.length, 96);
+    expect(repository.plate!.groups, isEmpty);
+    expect(repository.plate!.wells.map((w) => w.role),
+        everyElement(WellRole.empty));
+    expect(repository.plate!.wells.map((w) => w.concentrationValue),
+        everyElement(isNull));
+    expect(repository.plate!.wells.map((w) => w.resultValue),
+        everyElement(isNull));
   });
 
   testWidgets('zooms the plate and restores screen fit', (tester) async {
@@ -802,7 +810,7 @@ void main() {
     await tester.tap(find.byTooltip('마지막 Plate 변경 실행 취소'));
     await tester.pumpAndSettle();
 
-    expect(repository.plate!.wells[0].concentrationValue, 1000);
+    expect(repository.plate!.wells[0].concentrationValue, isNull);
     expect(repository.plate!.revisions, hasLength(2));
     expect(repository.plate!.revisions.last.summary, '마지막 Plate 변경 실행 취소');
     expect(find.text('마지막 Plate 변경을 취소했습니다.'), findsOneWidget);

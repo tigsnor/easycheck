@@ -4,6 +4,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../../shared/presentation/save_status_indicator.dart';
+import '../../../shared/services/document_exchange_service.dart';
+import '../../plates/data/plate_repository.dart';
+import '../../plates/templates/data/plate_template_repository.dart';
 import '../../plates/presentation/plate_editor_screen.dart';
 import '../domain/experiment.dart';
 
@@ -11,11 +14,17 @@ class ExperimentDetailScreen extends StatefulWidget {
   const ExperimentDetailScreen({
     required this.experiment,
     required this.onChanged,
+    this.plateRepository,
+    this.plateTemplateRepository,
+    this.documentExchangeService,
     super.key,
   });
 
   final Experiment experiment;
   final Future<void> Function(Experiment experiment) onChanged;
+  final PlateRepository? plateRepository;
+  final PlateTemplateRepository? plateTemplateRepository;
+  final DocumentExchangeService? documentExchangeService;
 
   @override
   State<ExperimentDetailScreen> createState() => _ExperimentDetailScreenState();
@@ -393,6 +402,9 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
           experimentId: widget.experiment.id,
           experimentTitle: _titleController.text.trim(),
           readOnly: readOnly,
+          repository: widget.plateRepository,
+          templateRepository: widget.plateTemplateRepository,
+          documentExchangeService: widget.documentExchangeService,
         ),
       ),
     );

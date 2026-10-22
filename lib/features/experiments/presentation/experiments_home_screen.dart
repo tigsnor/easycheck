@@ -14,6 +14,7 @@ import '../../plates/templates/data/file_plate_template_repository.dart';
 import '../../plates/templates/data/plate_template_repository.dart';
 import '../../plates/templates/domain/default_plate_templates.dart';
 import '../../plates/templates/domain/plate_template.dart';
+import '../application/experiment_duplication_service.dart';
 import '../data/file_experiment_repository.dart';
 import '../data/experiment_repository.dart';
 import '../domain/experiment.dart';
@@ -45,7 +46,6 @@ class ExperimentsHomeScreen extends StatefulWidget {
 }
 
 class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
-  static const _uuid = Uuid();
   static const _backupService = EasyCheckBackupService();
 
   final _searchController = TextEditingController();
@@ -55,6 +55,10 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   Object? _loadError;
   bool _isBackupOpen = false;
   bool _isRestoring = false;
+  bool _isDuplicating = false;
+  bool _isDuplicateOpen = false;
+
+  bool get _isDataBusy => _isRestoring || _isDuplicating;
 
   BackupRecoveryService? get _recoveryService {
     if (widget.recoveryService != null) return widget.recoveryService;
@@ -112,10 +116,10 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
     final experiments = _filteredExperiments;
 
     return PopScope(
-      canPop: !_isRestoring,
+      canPop: !_isDataBusy,
       child: Stack(children: [
         AbsorbPointer(
-            absorbing: _isRestoring,
+            absorbing: _isDataBusy,
             child: Scaffold(
               appBar: AppBar(
                 title: const Text('PlateNote'),
@@ -212,7 +216,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
                 label: const Text('새 실험'),
               ),
             )),
-        if (_isRestoring)
+        if (_isDataBusy)
           const Positioned.fill(
               child: ColoredBox(
             color: Color(0x99000000),
@@ -260,6 +264,9 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
         builder: (_) => ExperimentDetailScreen(
           experiment: experiment,
           onChanged: _saveExperiment,
+          plateRepository: widget.plateRepository,
+          plateTemplateRepository: widget.plateTemplateRepository,
+          documentExchangeService: widget.documentExchangeService,
         ),
       ),
     );
@@ -274,6 +281,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
           readOnly: experiment.status == ExperimentStatus.completed,
           repository: widget.plateRepository,
           templateRepository: widget.plateTemplateRepository,
+          documentExchangeService: widget.documentExchangeService,
         ),
       ),
     );
@@ -289,16 +297,44 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   }
 
   Future<void> _duplicateExperiment(Experiment experiment) async {
-    final now = DateTime.now();
-    final copy = experiment.copyWith(
-      id: _uuid.v4(),
-      title: '${experiment.title} 복사본',
-      status: ExperimentStatus.draft,
-      createdAt: now,
-      updatedAt: now,
-    );
-
-    await _saveExperiment(copy);
+    if (_isDataBusy || _isDuplicateOpen) return;
+    _isDuplicateOpen = true;
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('실험 설계를 복제할까요?'),
+          content: const Text('기본정보, 단계 제목, 자원 정보와 Plate 배치를 새 초안으로 복사합니다. '
+              '측정 결과, 분석 제외, 실험·Plate·well 메모, 타이머, 완료 기록과 변경 이력은 초기화합니다. '
+              '원본 실험은 유지됩니다.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('취소')),
+            FilledButton(
+              key: const ValueKey('confirm-duplicate-experiment'),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('설계 복제'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      setState(() => _isDuplicating = true);
+      final copy = await ExperimentDuplicationService(
+        experimentRepository: widget.repository,
+        plateRepository: widget.plateRepository,
+      ).duplicateDesign(experiment.id);
+      if (!mounted) return;
+      setState(() => _upsertLocalExperiment(copy));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('실험 설계를 새 초안으로 복제했습니다.')));
+    } on Object catch (error) {
+      if (mounted) _showError('실험 설계를 복제하지 못했습니다: $error');
+    } finally {
+      _isDuplicateOpen = false;
+      if (mounted) setState(() => _isDuplicating = false);
+    }
   }
 
   Future<void> _deleteExperiment(Experiment experiment) async {
@@ -394,7 +430,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   }
 
   Future<void> _showBackupSheet() async {
-    if (_isBackupOpen || _isRestoring) return;
+    if (_isBackupOpen || _isDataBusy) return;
     _isBackupOpen = true;
     try {
       String? exportText;
@@ -975,7 +1011,7 @@ class _ExperimentCard extends StatelessWidget {
                     itemBuilder: (context) => const [
                       PopupMenuItem(
                         value: _ExperimentAction.duplicate,
-                        child: Text('복제'),
+                        child: Text('설계 복제'),
                       ),
                       PopupMenuItem(
                         value: _ExperimentAction.delete,
@@ -1354,12 +1390,12 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
                     initialValue: _templateId,
                     decoration: const InputDecoration(
                       labelText: 'Plate 템플릿',
-                      helperText: '선택하면 실험 생성과 동시에 Plate 설정을 적용합니다.',
+                      helperText: '기본은 빈 Plate입니다. 예시나 저장한 템플릿을 직접 선택하세요.',
                     ),
                     items: [
                       const DropdownMenuItem<String?>(
                         value: null,
-                        child: Text('사용하지 않음'),
+                        child: Text('빈 Plate로 시작'),
                       ),
                       for (final template in widget.templates)
                         DropdownMenuItem<String?>(
