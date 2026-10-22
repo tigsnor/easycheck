@@ -108,7 +108,121 @@ class FakePlateTemplateRepository implements PlateTemplateRepository {
   }
 }
 
+class _DesignPlateRepository implements PlateRepository {
+  final plates = <String, Plate>{};
+  bool failSave = false;
+  @override
+  Future<Plate?> loadPlate(String id) async => plates[id];
+  @override
+  Future<void> savePlate(Plate plate) async {
+    if (failSave) throw StateError('save failed');
+    plates[plate.experimentId] = plate;
+  }
+
+  @override
+  Future<void> deletePlate(String id) async {
+    plates.remove(id);
+  }
+}
+
 void main() {
+  testWidgets(
+      'confirms design duplication and opens the copied layout through details',
+      (tester) async {
+    final source = Experiment(
+        id: 'source',
+        title: 'Source',
+        createdAt: DateTime.utc(2025),
+        updatedAt: DateTime.utc(2025),
+        status: ExperimentStatus.completed);
+    final experiments = FakeExperimentRepository([source]);
+    final plates = _DesignPlateRepository();
+    final base = Plate(id: 'p', experimentId: source.id, name: 'Saved layout');
+    plates.plates[source.id] = base.copyWith(wells: [
+      base.wells.first.copyWith(
+          concentrationValue: 42,
+          role: WellRole.sample,
+          resultValue: 5,
+          resultUnit: 'OD'),
+      ...base.wells.skip(1),
+    ]);
+    final templates = FakePlateTemplateRepository();
+    final exchange = FakeDocumentExchangeService();
+    await tester.pumpWidget(MaterialApp(
+        home: ExperimentsHomeScreen(
+            repository: experiments,
+            plateRepository: plates,
+            plateTemplateRepository: templates,
+            documentExchangeService: exchange)));
+    await tester.pumpAndSettle();
+    Future<void> openDuplicate() async {
+      await tester.tap(find.byIcon(Icons.more_vert).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('설계 복제'));
+      await tester.pumpAndSettle();
+    }
+
+    await openDuplicate();
+    expect(find.text('실험 설계를 복제할까요?'), findsOneWidget);
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+    expect(experiments.experiments, hasLength(1));
+    expect(plates.plates, hasLength(1));
+    await openDuplicate();
+    await tester
+        .tap(find.byKey(const ValueKey('confirm-duplicate-experiment')));
+    await tester.pumpAndSettle();
+    final copy = experiments.experiments.singleWhere((e) => e.id != source.id);
+    expect(copy.status, ExperimentStatus.draft);
+    expect(plates.plates[copy.id]!.wells.first.concentrationValue, 42);
+    expect(plates.plates[copy.id]!.wells.first.resultValue, isNull);
+    expect(plates.plates[source.id]!.wells.first.resultValue, 5);
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(copy.title));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('96-well Plate 열기'), 300,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('96-well Plate 열기'));
+    await tester.pumpAndSettle();
+    final editor =
+        tester.widget<PlateEditorScreen>(find.byType(PlateEditorScreen));
+    expect(editor.repository, same(plates));
+    expect(editor.templateRepository, same(templates));
+    expect(editor.documentExchangeService, same(exchange));
+    expect(find.text('Saved layout'), findsOneWidget);
+    expect(plates.plates[copy.id]!.wells.first.concentrationValue, 42);
+  });
+
+  testWidgets('shows a duplication failure without publishing a partial copy',
+      (tester) async {
+    final source = Experiment(
+        id: 'source',
+        title: 'Source',
+        createdAt: DateTime.utc(2025),
+        updatedAt: DateTime.utc(2025));
+    final experiments = FakeExperimentRepository([source]);
+    final plates = _DesignPlateRepository()..failSave = true;
+    plates.plates[source.id] =
+        Plate(id: 'p', experimentId: source.id, name: 'Source');
+    await tester.pumpWidget(MaterialApp(
+        home: ExperimentsHomeScreen(
+            repository: experiments, plateRepository: plates)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.more_vert).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('설계 복제'));
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.byKey(const ValueKey('confirm-duplicate-experiment')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('실험 설계를 복제하지 못했습니다'), findsOneWidget);
+    expect(experiments.experiments, hasLength(1));
+    expect(plates.plates, hasLength(1));
+    expect(find.text('Source 설계 복사본'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
   testWidgets('home opens completed experiments with a read-only plate',
       (tester) async {
     final experiment = Experiment(
@@ -460,11 +574,13 @@ void main() {
     tester,
   ) async {
     final repository = FakeExperimentRepository([]);
+    final plateRepository = FakePlateRepository();
 
     await tester.pumpWidget(
       MaterialApp(
         home: ExperimentsHomeScreen(
           repository: repository,
+          plateRepository: plateRepository,
           plateTemplateRepository: FakePlateTemplateRepository(),
         ),
       ),
@@ -486,6 +602,13 @@ void main() {
     expect(repository.experiments.single.cellCountLabel, 'hek293: 1×10^6/ml');
     expect(find.text('세포수 · hek293: 1×10^6/ml'), findsOneWidget);
     expect(find.text('MTT test'), findsOneWidget);
+    await tester.tap(find.text('Plate 열기'));
+    await tester.pumpAndSettle();
+    expect(plateRepository.plate!.groups, isEmpty);
+    expect(plateRepository.plate!.wells.map((w) => w.role),
+        everyElement(WellRole.empty));
+    expect(plateRepository.plate!.wells.map((w) => w.concentrationValue),
+        everyElement(isNull));
   });
 
   testWidgets('creates a new experiment with a selected Plate template', (
