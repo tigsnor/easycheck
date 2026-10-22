@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../shared/services/document_exchange_service.dart';
 import '../../backup/application/backup_restore_service.dart';
+import '../../backup/data/file_backup_recovery_service.dart';
 import '../../backup/domain/easycheck_backup_service.dart';
 import '../../plates/data/file_plate_repository.dart';
 import '../../plates/data/plate_repository.dart';
@@ -24,6 +25,7 @@ class ExperimentsHomeScreen extends StatefulWidget {
     PlateRepository? plateRepository,
     DocumentExchangeService? documentExchangeService,
     PlateTemplateRepository? plateTemplateRepository,
+    this.recoveryService,
     super.key,
   })  : repository = repository ?? const FileExperimentRepository(),
         plateRepository = plateRepository ?? const FilePlateRepository(),
@@ -32,6 +34,7 @@ class ExperimentsHomeScreen extends StatefulWidget {
         plateTemplateRepository =
             plateTemplateRepository ?? const FilePlateTemplateRepository();
 
+  final BackupRecoveryService? recoveryService;
   final ExperimentRepository repository;
   final PlateRepository plateRepository;
   final DocumentExchangeService documentExchangeService;
@@ -50,6 +53,25 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   String _query = '';
   bool _isLoading = true;
   Object? _loadError;
+  bool _isBackupOpen = false;
+  bool _isRestoring = false;
+
+  BackupRecoveryService? get _recoveryService {
+    if (widget.recoveryService != null) return widget.recoveryService;
+    final experiments = widget.repository;
+    final plates = widget.plateRepository;
+    final templates = widget.plateTemplateRepository;
+    if (experiments is FileExperimentRepository &&
+        plates is FilePlateRepository &&
+        templates is FilePlateTemplateRepository &&
+        experiments.rootDirectory == plates.rootDirectory &&
+        experiments.rootDirectory == templates.rootDirectory &&
+        experiments.fileName == "experiments.json") {
+      return FileBackupRecoveryService(
+          rootDirectory: experiments.rootDirectory);
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -89,95 +111,114 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   Widget build(BuildContext context) {
     final experiments = _filteredExperiments;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('PlateNote'),
-        actions: [
-          IconButton(
-            tooltip: '전체 데이터 백업 및 복원',
-            onPressed: _showBackupSheet,
-            icon: const Icon(Icons.settings_backup_restore),
-          ),
-          IconButton(
-            tooltip: '새 실험',
-            onPressed: _showCreateExperimentSheet,
-            icon: const Icon(Icons.add_circle_outline),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: () => _loadExperiments(showLoading: false),
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 96),
-            children: [
-              Text(
-                '실험 노트',
-                style: Theme.of(
-                  context,
-                )
-                    .textTheme
-                    .headlineMedium
-                    ?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 12),
-              SearchBar(
-                controller: _searchController,
-                hintText: '제목, 태그, 실험 유형 검색',
-                leading: const Icon(Icons.search),
-                trailing: [
-                  if (_query.isNotEmpty)
-                    IconButton(
-                      tooltip: '검색어 지우기',
-                      onPressed: _searchController.clear,
-                      icon: const Icon(Icons.close),
-                    ),
+    return PopScope(
+      canPop: !_isRestoring,
+      child: Stack(children: [
+        AbsorbPointer(
+            absorbing: _isRestoring,
+            child: Scaffold(
+              appBar: AppBar(
+                title: const Text('PlateNote'),
+                actions: [
+                  IconButton(
+                    tooltip: '전체 데이터 백업 및 복원',
+                    onPressed: _showBackupSheet,
+                    icon: const Icon(Icons.settings_backup_restore),
+                  ),
+                  IconButton(
+                    tooltip: '새 실험',
+                    onPressed: _showCreateExperimentSheet,
+                    icon: const Icon(Icons.add_circle_outline),
+                  ),
                 ],
               ),
-              const SizedBox(height: 20),
-              _QuickActionsCard(onCreate: _showCreateExperimentSheet),
-              const SizedBox(height: 18),
-              Text(
-                '최근 실험',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 10),
-              if (_isLoading)
-                const _LoadingExperimentCard()
-              else if (_loadError != null && _experiments.isEmpty)
-                _ExperimentLoadErrorCard(onRetry: _loadExperiments)
-              else if (experiments.isEmpty)
-                _EmptyExperimentCard(
-                  message: _query.isEmpty ? '아직 실험 노트가 없습니다.' : '검색 결과가 없습니다.',
-                  actionLabel: _query.isEmpty ? '첫 실험 만들기' : '검색어 지우기',
-                  onAction: _query.isEmpty
-                      ? _showCreateExperimentSheet
-                      : _searchController.clear,
-                )
-              else
-                for (final experiment in experiments)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _ExperimentCard(
-                      experiment: experiment,
-                      onOpen: () => _openExperiment(experiment),
-                      onOpenPlate: () => _openPlate(experiment),
-                      onDuplicate: () => _duplicateExperiment(experiment),
-                      onDelete: () => _deleteExperiment(experiment),
-                    ),
+              body: SafeArea(
+                child: RefreshIndicator(
+                  onRefresh: () => _loadExperiments(showLoading: false),
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 96),
+                    children: [
+                      Text(
+                        '실험 노트',
+                        style: Theme.of(
+                          context,
+                        )
+                            .textTheme
+                            .headlineMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 12),
+                      SearchBar(
+                        controller: _searchController,
+                        hintText: '제목, 태그, 실험 유형 검색',
+                        leading: const Icon(Icons.search),
+                        trailing: [
+                          if (_query.isNotEmpty)
+                            IconButton(
+                              tooltip: '검색어 지우기',
+                              onPressed: _searchController.clear,
+                              icon: const Icon(Icons.close),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      _QuickActionsCard(onCreate: _showCreateExperimentSheet),
+                      const SizedBox(height: 18),
+                      Text(
+                        '최근 실험',
+                        style: Theme.of(
+                          context,
+                        )
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 10),
+                      if (_isLoading)
+                        const _LoadingExperimentCard()
+                      else if (_loadError != null && _experiments.isEmpty)
+                        _ExperimentLoadErrorCard(onRetry: _loadExperiments)
+                      else if (experiments.isEmpty)
+                        _EmptyExperimentCard(
+                          message: _query.isEmpty
+                              ? '아직 실험 노트가 없습니다.'
+                              : '검색 결과가 없습니다.',
+                          actionLabel: _query.isEmpty ? '첫 실험 만들기' : '검색어 지우기',
+                          onAction: _query.isEmpty
+                              ? _showCreateExperimentSheet
+                              : _searchController.clear,
+                        )
+                      else
+                        for (final experiment in experiments)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _ExperimentCard(
+                              experiment: experiment,
+                              onOpen: () => _openExperiment(experiment),
+                              onOpenPlate: () => _openPlate(experiment),
+                              onDuplicate: () =>
+                                  _duplicateExperiment(experiment),
+                              onDelete: () => _deleteExperiment(experiment),
+                            ),
+                          ),
+                    ],
                   ),
-            ],
-          ),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showCreateExperimentSheet,
-        icon: const Icon(Icons.note_add_outlined),
-        label: const Text('새 실험'),
-      ),
+                ),
+              ),
+              floatingActionButton: FloatingActionButton.extended(
+                onPressed: _showCreateExperimentSheet,
+                icon: const Icon(Icons.note_add_outlined),
+                label: const Text('새 실험'),
+              ),
+            )),
+        if (_isRestoring)
+          const Positioned.fill(
+              child: ColoredBox(
+            color: Color(0x99000000),
+            child: Center(child: CircularProgressIndicator()),
+          )),
+      ]),
     );
   }
 
@@ -353,23 +394,25 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   }
 
   Future<void> _showBackupSheet() async {
+    if (_isBackupOpen || _isRestoring) return;
+    _isBackupOpen = true;
     try {
-      final experiments = await widget.repository.loadExperiments();
-      final plates = <Plate>[];
-      for (final experiment in experiments) {
-        final plate = await widget.plateRepository.loadPlate(experiment.id);
-        if (plate != null) {
-          plates.add(plate);
+      String? exportText;
+      try {
+        final experiments = await widget.repository.loadExperiments();
+        final plates = <Plate>[];
+        for (final experiment in experiments) {
+          final plate = await widget.plateRepository.loadPlate(experiment.id);
+          if (plate != null) plates.add(plate);
         }
+        final templates = await widget.plateTemplateRepository.loadTemplates();
+        exportText = _backupService.encode(
+            experiments: experiments, plates: plates, templates: templates);
+      } on Object {
+        // Export must not be a prerequisite for opening the restore controls.
       }
-      final exportText = _backupService.encode(
-        experiments: experiments,
-        plates: plates,
-      );
-      if (!mounted) {
-        return;
-      }
-      final backup = await showModalBottomSheet<EasyCheckBackup>(
+      if (!mounted) return;
+      final request = await showModalBottomSheet<_BackupRestoreRequest>(
         context: context,
         isScrollControlled: true,
         showDragHandle: true,
@@ -377,66 +420,70 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
           exportText: exportText,
           service: _backupService,
           documentExchangeService: widget.documentExchangeService,
+          allowRecovery: _recoveryService != null,
         ),
       );
-      if (backup != null) {
-        await _confirmAndRestoreBackup(backup);
-      }
-    } on Object catch (error) {
-      if (mounted) {
-        _showError('백업 데이터를 준비하지 못했습니다: $error');
-      }
+      if (request != null && mounted) await _confirmAndRestoreBackup(request);
+    } finally {
+      _isBackupOpen = false;
     }
   }
 
-  Future<void> _confirmAndRestoreBackup(EasyCheckBackup backup) async {
+  Future<void> _confirmAndRestoreBackup(_BackupRestoreRequest request) async {
+    final backup = request.backup;
+    final templateMessage = backup.includesTemplates
+        ? '템플릿 ${backup.templates.length}개'
+        : '템플릿 미포함: 기존 템플릿 유지';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('백업을 복원할까요?'),
+        title: Text(request.replace ? '백업으로 전체 복구할까요?' : '백업을 복원할까요?'),
         content: Text(
-          '실험 ${backup.experiments.length}개와 Plate ${backup.plates.length}개를 검증한 뒤 병합합니다. 같은 ID의 데이터는 백업 내용으로 덮어쓰고 다른 데이터는 유지합니다. 저장에 실패하면 복원 시작 전 상태로 되돌립니다.',
+          '실험 ${backup.experiments.length}개 · Plate ${backup.plates.length}개 · $templateMessage\n\n'
+          '${request.replace ? '현재 실험과 Plate 대신 백업 내용을 사용합니다. 백업에 없는 실험은 목록에서 사라집니다. 기존 파일은 별도로 보존하며 새 데이터 검증이 끝난 뒤 전환합니다.' : '같은 ID는 백업 내용으로 덮어쓰고 다른 데이터는 유지합니다. 저장 실패 시 복원 시작 전 상태로 되돌립니다.'}',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('취소'),
-          ),
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('취소')),
           FilledButton(
             key: const ValueKey('confirm-restore-backup-button'),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('복원'),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(request.replace ? '전체 복구' : '복원'),
           ),
         ],
       ),
     );
-    if (confirmed != true) {
-      return;
-    }
-
+    if (confirmed != true || !mounted) return;
+    setState(() => _isRestoring = true);
     try {
-      final restoreService = BackupRestoreService(
-        experimentRepository: widget.repository,
-        plateRepository: widget.plateRepository,
-      );
-      await restoreService.restore(backup);
-      await _loadExperiments();
-    } on Object catch (error) {
-      if (mounted) {
-        _showError('백업을 복원하지 못했습니다: $error');
+      if (request.replace) {
+        final recovery = _recoveryService;
+        if (recovery == null) throw StateError('전체 복구를 지원하지 않는 저장소입니다.');
+        await recovery.recover(backup);
+      } else {
+        await BackupRestoreService(
+          experimentRepository: widget.repository,
+          plateRepository: widget.plateRepository,
+          templateRepository: widget.plateTemplateRepository,
+        ).restore(backup);
       }
-      return;
+      await _loadExperiments();
+      if (_loadError != null) {
+        if (mounted) _showError('복원은 완료했지만 목록을 다시 읽지 못했습니다. 다시 시도해주세요.');
+        return;
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+          '실험 ${backup.experiments.length}개와 Plate ${backup.plates.length}개를 복원했습니다. $templateMessage',
+        )));
+      }
+    } on Object catch (error) {
+      if (mounted) _showError('백업을 복원하지 못했습니다: $error');
+    } finally {
+      if (mounted) setState(() => _isRestoring = false);
     }
-    if (!mounted) {
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '실험 ${backup.experiments.length}개와 Plate ${backup.plates.length}개를 복원했습니다.',
-        ),
-      ),
-    );
   }
 
   Future<void> _showCreateExperimentSheet() async {
@@ -528,14 +575,22 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   }
 }
 
+class _BackupRestoreRequest {
+  const _BackupRestoreRequest(this.backup, {required this.replace});
+  final EasyCheckBackup backup;
+  final bool replace;
+}
+
 class _BackupRestoreSheet extends StatefulWidget {
   const _BackupRestoreSheet({
     required this.exportText,
+    required this.allowRecovery,
     required this.service,
     required this.documentExchangeService,
   });
 
-  final String exportText;
+  final String? exportText;
+  final bool allowRecovery;
   final EasyCheckBackupService service;
   final DocumentExchangeService documentExchangeService;
 
@@ -546,6 +601,7 @@ class _BackupRestoreSheet extends StatefulWidget {
 class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
   final _restoreController = TextEditingController();
   EasyCheckBackup? _preview;
+  bool _replace = false;
   String? _error;
 
   @override
@@ -586,7 +642,7 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
   }
 
   Future<void> _copyBackup() async {
-    await Clipboard.setData(ClipboardData(text: widget.exportText));
+    await Clipboard.setData(ClipboardData(text: widget.exportText!));
     if (!mounted) {
       return;
     }
@@ -606,7 +662,7 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
   Future<void> _shareBackupFile(BuildContext shareContext) async {
     try {
       final status = await widget.documentExchangeService.shareTextDocument(
-        content: widget.exportText,
+        content: widget.exportText!,
         fileName: _backupFileName(DateTime.now()),
         mimeType: 'application/json',
         subject: 'PlateNote 전체 데이터 백업',
@@ -671,7 +727,7 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
             ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
-          const Text('실험 노트와 연결 Plate를 하나의 버전형 JSON으로 보관합니다.'),
+          const Text('실험 노트, 연결 Plate와 사용자 템플릿을 하나의 백업으로 보관합니다.'),
           const SizedBox(height: 18),
           Text(
             '백업 내보내기',
@@ -680,45 +736,51 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
             ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
-          Container(
-            constraints: const BoxConstraints(maxHeight: 130),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF2F2F7),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: SingleChildScrollView(
-              child: SelectableText(
-                widget.exportText,
-                key: const ValueKey('backup-export-text'),
-                style: Theme.of(context).textTheme.bodySmall,
+          if (widget.exportText == null)
+            const Text(
+                '현재 데이터를 읽을 수 없어 새 백업을 만들지 못했습니다. 아래에서 기존 백업 파일을 선택할 수 있습니다.',
+                key: ValueKey('backup-export-unavailable'))
+          else ...[
+            Container(
+              constraints: const BoxConstraints(maxHeight: 130),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF2F2F7),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  widget.exportText!,
+                  key: const ValueKey('backup-export-text'),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.end,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: _copyBackup,
-                  icon: const Icon(Icons.copy_all_outlined),
-                  label: const Text('JSON 복사'),
-                ),
-                Builder(
-                  builder: (shareContext) => FilledButton.tonalIcon(
-                    key: const ValueKey('share-backup-file-button'),
-                    onPressed: () => _shareBackupFile(shareContext),
-                    icon: const Icon(Icons.ios_share_outlined),
-                    label: const Text('파일 공유'),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.end,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _copyBackup,
+                    icon: const Icon(Icons.copy_all_outlined),
+                    label: const Text('JSON 복사'),
                   ),
-                ),
-              ],
+                  Builder(
+                    builder: (shareContext) => FilledButton.tonalIcon(
+                      key: const ValueKey('share-backup-file-button'),
+                      onPressed: () => _shareBackupFile(shareContext),
+                      icon: const Icon(Icons.ios_share_outlined),
+                      label: const Text('파일 공유'),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
           const Divider(height: 32),
           Text(
             '백업 복원',
@@ -727,7 +789,23 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
             ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 6),
-          const Text('기존 데이터는 유지하며 같은 ID만 백업 내용으로 덮어씁니다.'),
+          Text(_replace
+              ? '백업 내용을 사용하여 실험과 Plate를 전체 복구합니다. 기존 파일은 별도로 보존합니다.'
+              : '기존 데이터는 유지하며 같은 ID만 백업 내용으로 덮어씁니다.'),
+          if (widget.allowRecovery)
+            SwitchListTile(
+              key: const ValueKey('backup-replace-mode'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('손상된 데이터 전체 복구'),
+              subtitle:
+                  const Text('병합할 수 없을 때 선택하세요. 백업에 없는 실험은 현재 목록에서 제외됩니다.'),
+              value: _replace,
+              onChanged: (value) => setState(() => _replace = value),
+            ),
+          if (preview != null)
+            Text(preview.includesTemplates
+                ? '사용자 템플릿 ${preview.templates.length}개 포함'
+                : '이전 버전 백업: 템플릿은 포함되지 않았으며 기존 템플릿을 유지합니다.'),
           const SizedBox(height: 10),
           OutlinedButton.icon(
             key: const ValueKey('pick-backup-file-button'),
@@ -772,9 +850,10 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
               key: const ValueKey('restore-backup-button'),
               onPressed: preview == null
                   ? null
-                  : () => Navigator.of(context).pop(preview),
+                  : () => Navigator.of(context)
+                      .pop(_BackupRestoreRequest(preview, replace: _replace)),
               icon: const Icon(Icons.restore),
-              label: const Text('백업 병합 복원'),
+              label: Text(_replace ? '백업으로 전체 복구' : '백업 병합 복원'),
             ),
           ),
         ],

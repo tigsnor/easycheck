@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:path_provider/path_provider.dart';
+import '../../../shared/data/local_data_directory.dart';
 
 import '../../../shared/data/safe_json_file_store.dart';
 import '../domain/experiment.dart';
@@ -20,25 +20,26 @@ class FileExperimentRepository implements ExperimentRepository {
   final SafeJsonFileStore fileStore;
 
   @override
-  Future<List<Experiment>> loadExperiments() async {
-    final decoded = await fileStore.read(
-      await _file,
-      validator: _isSupportedFile,
-    );
-    if (decoded == null) {
-      return [];
-    }
+  Future<List<Experiment>> loadExperiments() => _withFile((file) async {
+        final decoded = await fileStore.read(
+          file,
+          validator: _isSupportedFile,
+        );
+        if (decoded == null) {
+          return [];
+        }
 
-    final records = _recordsFromJson(decoded);
-    final experiments = records
-        .map(
-          (record) => Experiment.fromJson(Map<String, Object?>.from(record)),
-        )
-        .toList()
-      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        final records = _recordsFromJson(decoded);
+        final experiments = records
+            .map(
+              (record) =>
+                  Experiment.fromJson(Map<String, Object?>.from(record)),
+            )
+            .toList()
+          ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
-    return experiments;
-  }
+        return experiments;
+      });
 
   @override
   Future<void> saveExperiment(Experiment experiment) async {
@@ -60,12 +61,9 @@ class FileExperimentRepository implements ExperimentRepository {
     );
   }
 
-  Future<File> get _file async {
-    final directory = rootDirectory == null
-        ? await getApplicationDocumentsDirectory()
-        : Directory(rootDirectory!);
-    return File('${directory.path}/$fileName');
-  }
+  Future<T> _withFile<T>(Future<T> Function(File file) action) =>
+      LocalDataDirectory.access(rootDirectory,
+          (directory) => action(File('${directory.path}/$fileName')));
 
   bool _isSupportedFile(Object? decoded) {
     try {
@@ -114,20 +112,22 @@ class FileExperimentRepository implements ExperimentRepository {
 
   Future<void> _updateExperiments(
     void Function(List<Experiment>) mutate,
-  ) async {
-    await fileStore.update(
-      await _file,
-      (current) {
-        final experiments = current == null
-            ? <Experiment>[]
-            : _recordsFromJson(current).map(Experiment.fromJson).toList();
-        mutate(experiments);
-        return {
-          'schemaVersion': schemaVersion,
-          'data': experiments.map((experiment) => experiment.toJson()).toList(),
-        };
-      },
-      validator: _isSupportedFile,
-    );
-  }
+  ) =>
+      _withFile((file) async {
+        await fileStore.update(
+          file,
+          (current) {
+            final experiments = current == null
+                ? <Experiment>[]
+                : _recordsFromJson(current).map(Experiment.fromJson).toList();
+            mutate(experiments);
+            return {
+              'schemaVersion': schemaVersion,
+              'data':
+                  experiments.map((experiment) => experiment.toJson()).toList(),
+            };
+          },
+          validator: _isSupportedFile,
+        );
+      });
 }
