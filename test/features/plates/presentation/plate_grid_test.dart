@@ -3,6 +3,7 @@ import 'package:easycheck/features/plates/domain/well_role.dart';
 import 'package:easycheck/features/plates/presentation/widgets/plate_grid.dart';
 import 'package:easycheck/shared/models/well_position.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -26,7 +27,9 @@ void main() {
   }
 
   Future<void> showGrid(WidgetTester tester,
-      {double textScale = 1, ValueChanged<WellPosition>? onSelect}) async {
+      {double textScale = 1,
+      ValueChanged<WellPosition>? onSelect,
+      ValueChanged<WellPosition>? onRangeSelect}) async {
     await tester.pumpWidget(MaterialApp(
         home: MediaQuery(
       data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
@@ -40,7 +43,7 @@ void main() {
         onFit: () {},
         onZoomIn: () {},
         onSelected: onSelect ?? (_) {},
-        onRangeSelected: (_) {},
+        onRangeSelected: onRangeSelect ?? (_) {},
         onRowSelected: (_) {},
         onColumnSelected: (_) {},
       ))),
@@ -87,6 +90,27 @@ void main() {
             of: find.byKey(const ValueKey('well-A1')),
             matching: find.text('1000')),
         findsOneWidget);
+  });
+
+  testWidgets('allows screen readers to select a well and start a range',
+      (tester) async {
+    final semantics = tester.ensureSemantics();
+    WellPosition? selected;
+    WellPosition? rangeStart;
+    await showGrid(tester,
+        onSelect: (p) => selected = p, onRangeSelect: (p) => rangeStart = p);
+    final node =
+        tester.getSemantics(find.bySemanticsLabel(RegExp('A1 well.*')));
+    expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+    expect(
+        node.getSemanticsData().hasAction(SemanticsAction.longPress), isTrue);
+    for (final action in [SemanticsAction.tap, SemanticsAction.longPress]) {
+      tester.binding.performSemanticsAction(SemanticsActionEvent(
+          type: action, nodeId: node.id, viewId: tester.view.viewId));
+    }
+    expect(selected, const WellPosition(rowIndex: 0, columnIndex: 0));
+    expect(rangeStart, const WellPosition(rowIndex: 0, columnIndex: 0));
+    semantics.dispose();
   });
 
   testWidgets(

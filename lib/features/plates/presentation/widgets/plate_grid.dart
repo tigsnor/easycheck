@@ -284,6 +284,8 @@ class _WellCell extends StatelessWidget {
       button: true,
       selected: selected,
       excludeSemantics: true,
+      onTap: onTap,
+      onLongPress: onLongPress,
       child: Tooltip(
           message: details,
           child: InkWell(
