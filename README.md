@@ -16,6 +16,7 @@ PlateNote는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 - [피펫팅 계획 계산 기준](docs/pipetting-plan-method.md)
 - [로컬 데이터 안전 기준](docs/local-data-safety.md)
 - [UI 확인 가이드](docs/ui-screenshots.md)
+- [연구 업무 기능 개선안](docs/research-workflow-roadmap.md)
 
 ## 현재 구현 상태
 
@@ -32,6 +33,7 @@ PlateNote는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 - Plate 저장 중/완료 상태 표시와 최근 20개 변경에 대한 실행 취소
 - 현재 Plate 설정을 결과값 없이 로컬 템플릿으로 저장·이름 변경·삭제하고, 기본 CCK-8 예시 또는 저장 템플릿을 Plate 편집기/새 실험 생성 시 재적용
 - 선택한 well의 농도, 측정 결과, 결과 단위, 메모, 분석 제외 여부를 기록하는 상세 카드
+- 결과 연속 입력: 행/열 방향 선택, 저장 성공 후 다음 well 이동, 실패 시 입력 유지·재시도, 미저장 입력 폐기 확인
 - Excel/Plate reader의 A-H × 1-12 결과 행렬을 붙여넣거나 CSV/TSV/TXT 파일로 불러와 여러 well에 일괄 입력
 - Plate layout과 well별 측정 결과를 메모/엑셀/구글시트에 붙여넣거나 파일로 공유할 수 있는 TSV 내보내기
 - 시작 농도, 희석 배수, 단계 수, 반복 well 수, 방향과 0 농도 대조군 역할을 선택해 plate에 적용하는 희석 계산 Builder

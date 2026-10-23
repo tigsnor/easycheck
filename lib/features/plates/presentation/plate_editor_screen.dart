@@ -1,4 +1,5 @@
 import 'widgets/plate_grid.dart';
+import 'widgets/sequential_result_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -29,6 +30,7 @@ import '../templates/domain/default_plate_templates.dart';
 import '../templates/domain/plate_template.dart';
 
 enum _PlateMoreAction {
+  sequentialResults,
   importResults,
   export,
   history,
@@ -169,6 +171,9 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
               enabled: plate != null && !_isSaving && _failedPlate == null,
               onSelected: (action) {
                 switch (action) {
+                  case _PlateMoreAction.sequentialResults:
+                    _openSequentialResults();
+                    return;
                   case _PlateMoreAction.importResults:
                     _openBulkResultImport();
                     return;
@@ -190,6 +195,16 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                 }
               },
               itemBuilder: (context) => [
+                if (!widget.readOnly)
+                  const PopupMenuItem(
+                    key: ValueKey('sequential-results-menu'),
+                    value: _PlateMoreAction.sequentialResults,
+                    child: ListTile(
+                      leading: Icon(Icons.playlist_add_check),
+                      title: Text('결과 연속 입력'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
                 if (!widget.readOnly)
                   const PopupMenuItem(
                     key: ValueKey('bulk-result-import-menu'),
@@ -262,6 +277,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                 onApplyDilution: _openDilutionBuilder,
                 onClearSelection: _clearSelection,
                 onBulkResultImport: _openBulkResultImport,
+                onSequentialResults: _openSequentialResults,
                 onShowDetails: _showSelectedWellDetails,
               ),
         body: SafeArea(
@@ -920,6 +936,41 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     );
   }
 
+  Future<void> _openSequentialResults() async {
+    final plate = _plate;
+    if (widget.readOnly || plate == null || _isSaving || _failedPlate != null) {
+      return;
+    }
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      builder: (_) => SequentialResultSheet(
+        plate: plate,
+        start: _selectedPosition ??
+            const WellPosition(rowIndex: 0, columnIndex: 0),
+        onPositionChanged: (position) {
+          _editorController.clearSelection();
+          _editorController.selectWell(position);
+        },
+        onSave: (updated) async {
+          final current = _plate!;
+          return _savePlate(
+            current.copyWith(wells: [
+              for (final well in current.wells)
+                well.position == updated.position ? updated : well,
+            ]),
+            changeSummary: '결과 연속 입력: ${updated.label}',
+            retainFailedDraft: false,
+            showSuccessMessage: false,
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _editSelectedWell() async {
     if (widget.readOnly || _isSaving || _failedPlate != null) return;
     final well = _selectedWell;
@@ -956,6 +1007,8 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     String successMessage = 'plate layout을 저장했습니다.',
     bool recordHistory = true,
     String changeSummary = 'Plate 수정',
+    bool retainFailedDraft = true,
+    bool showSuccessMessage = true,
   }) async {
     if (widget.readOnly ||
         _isSaving ||
@@ -994,6 +1047,8 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       }
       setState(() {
         _isSaving = false;
+        // The continuous-entry sheet owns its visible draft and retry action.
+        if (!retainFailedDraft) return;
         _saveError = error;
         _failedPlate = plate;
         _failedSuccessMessage = successMessage;
@@ -1020,16 +1075,18 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       _failedSuccessMessage = null;
       _failedChangeSummary = null;
     });
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(successMessage),
-          action: recordHistory
-              ? SnackBarAction(label: '실행 취소', onPressed: _undoLastChange)
-              : null,
-        ),
-      );
+    if (showSuccessMessage) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(successMessage),
+            action: recordHistory
+                ? SnackBarAction(label: '실행 취소', onPressed: _undoLastChange)
+                : null,
+          ),
+        );
+    }
     return true;
   }
 
@@ -2491,6 +2548,7 @@ class _PlateContextActionBar extends StatelessWidget {
     required this.onApplyDilution,
     required this.onClearSelection,
     required this.onBulkResultImport,
+    required this.onSequentialResults,
     required this.onShowDetails,
   });
 
@@ -2506,6 +2564,7 @@ class _PlateContextActionBar extends StatelessWidget {
   final VoidCallback onApplyDilution;
   final VoidCallback onClearSelection;
   final VoidCallback onBulkResultImport;
+  final VoidCallback onSequentialResults;
   final VoidCallback onShowDetails;
 
   @override
@@ -2562,6 +2621,13 @@ class _PlateContextActionBar extends StatelessWidget {
                               label: '편집',
                               onPressed: isSaving ? null : onEdit,
                             ),
+                          if (hasSingleSelection)
+                            _ContextActionButton(
+                              key: const ValueKey('sequential-results-action'),
+                              icon: Icons.playlist_add_check,
+                              label: '결과 연속 입력',
+                              onPressed: isSaving ? null : onSequentialResults,
+                            ),
                           _ContextActionButton(
                             key: const ValueKey('assign-selected-group-action'),
                             icon: Icons.palette_outlined,
@@ -2589,6 +2655,12 @@ class _PlateContextActionBar extends StatelessWidget {
                           ),
                         ]
                       : [
+                          _ContextActionButton(
+                            key: const ValueKey('sequential-results-action'),
+                            icon: Icons.playlist_add_check,
+                            label: '결과 연속 입력',
+                            onPressed: isSaving ? null : onSequentialResults,
+                          ),
                           _ContextActionButton(
                             key: const ValueKey('bulk-result-import-button'),
                             icon: Icons.table_view_outlined,

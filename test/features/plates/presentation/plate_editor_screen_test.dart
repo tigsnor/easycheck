@@ -67,6 +67,50 @@ class FakePlateTemplateRepository implements PlateTemplateRepository {
 }
 
 void main() {
+  testWidgets('continuous entry persists each well, retries and supports undo',
+      (tester) async {
+    final repository = FakePlateRepository()
+      ..plate = Plate(id: 'p', experimentId: 'e', name: 'Plate');
+    await tester.pumpWidget(MaterialApp(
+        home: PlateEditorScreen(experimentId: 'e', repository: repository)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('well-A2')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('plate-more-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sequential-results-menu')));
+    await tester.pumpAndSettle();
+    expect(find.text('A2 · 결과 연속 입력'), findsOneWidget);
+    repository.failNextSave = true;
+    await tester.enterText(find.byKey(const ValueKey('sequential-value')), '0');
+    final next = find.byKey(const ValueKey('sequential-save-next'));
+    await tester.ensureVisible(next);
+    await tester.tap(next);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('sequential-save-error')), findsOneWidget);
+    expect(repository.plate!.wells[1].resultValue, isNull);
+    expect(repository.plate!.revisions, isEmpty);
+    await tester.tap(next);
+    await tester.pumpAndSettle();
+    expect(repository.plate!.wells[1].resultValue, 0);
+    expect(find.text('A3 · 결과 연속 입력'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('sequential-value')), '2');
+    final close = find.byKey(const ValueKey('sequential-save-close'));
+    await tester.ensureVisible(close);
+    await tester.tap(close);
+    await tester.pumpAndSettle();
+    expect(repository.plate!.wells[0].resultValue, isNull);
+    expect(repository.plate!.wells[1].resultValue, 0);
+    expect(repository.plate!.wells[2].resultValue, 2);
+    expect(repository.plate!.revisions.map((r) => r.summary),
+        ['결과 연속 입력: A2', '결과 연속 입력: A3']);
+    expect(find.text('1개 well 선택됨 · A3'), findsOneWidget);
+    await tester.tap(find.byTooltip('마지막 Plate 변경 실행 취소'));
+    await tester.pumpAndSettle();
+    expect(repository.plate!.wells[1].resultValue, 0);
+    expect(repository.plate!.wells[2].resultValue, isNull);
+  });
+
   testWidgets(
       'rejects invalid numeric edits and preserves exact values and roles',
       (tester) async {
@@ -212,6 +256,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('현재 Plate를 템플릿으로 저장'), findsNothing);
     expect(find.byKey(const ValueKey('bulk-result-import-menu')), findsNothing);
+    expect(find.byKey(const ValueKey('sequential-results-menu')), findsNothing);
     expect(find.text('Plate 전체 내보내기'), findsOneWidget);
     expect(repository.saveCount, 0);
   });
