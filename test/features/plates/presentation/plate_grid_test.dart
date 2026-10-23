@@ -44,6 +44,8 @@ void main() {
         onZoomIn: () {},
         onSelected: onSelect ?? (_) {},
         onRangeSelected: onRangeSelect ?? (_) {},
+        onRectangleSelected: (_, __) {},
+        onToggleDragSelection: () {},
         onRowSelected: (_) {},
         onColumnSelected: (_) {},
       ))),

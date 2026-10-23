@@ -67,6 +67,49 @@ class FakePlateTemplateRepository implements PlateTemplateRepository {
 }
 
 void main() {
+  testWidgets('drag selection assigns a group only to the selected rectangle',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = FakePlateRepository()
+      ..plate = Plate(id: 'p', experimentId: 'e', name: 'Plate');
+    await tester.pumpWidget(MaterialApp(
+        home: PlateEditorScreen(experimentId: 'e', repository: repository)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('plate-drag-selection')));
+    await tester.pumpAndSettle();
+    final gesture = await tester
+        .startGesture(tester.getCenter(find.byKey(const ValueKey('well-A1'))));
+    await gesture
+        .moveTo(tester.getCenter(find.byKey(const ValueKey('well-C3'))));
+    await tester.pump();
+    expect(find.text('드래그 선택 · 9개 · A1–C3'), findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(repository.saveCount, 0);
+    await tester
+        .tap(find.byKey(const ValueKey('assign-selected-group-action')));
+    await tester.pumpAndSettle();
+    expect(find.text('9개 well 그룹 지정'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextField, '그룹명'), 'Drag group');
+    await tester.tap(find.widgetWithText(FilledButton, '적용'));
+    await tester.pumpAndSettle();
+    expect(
+        repository.plate!.wells
+            .where((w) => w.groupId != null)
+            .map((w) => w.label)
+            .toSet(),
+        {'A1', 'A2', 'A3', 'B1', 'B2', 'B3', 'C1', 'C2', 'C3'});
+    await tester.tap(find.byKey(const ValueKey('start-range-action')));
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<FilterChip>(
+                find.byKey(const ValueKey('plate-drag-selection')))
+            .selected,
+        isFalse);
+  });
+
   testWidgets('continuous entry persists each well, retries and supports undo',
       (tester) async {
     final repository = FakePlateRepository()
@@ -328,7 +371,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Plate 작업 보기'), findsOneWidget);
-    expect(find.textContaining('좌우로 밀어 숨겨진 well을 확인하세요.'), findsOneWidget);
+    expect(find.textContaining('well을 길게 누른 채 드래그하면 범위 선택'), findsOneWidget);
     expect(
       tester.getSize(find.byKey(const ValueKey('well-A1'))).width,
       closeTo(56, 0.1),

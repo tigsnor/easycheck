@@ -117,7 +117,6 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   WellPosition? get _selectedPosition => _editorController.selectedPosition;
   Set<WellPosition> get _selectedPositions =>
       _editorController.selectedPositions;
-  WellPosition? get _rangeAnchor => _editorController.rangeAnchor;
   double? get _plateCellSize => _editorController.requestedCellSize;
 
   @override
@@ -269,11 +268,11 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
             : _PlateContextActionBar(
                 selectedPositions: _selectedPositions,
                 hasSingleSelection: _selectedPositions.length == 1,
-                isRangeActive: _rangeAnchor != null,
+                isRangeActive: _editorController.dragSelectionEnabled,
                 isSaving: _isSaving || _failedPlate != null,
                 onEdit: _editSelectedWell,
                 onAssignGroup: _assignGroupToSelection,
-                onStartRange: _editorController.startRange,
+                onStartRange: _editorController.toggleDragSelection,
                 onApplyDilution: _openDilutionBuilder,
                 onClearSelection: _clearSelection,
                 onBulkResultImport: _openBulkResultImport,
@@ -327,6 +326,12 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                               onZoomIn: _canZoomPlateIn ? _zoomPlateIn : null,
                               onSelected: _selectSingleWell,
                               onRangeSelected: _selectRangeTo,
+                              onRectangleSelected:
+                                  _editorController.selectRectangle,
+                              dragSelectionEnabled:
+                                  _editorController.dragSelectionEnabled,
+                              onToggleDragSelection:
+                                  _editorController.toggleDragSelection,
                               onRowSelected: _selectRow,
                               onColumnSelected: _selectColumn,
                             ),
@@ -2593,7 +2598,7 @@ class _PlateContextActionBar extends StatelessWidget {
                 child: Text(
                   hasSelection
                       ? isRangeActive
-                          ? '범위 끝 선택 · 시작 ${labels.first}'
+                          ? '드래그 선택 · $selectedCount개 · $selectionLabel'
                           : '$selectedCount개 well 선택됨 · $selectionLabel'
                       : 'Plate 작업',
                   style: Theme.of(
@@ -2637,9 +2642,8 @@ class _PlateContextActionBar extends StatelessWidget {
                           _ContextActionButton(
                             key: const ValueKey('start-range-action'),
                             icon: Icons.select_all_outlined,
-                            label: isRangeActive ? '범위 선택 중' : '범위',
-                            onPressed:
-                                isSaving || isRangeActive ? null : onStartRange,
+                            label: isRangeActive ? '스크롤로 전환' : '드래그 선택',
+                            onPressed: isSaving ? null : onStartRange,
                           ),
                           _ContextActionButton(
                             key: const ValueKey('apply-dilution-action'),
