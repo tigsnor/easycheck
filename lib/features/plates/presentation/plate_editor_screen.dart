@@ -1,5 +1,6 @@
 import 'widgets/plate_grid.dart';
 import 'widgets/sequential_result_sheet.dart';
+import 'widgets/result_import_preview_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -1454,9 +1455,33 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
     );
   }
 
-  int get _overwriteCount => _preview.values.keys
-      .where((position) => widget.plate.wellAt(position).resultValue != null)
-      .length;
+  PlateResultImportComparison? get _comparison => _preview.canApply
+      ? widget.service.compare(
+          plate: widget.plate,
+          preview: _preview,
+          resultUnit: _resolvedResultUnit)
+      : null;
+
+  int get _overwriteCount =>
+      _comparison?.count(ResultImportChange.overwritten) ?? 0;
+
+  Future<void> _showFullPreview() async {
+    final comparison = _comparison;
+    if (comparison == null) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => FractionallySizedBox(
+        heightFactor: 0.95,
+        child: ResultImportPreviewSheet(
+            plate: widget.plate,
+            comparison: comparison,
+            sourceName: _sourceName),
+      ),
+    );
+  }
 
   bool get _hasDuplicateSource =>
       _sourceName != '클립보드' &&
@@ -1506,7 +1531,7 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
       messages.add('“$_sourceName” 파일은 이미 가져온 이력이 있습니다.');
     }
     if (_overwriteCount > 0) {
-      messages.add('기존 결과 $_overwriteCount개가 새 값으로 바뀝니다.');
+      messages.add('기존 결과 $_overwriteCount개의 값 또는 단위가 바뀝니다.');
     }
     messages.add('계속 진행할까요?');
     return messages.join('\n');
@@ -1541,6 +1566,8 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
             const Text(
               'Excel이나 Plate reader의 행렬을 붙여넣거나 CSV/TSV/TXT 파일을 선택하세요. A–H 행 좌표를 인식하며, 숫자만 있는 첫 행은 측정값인지 열 제목인지 확인해야 합니다.',
             ),
+            const Text(
+                '행 좌표가 없으면 A1부터 배치합니다. 선택한 well 영역과 관계없이 원본 행렬의 좌표에 적용합니다.'),
             const SizedBox(height: 16),
             TextField(
               key: const ValueKey('bulk-result-matrix-field'),
@@ -1625,6 +1652,9 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
             const SizedBox(height: 14),
             _BulkResultImportPreviewCard(
               preview: _preview,
+              comparison: _comparison,
+              wellCount: widget.plate.wells.length,
+              onOpenPreview: _showFullPreview,
               overwriteCount: _overwriteCount,
               hasDuplicateSource: _hasDuplicateSource,
               sourceName: _sourceName,
@@ -1649,12 +1679,18 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
 class _BulkResultImportPreviewCard extends StatelessWidget {
   const _BulkResultImportPreviewCard({
     required this.preview,
+    required this.comparison,
+    required this.wellCount,
+    required this.onOpenPreview,
     required this.overwriteCount,
     required this.hasDuplicateSource,
     required this.sourceName,
   });
 
   final PlateResultImportPreview preview;
+  final PlateResultImportComparison? comparison;
+  final int wellCount;
+  final VoidCallback onOpenPreview;
   final int overwriteCount;
   final bool hasDuplicateSource;
   final String sourceName;
@@ -1682,17 +1718,10 @@ class _BulkResultImportPreviewCard extends StatelessWidget {
               context,
             ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
-          if (preview.values.isNotEmpty) ...[
+          if (comparison != null) ...[
             const SizedBox(height: 6),
-            Text(
-              preview.values.entries
-                  .take(6)
-                  .map(
-                    (entry) => '${entry.key.label}=${_formatDose(entry.value)}',
-                  )
-                  .join(' · '),
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+            Text(comparison!.summary),
+            const Text('빈 셀은 기존 값을 유지합니다. 동일은 값과 단위가 모두 같은 항목입니다.'),
           ],
           if (hasDuplicateSource) ...[
             const SizedBox(height: 6),
@@ -1710,7 +1739,15 @@ class _BulkResultImportPreviewCard extends StatelessWidget {
               ),
             if (preview.issues.length > 4)
               Text('그 외 ${preview.issues.length - 4}개 오류'),
+            const Text('오류와 첫 행 해석을 확인한 뒤 전체 미리보기를 열 수 있습니다.'),
           ],
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            key: const ValueKey('open-full-import-preview'),
+            onPressed: comparison == null ? null : onOpenPreview,
+            icon: const Icon(Icons.preview_outlined),
+            label: Text('전체 $wellCount개 well 비교'),
+          ),
         ],
       ),
     );
