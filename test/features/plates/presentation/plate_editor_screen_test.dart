@@ -67,6 +67,104 @@ class FakePlateTemplateRepository implements PlateTemplateRepository {
 }
 
 void main() {
+  testWidgets(
+      'full import preview is read only, refreshes units and matches saved values',
+      (tester) async {
+    final base = Plate(id: 'p', experimentId: 'e', name: 'Plate');
+    final wells = base.wells.toList();
+    wells[0] = wells[0].copyWith(resultValue: 0.5, resultUnit: 'OD450');
+    wells[1] =
+        wells[1].copyWith(resultValue: 0.9, resultUnit: 'RFU', note: 'keep');
+    wells[95] =
+        wells[95].copyWith(resultValue: 9, resultUnit: 'OD450', excluded: true);
+    final repository = FakePlateRepository()
+      ..plate = base.copyWith(wells: wells);
+    await tester.pumpWidget(MaterialApp(
+        home: PlateEditorScreen(experimentId: 'e', repository: repository)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('bulk-result-import-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const ValueKey('bulk-result-matrix-field')),
+        'A\t0.5\nH\t${List.filled(11, '').join('\t')}\t0.82');
+    await tester.pumpAndSettle();
+    final open = find.byKey(const ValueKey('open-full-import-preview'));
+    await tester.ensureVisible(open);
+    await tester.tap(open);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('import-preview-grid')), findsOneWidget);
+    expect(find.text('신규 0개 · 덮어쓰기 1개 · 동일 1개 · 유지 94개'), findsWidgets);
+    expect(repository.saveCount, 0);
+    await tester.tap(find.byKey(const ValueKey('close-import-preview')));
+    await tester.pumpAndSettle();
+    final wavelength =
+        find.byKey(const ValueKey('bulk-result-wavelength-field'));
+    await tester.ensureVisible(wavelength);
+    await tester.enterText(wavelength, '570');
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(open);
+    await tester.tap(open);
+    await tester.pumpAndSettle();
+    expect(find.text('신규 0개 · 덮어쓰기 2개 · 동일 0개 · 유지 94개'), findsWidgets);
+    expect(find.text('현재: 0.5 OD450'), findsOneWidget);
+    expect(find.text('적용 후: 0.5 OD570'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('close-import-preview')));
+    await tester.pumpAndSettle();
+    final apply = find.byKey(const ValueKey('apply-bulk-results-button'));
+    await tester.ensureVisible(apply);
+    await tester.tap(apply);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+    expect(repository.saveCount, 0);
+    expect(repository.plate!.wells[95].resultValue, 9);
+    await tester.tap(apply);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('덮어쓰기'));
+    await tester.pumpAndSettle();
+    expect(repository.saveCount, 1);
+    expect(repository.plate!.wells[0].resultValue, 0.5);
+    expect(repository.plate!.wells[0].resultUnit, 'OD570');
+    expect(repository.plate!.wells[95].resultValue, 0.82);
+    expect(repository.plate!.wells[95].resultUnit, 'OD570');
+    expect(repository.plate!.wells[95].excluded, isTrue);
+    expect(repository.plate!.wells[1].toJson(), wells[1].toJson());
+  });
+
+  testWidgets(
+      'requires resolving ambiguous headers before full preview and import',
+      (tester) async {
+    final repository = FakePlateRepository();
+    await tester.pumpWidget(MaterialApp(
+        home: PlateEditorScreen(experimentId: 'e', repository: repository)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('bulk-result-import-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const ValueKey('bulk-result-matrix-field')), '1\t2');
+    await tester.pumpAndSettle();
+    final open = find.byKey(const ValueKey('open-full-import-preview'));
+    expect(tester.widget<OutlinedButton>(open).onPressed, isNull);
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.byKey(const ValueKey('apply-bulk-results-button')))
+            .onPressed,
+        isNull);
+    final header = find.byKey(const ValueKey('bulk-result-header-mode'));
+    await tester.ensureVisible(header);
+    await tester.tap(header);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('첫 행부터 측정값').last);
+    await tester.pumpAndSettle();
+    expect(tester.widget<OutlinedButton>(open).onPressed, isNotNull);
+    await tester.ensureVisible(open);
+    await tester.tap(open);
+    await tester.pumpAndSettle();
+    expect(find.text('적용 후: 1.0 OD450'), findsOneWidget);
+    expect(repository.saveCount, 1); // Only the initial empty Plate creation.
+  });
+
   testWidgets('drag selection assigns a group only to the selected rectangle',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 1000));
@@ -785,7 +883,7 @@ void main() {
 
       expect(find.text('결과 가져오기 확인'), findsOneWidget);
       expect(find.textContaining('이미 가져온 이력이 있습니다'), findsWidgets);
-      expect(find.textContaining('기존 결과 2개가 새 값으로 바뀝니다'), findsOneWidget);
+      expect(find.textContaining('기존 결과 2개의 값 또는 단위가 바뀝니다'), findsOneWidget);
 
       await tester.tap(find.text('취소'));
       await tester.pumpAndSettle();

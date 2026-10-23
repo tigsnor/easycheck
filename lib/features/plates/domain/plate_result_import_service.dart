@@ -1,7 +1,39 @@
 import '../../../shared/models/well_position.dart';
 import 'plate.dart';
+import 'well.dart';
 
 enum MatrixHeaderMode { automatic, present, absent }
+
+enum ResultImportChange { added, overwritten, identical, untouched }
+
+class ResultImportComparisonEntry {
+  const ResultImportComparisonEntry(
+      {required this.before, required this.after, required this.change});
+
+  final Well before;
+  final Well after;
+  final ResultImportChange change;
+  bool get changesResult =>
+      change == ResultImportChange.added ||
+      change == ResultImportChange.overwritten;
+  String get label => switch (change) {
+        ResultImportChange.added => '신규',
+        ResultImportChange.overwritten => '덮어쓰기',
+        ResultImportChange.identical => '동일',
+        ResultImportChange.untouched => '유지',
+      };
+}
+
+class PlateResultImportComparison {
+  PlateResultImportComparison(List<ResultImportComparisonEntry> entries)
+      : entries = List.unmodifiable(entries);
+
+  final List<ResultImportComparisonEntry> entries;
+  int count(ResultImportChange change) =>
+      entries.where((entry) => entry.change == change).length;
+  String get summary =>
+      '신규 ${count(ResultImportChange.added)}개 · 덮어쓰기 ${count(ResultImportChange.overwritten)}개 · 동일 ${count(ResultImportChange.identical)}개 · 유지 ${count(ResultImportChange.untouched)}개';
+}
 
 class PlateResultImportIssue {
   const PlateResultImportIssue({
@@ -36,6 +68,36 @@ class PlateResultImportPreview {
 
 class PlateResultImportService {
   const PlateResultImportService();
+
+  /// Build the review from the same transformation used by the actual import.
+  /// Invalid or ambiguous input must be corrected before comparing results.
+  PlateResultImportComparison compare({
+    required Plate plate,
+    required PlateResultImportPreview preview,
+    required String resultUnit,
+  }) {
+    final applied =
+        apply(plate: plate, preview: preview, resultUnit: resultUnit);
+    final entries = <ResultImportComparisonEntry>[];
+    for (var row = 0; row < plate.rowCount; row++) {
+      for (var column = 0; column < plate.columnCount; column++) {
+        final position = WellPosition(rowIndex: row, columnIndex: column);
+        final before = plate.wellAt(position);
+        final after = applied.wellAt(position);
+        final change = !preview.values.containsKey(position)
+            ? ResultImportChange.untouched
+            : before.resultValue == null
+                ? ResultImportChange.added
+                : before.resultValue == after.resultValue &&
+                        before.resultUnit == after.resultUnit
+                    ? ResultImportChange.identical
+                    : ResultImportChange.overwritten;
+        entries.add(ResultImportComparisonEntry(
+            before: before, after: after, change: change));
+      }
+    }
+    return PlateResultImportComparison(entries);
+  }
 
   PlateResultImportPreview parseMatrix({
     required String text,
