@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../../shared/models/well_position.dart';
@@ -17,6 +19,9 @@ class PlateGrid extends StatefulWidget {
     required this.onZoomIn,
     required this.onSelected,
     required this.onRangeSelected,
+    required this.onRectangleSelected,
+    required this.onToggleDragSelection,
+    this.dragSelectionEnabled = false,
     required this.onRowSelected,
     required this.onColumnSelected,
     super.key,
@@ -30,6 +35,9 @@ class PlateGrid extends StatefulWidget {
   final VoidCallback? onZoomIn;
   final ValueChanged<WellPosition> onSelected;
   final ValueChanged<WellPosition> onRangeSelected;
+  final void Function(WellPosition start, WellPosition end) onRectangleSelected;
+  final VoidCallback onToggleDragSelection;
+  final bool dragSelectionEnabled;
   final ValueChanged<int> onRowSelected;
   final ValueChanged<int> onColumnSelected;
 
@@ -40,6 +48,104 @@ class PlateGrid extends StatefulWidget {
 class _PlateGridState extends State<PlateGrid> {
   static const _spacing = 6.0;
   bool _showResults = false;
+  final _gridKey = GlobalKey();
+  final _viewportKey = GlobalKey();
+  final _horizontalScroll = ScrollController();
+  Timer? _autoScroll;
+  WellPosition? _dragStart;
+  WellPosition? _dragEnd;
+  Offset? _pointer;
+  double _cellSize = 48;
+
+  @override
+  void dispose() {
+    _stopDrag();
+    _horizontalScroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant PlateGrid oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.plate.id != widget.plate.id ||
+        oldWidget.requestedCellSize != widget.requestedCellSize ||
+        oldWidget.dragSelectionEnabled != widget.dragSelectionEnabled) {
+      _stopDrag();
+    }
+  }
+
+  void _beginDrag(WellPosition start, Offset pointer) {
+    _stopDrag();
+    _dragStart = start;
+    _dragEnd = start;
+    _pointer = pointer;
+    widget.onRectangleSelected(start, start);
+    _moveDrag(pointer);
+    _autoScroll = Timer.periodic(
+        const Duration(milliseconds: 40), (_) => _scrollAtEdge());
+  }
+
+  void _moveDrag(Offset pointer) {
+    final start = _dragStart;
+    final box = _gridKey.currentContext?.findRenderObject();
+    if (start == null || box is! RenderBox || !box.hasSize) return;
+    _pointer = pointer;
+    final local = box.globalToLocal(pointer);
+    final stride = _cellSize + _spacing;
+    final end = WellPosition(
+      rowIndex: (local.dy ~/ stride - 1).clamp(0, widget.plate.rowCount - 1),
+      columnIndex:
+          (local.dx ~/ stride - 1).clamp(0, widget.plate.columnCount - 1),
+    );
+    if (end == _dragEnd) return;
+    _dragEnd = end;
+    widget.onRectangleSelected(start, end);
+  }
+
+  void _stopDrag() {
+    _autoScroll?.cancel();
+    _autoScroll = null;
+    _dragStart = null;
+    _dragEnd = null;
+    _pointer = null;
+  }
+
+  Rect? _bounds(BuildContext? context) {
+    final box = context?.findRenderObject();
+    return box is RenderBox && box.hasSize
+        ? box.localToGlobal(Offset.zero) & box.size
+        : null;
+  }
+
+  void _scrollAtEdge() {
+    final pointer = _pointer;
+    final viewport = _bounds(_viewportKey.currentContext);
+    if (pointer == null || viewport == null) return;
+    final vertical = Scrollable.maybeOf(context, axis: Axis.vertical);
+    final outer = _bounds(vertical?.context);
+    final visible = outer == null ? viewport : viewport.intersect(outer);
+    if (visible.isEmpty) return;
+    double delta(double value, double min, double max) => value < min + 28
+        ? -12
+        : value > max - 28
+            ? 12
+            : 0;
+    void scroll(ScrollPosition position, double offset) {
+      if (offset == 0 || !position.hasContentDimensions) return;
+      final target = (position.pixels + offset)
+          .clamp(position.minScrollExtent, position.maxScrollExtent);
+      if (target != position.pixels) position.jumpTo(target);
+    }
+
+    if (_horizontalScroll.hasClients) {
+      scroll(_horizontalScroll.position,
+          delta(pointer.dx, visible.left, visible.right));
+    }
+    if (vertical != null) {
+      scroll(vertical.position, delta(pointer.dy, visible.top, visible.bottom));
+    }
+    _moveDrag(pointer);
+  }
 
   bool _isAssigned(Well well) =>
       well.groupId != null ||
@@ -66,6 +172,12 @@ class _PlateGridState extends State<PlateGrid> {
         padding: const EdgeInsets.all(14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Wrap(spacing: 8, children: [
+            FilterChip(
+              key: const ValueKey('plate-drag-selection'),
+              label: const Text('드래그 선택'),
+              selected: widget.dragSelectionEnabled,
+              onSelected: (_) => widget.onToggleDragSelection(),
+            ),
             ChoiceChip(
               key: const ValueKey('plate-layout-view'),
               label: const Text('배치'),
@@ -122,7 +234,9 @@ class _PlateGridState extends State<PlateGrid> {
               child: Text(
                 fit
                     ? '전체 배치를 확인하는 보기입니다. 정확한 선택은 확대 후 진행하세요.'
-                    : '좌우로 밀어 숨겨진 well을 확인하세요. 각 칸에 좌표가 표시됩니다.',
+                    : widget.dragSelectionEnabled
+                        ? 'well에서 바로 드래그해 범위를 선택하세요. 가장자리에서 자동으로 스크롤됩니다.'
+                        : '밀어서 스크롤 · well을 길게 누른 채 드래그하면 범위 선택',
                 style: Theme.of(context).textTheme.bodySmall,
               )),
           LayoutBuilder(builder: (context, constraints) {
@@ -135,26 +249,38 @@ class _PlateGridState extends State<PlateGrid> {
             final size = fit
                 ? fitSize.clamp(8.0, double.infinity)
                 : widget.requestedCellSize! * scale;
-            return Scrollbar(
-                child: SingleChildScrollView(
-              key: const ValueKey('plate-horizontal-scroll'),
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: size * columns + _spacing * (columns - 1),
-                height: size * rows + _spacing * (rows - 1),
-                child: GridView.builder(
-                  key: const ValueKey('plate-grid'),
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: rows * columns,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: columns,
-                      mainAxisSpacing: _spacing,
-                      crossAxisSpacing: _spacing),
-                  itemBuilder: (context, index) => _cell(index, columns, size),
-                ),
-              ),
-            ));
+            _cellSize = size;
+            return Listener(
+                onPointerCancel: (_) => _stopDrag(),
+                onPointerUp: (_) => _stopDrag(),
+                child: SizedBox(
+                    key: _viewportKey,
+                    child: Scrollbar(
+                        controller: _horizontalScroll,
+                        child: SingleChildScrollView(
+                          key: const ValueKey('plate-horizontal-scroll'),
+                          controller: _horizontalScroll,
+                          scrollDirection: Axis.horizontal,
+                          child: SizedBox(
+                            key: _gridKey,
+                            width: size * columns + _spacing * (columns - 1),
+                            height: size * rows + _spacing * (rows - 1),
+                            child: GridView.builder(
+                              key: const ValueKey('plate-grid'),
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              padding: EdgeInsets.zero,
+                              itemCount: rows * columns,
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: columns,
+                                      mainAxisSpacing: _spacing,
+                                      crossAxisSpacing: _spacing),
+                              itemBuilder: (context, index) =>
+                                  _cell(index, columns, size),
+                            ),
+                          ),
+                        ))));
           }),
         ]),
       ),
@@ -191,17 +317,30 @@ class _PlateGridState extends State<PlateGrid> {
     final well = widget.plate.wellAt(position);
     final group =
         widget.plate.groups.where((g) => g.id == well.groupId).firstOrNull;
-    return _WellCell(
-      key: ValueKey('well-${well.label}'),
-      well: well,
-      group: group,
-      size: size,
-      results: _showResults,
-      assigned: _isAssigned(well),
-      selected: widget.selectedPositions.contains(position),
-      onTap: () => widget.onSelected(position),
-      onLongPress: () => widget.onRangeSelected(position),
-    );
+    return GestureDetector(
+        excludeFromSemantics: true,
+        onLongPressStart: (details) =>
+            _beginDrag(position, details.globalPosition),
+        onLongPressMoveUpdate: (details) => _moveDrag(details.globalPosition),
+        onLongPressEnd: (_) => _stopDrag(),
+        onPanStart: widget.dragSelectionEnabled
+            ? (details) => _beginDrag(position, details.globalPosition)
+            : null,
+        onPanUpdate: widget.dragSelectionEnabled
+            ? (details) => _moveDrag(details.globalPosition)
+            : null,
+        onPanEnd: widget.dragSelectionEnabled ? (_) => _stopDrag() : null,
+        child: _WellCell(
+          key: ValueKey('well-${well.label}'),
+          well: well,
+          group: group,
+          size: size,
+          results: _showResults,
+          assigned: _isAssigned(well),
+          selected: widget.selectedPositions.contains(position),
+          onTap: () => widget.onSelected(position),
+          onLongPress: () => widget.onRangeSelected(position),
+        ));
   }
 }
 
@@ -287,10 +426,10 @@ class _WellCell extends StatelessWidget {
       onTap: onTap,
       onLongPress: onLongPress,
       child: Tooltip(
+          triggerMode: TooltipTriggerMode.manual,
           message: details,
           child: InkWell(
             onTap: onTap,
-            onLongPress: onLongPress,
             borderRadius: BorderRadius.circular(10),
             child: Container(
               alignment: Alignment.center,
