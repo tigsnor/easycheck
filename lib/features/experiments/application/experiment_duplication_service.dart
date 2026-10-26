@@ -61,6 +61,7 @@ class ExperimentDuplicationService {
               isCompleted: false, startedAt: null, completedAt: null))
           .toList(),
       revisions: [],
+      attachments: [],
     ).toJson());
     final plate = sourcePlate == null
         ? null

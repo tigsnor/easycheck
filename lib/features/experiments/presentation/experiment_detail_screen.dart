@@ -1,3 +1,7 @@
+import '../../attachments/data/attachment_file_store.dart';
+import '../../attachments/data/attachment_exchange_service.dart';
+import '../../attachments/presentation/experiment_attachments_screen.dart';
+import '../../plates/data/file_plate_repository.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -17,6 +21,8 @@ class ExperimentDetailScreen extends StatefulWidget {
     this.plateRepository,
     this.plateTemplateRepository,
     this.documentExchangeService,
+    this.attachmentFileStore = const FileAttachmentFileStore(),
+    this.attachmentExchange = const PlatformAttachmentExchangeService(),
     super.key,
   });
 
@@ -25,6 +31,8 @@ class ExperimentDetailScreen extends StatefulWidget {
   final PlateRepository? plateRepository;
   final PlateTemplateRepository? plateTemplateRepository;
   final DocumentExchangeService? documentExchangeService;
+  final AttachmentFileStore attachmentFileStore;
+  final AttachmentExchangeService attachmentExchange;
 
   @override
   State<ExperimentDetailScreen> createState() => _ExperimentDetailScreenState();
@@ -118,7 +126,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('실험 노트'),
+              const Text('실험 노트', maxLines: 1, overflow: TextOverflow.ellipsis),
               SaveStatusIndicator(
                 status: _saveStatus,
                 savedAt: _lastSavedAt,
@@ -127,6 +135,12 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
             ],
           ),
           actions: [
+            IconButton(
+                key: const ValueKey('open-experiment-attachments'),
+                tooltip:
+                    '사진·원본 파일 (${_persistedExperiment.attachments.length})',
+                onPressed: _isSaving ? null : _openAttachments,
+                icon: const Icon(Icons.attach_file)),
             if (_isLocked)
               TextButton(
                 onPressed: _requestUnlock,
@@ -393,6 +407,40 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
 
     await _openPlate(
         readOnly: _persistedExperiment.status == ExperimentStatus.completed);
+  }
+
+  Future<void> _openAttachments() async {
+    if (_isSaving) return;
+    if (!_isLocked && !await _save(showMessage: false)) return;
+    try {
+      final plate =
+          await (widget.plateRepository ?? const FilePlateRepository())
+              .loadPlate(widget.experiment.id);
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => ExperimentAttachmentsScreen(
+                experiment: _persistedExperiment,
+                plate: plate,
+                readOnly:
+                    _persistedExperiment.status == ExperimentStatus.completed,
+                fileStore: widget.attachmentFileStore,
+                exchange: widget.attachmentExchange,
+                onChanged: (updated) async {
+                  await widget.onChanged(updated);
+                  if (mounted) {
+                    setState(() {
+                      _persistedExperiment = updated;
+                      _lastSavedAt = updated.updatedAt;
+                    });
+                  }
+                },
+              )));
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('첨부 화면을 열지 못했습니다: $error')));
+      }
+    }
   }
 
   Future<void> _openPlate({required bool readOnly}) async {

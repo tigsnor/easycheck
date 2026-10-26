@@ -1,3 +1,4 @@
+import '../../attachments/data/attachment_file_store.dart';
 import 'dart:io';
 
 import '../../../shared/data/local_data_directory.dart';
@@ -31,6 +32,7 @@ class FileBackupRecoveryService implements BackupRecoveryService {
       experiments: backup.experiments,
       plates: backup.plates,
       templates: backup.templates,
+      attachmentFiles: backup.attachmentFiles,
       exportedAt: backup.exportedAt,
     ));
     final includesTemplates = backup.includesTemplates;
@@ -91,6 +93,15 @@ class FileBackupRecoveryService implements BackupRecoveryService {
                 .loadTemplates();
         if (templates.length != frozen.templates.length) {
           throw const FormatException('복구 템플릿이 누락되었습니다.');
+        }
+      }
+      final attachments = FileAttachmentFileStore(rootDirectory: staged.path);
+      for (final blob in frozen.attachmentFiles.values) {
+        await attachments.write(blob);
+      }
+      for (final experiment in experiments) {
+        for (final attachment in experiment.attachments) {
+          await attachments.read(attachment);
         }
       }
       await fileStore.write(

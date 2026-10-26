@@ -1,3 +1,5 @@
+import '../../attachments/domain/experiment_attachment.dart';
+import '../../attachments/data/attachment_file_store.dart';
 import '../../plates/templates/data/plate_template_repository.dart';
 import '../../plates/templates/domain/plate_template.dart';
 import '../../experiments/data/experiment_repository.dart';
@@ -32,11 +34,13 @@ class BackupRestoreService {
     required this.experimentRepository,
     required this.plateRepository,
     this.templateRepository,
+    this.attachmentFileStore,
   });
 
   final ExperimentRepository experimentRepository;
   final PlateRepository plateRepository;
   final PlateTemplateRepository? templateRepository;
+  final AttachmentFileStore? attachmentFileStore;
 
   Future<void> restore(EasyCheckBackup backup) async {
     const EasyCheckBackupService().validate(backup);
@@ -44,7 +48,21 @@ class BackupRestoreService {
       throw StateError('템플릿 저장소가 필요합니다.');
     }
 
+    if (backup.attachmentFiles.isNotEmpty && attachmentFileStore == null) {
+      throw StateError('첨부파일 저장소가 필요합니다.');
+    }
     final existingExperiments = await experimentRepository.loadExperiments();
+    final incomingIds = backup.experiments.map((e) => e.id).toSet();
+    validateAttachmentBudget([
+      for (final e in existingExperiments)
+        if (!incomingIds.contains(e.id)) ...e.attachments,
+      for (final e in backup.experiments) ...e.attachments,
+    ]);
+    // Immutable blobs are committed first. A failure cannot publish missing files.
+    // Unreferenced blobs are retained so rollback and deletion undo remain safe.
+    for (final blob in backup.attachmentFiles.values) {
+      await attachmentFileStore!.write(blob);
+    }
     final experimentSnapshots = <String, Experiment?>{
       for (final experiment in backup.experiments)
         experiment.id: _findExperiment(existingExperiments, experiment.id),

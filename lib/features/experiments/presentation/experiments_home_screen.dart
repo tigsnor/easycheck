@@ -1,3 +1,7 @@
+import 'package:flutter/foundation.dart';
+import '../../attachments/domain/experiment_attachment.dart';
+import '../../attachments/data/attachment_file_store.dart';
+import '../../attachments/data/attachment_exchange_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
@@ -27,6 +31,8 @@ class ExperimentsHomeScreen extends StatefulWidget {
     DocumentExchangeService? documentExchangeService,
     PlateTemplateRepository? plateTemplateRepository,
     this.recoveryService,
+    this.attachmentFileStore,
+    this.attachmentExchange = const PlatformAttachmentExchangeService(),
     super.key,
   })  : repository = repository ?? const FileExperimentRepository(),
         plateRepository = plateRepository ?? const FilePlateRepository(),
@@ -36,6 +42,8 @@ class ExperimentsHomeScreen extends StatefulWidget {
             plateTemplateRepository ?? const FilePlateTemplateRepository();
 
   final BackupRecoveryService? recoveryService;
+  final AttachmentFileStore? attachmentFileStore;
+  final AttachmentExchangeService attachmentExchange;
   final ExperimentRepository repository;
   final PlateRepository plateRepository;
   final DocumentExchangeService documentExchangeService;
@@ -54,20 +62,31 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   bool _isLoading = true;
   Object? _loadError;
   bool _isBackupOpen = false;
+  bool _isPreparingBackup = false;
   bool _isRestoring = false;
   bool _isDuplicating = false;
   bool _isDuplicateOpen = false;
 
-  bool get _isDataBusy => _isRestoring || _isDuplicating;
+  bool get _isDataBusy => _isRestoring || _isDuplicating || _isPreparingBackup;
+
+  AttachmentFileStore get _attachmentStore =>
+      widget.attachmentFileStore ??
+      FileAttachmentFileStore(
+          rootDirectory: widget.repository is FileExperimentRepository
+              ? (widget.repository as FileExperimentRepository).rootDirectory
+              : null);
 
   BackupRecoveryService? get _recoveryService {
     if (widget.recoveryService != null) return widget.recoveryService;
     final experiments = widget.repository;
     final plates = widget.plateRepository;
     final templates = widget.plateTemplateRepository;
+    final attachments = _attachmentStore;
     if (experiments is FileExperimentRepository &&
         plates is FilePlateRepository &&
         templates is FilePlateTemplateRepository &&
+        attachments is FileAttachmentFileStore &&
+        experiments.rootDirectory == attachments.rootDirectory &&
         experiments.rootDirectory == plates.rootDirectory &&
         experiments.rootDirectory == templates.rootDirectory &&
         experiments.fileName == "experiments.json") {
@@ -264,6 +283,8 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
         builder: (_) => ExperimentDetailScreen(
           experiment: experiment,
           onChanged: _saveExperiment,
+          attachmentFileStore: _attachmentStore,
+          attachmentExchange: widget.attachmentExchange,
           plateRepository: widget.plateRepository,
           plateTemplateRepository: widget.plateTemplateRepository,
           documentExchangeService: widget.documentExchangeService,
@@ -289,6 +310,14 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
 
   Future<void> _saveExperiment(Experiment experiment) async {
     final saved = experiment.copyWith(updatedAt: DateTime.now());
+    if (saved.attachments.isNotEmpty) {
+      final all = await widget.repository.loadExperiments();
+      validateAttachmentBudget([
+        for (final e in all)
+          if (e.id != saved.id) ...e.attachments,
+        ...saved.attachments,
+      ]);
+    }
     await widget.repository.saveExperiment(saved);
     if (!mounted) {
       return;
@@ -305,7 +334,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
         builder: (context) => AlertDialog(
           title: const Text('실험 설계를 복제할까요?'),
           content: const Text('기본정보, 단계 제목, 자원 정보와 Plate 배치를 새 초안으로 복사합니다. '
-              '측정 결과, 분석 제외, 실험·Plate·well 메모, 타이머, 완료 기록과 변경 이력은 초기화합니다. '
+              '측정 결과, 분석 제외, 첨부파일, 실험·Plate·well 메모, 타이머, 완료 기록과 변경 이력은 초기화합니다. '
               '원본 실험은 유지됩니다.'),
           actions: [
             TextButton(
@@ -343,7 +372,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
       builder: (context) => AlertDialog(
         title: const Text('실험을 삭제할까요?'),
         content: Text(
-          '“${experiment.title}” 실험 노트와 연결된 Plate 데이터를 삭제합니다. 삭제 직후에는 실행 취소할 수 있습니다.',
+          '“${experiment.title}” 실험 노트와 연결된 Plate·첨부 목록을 삭제합니다. 삭제 직후에는 실행 취소할 수 있습니다.',
         ),
         actions: [
           TextButton(
@@ -432,8 +461,10 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   Future<void> _showBackupSheet() async {
     if (_isBackupOpen || _isDataBusy) return;
     _isBackupOpen = true;
+    setState(() => _isPreparingBackup = true);
     try {
       String? exportText;
+      String? exportSummary;
       try {
         final experiments = await widget.repository.loadExperiments();
         final plates = <Plate>[];
@@ -442,18 +473,40 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
           if (plate != null) plates.add(plate);
         }
         final templates = await widget.plateTemplateRepository.loadTemplates();
-        exportText = _backupService.encode(
-            experiments: experiments, plates: plates, templates: templates);
+        final files = <String, AttachmentBlob>{};
+        for (final e in experiments) {
+          for (final attachment in e.attachments) {
+            if (!files.containsKey(attachment.digest)) {
+              files[attachment.digest] =
+                  AttachmentBlob(await _attachmentStore.read(attachment));
+            }
+          }
+        }
+        final snapshot = EasyCheckBackup(
+          schemaVersion: EasyCheckBackupService.currentSchemaVersion,
+          exportedAt: DateTime.now(),
+          experiments: experiments,
+          plates: plates,
+          templates: templates,
+          attachmentFiles: files,
+        );
+        exportText =
+            files.values.fold<int>(0, (n, file) => n + file.bytes.length) >
+                    1024 * 1024
+                ? await compute(_encodeBackup, snapshot)
+                : _encodeBackup(snapshot);
       } on Object {
         // Export must not be a prerequisite for opening the restore controls.
       }
       if (!mounted) return;
+      setState(() => _isPreparingBackup = false);
       final request = await showModalBottomSheet<_BackupRestoreRequest>(
         context: context,
         isScrollControlled: true,
         showDragHandle: true,
         builder: (_) => _BackupRestoreSheet(
           exportText: exportText,
+          exportSummary: exportSummary,
           service: _backupService,
           documentExchangeService: widget.documentExchangeService,
           allowRecovery: _recoveryService != null,
@@ -462,6 +515,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
       if (request != null && mounted) await _confirmAndRestoreBackup(request);
     } finally {
       _isBackupOpen = false;
+      if (mounted) setState(() => _isPreparingBackup = false);
     }
   }
 
@@ -475,7 +529,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
       builder: (context) => AlertDialog(
         title: Text(request.replace ? '백업으로 전체 복구할까요?' : '백업을 복원할까요?'),
         content: Text(
-          '실험 ${backup.experiments.length}개 · Plate ${backup.plates.length}개 · $templateMessage\n\n'
+          '실험 ${backup.experiments.length}개 · Plate ${backup.plates.length}개 · 첨부 ${backup.attachmentCount}개 · $templateMessage\n\n'
           '${request.replace ? '현재 실험과 Plate 대신 백업 내용을 사용합니다. 백업에 없는 실험은 목록에서 사라집니다. 기존 파일은 별도로 보존하며 새 데이터 검증이 끝난 뒤 전환합니다.' : '같은 ID는 백업 내용으로 덮어쓰고 다른 데이터는 유지합니다. 저장 실패 시 복원 시작 전 상태로 되돌립니다.'}',
         ),
         actions: [
@@ -502,6 +556,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
           experimentRepository: widget.repository,
           plateRepository: widget.plateRepository,
           templateRepository: widget.plateTemplateRepository,
+          attachmentFileStore: _attachmentStore,
         ).restore(backup);
       }
       await _loadExperiments();
@@ -620,12 +675,14 @@ class _BackupRestoreRequest {
 class _BackupRestoreSheet extends StatefulWidget {
   const _BackupRestoreSheet({
     required this.exportText,
+    required this.exportSummary,
     required this.allowRecovery,
     required this.service,
     required this.documentExchangeService,
   });
 
   final String? exportText;
+  final String? exportSummary;
   final bool allowRecovery;
   final EasyCheckBackupService service;
   final DocumentExchangeService documentExchangeService;
@@ -639,6 +696,8 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
   EasyCheckBackup? _preview;
   bool _replace = false;
   String? _error;
+  bool _reading = false;
+  String? _pickedName;
 
   @override
   void initState() {
@@ -656,6 +715,7 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
 
   void _validateRestoreText() {
     final text = _restoreController.text;
+    _pickedName = null;
     if (text.trim().isEmpty) {
       setState(() {
         _preview = null;
@@ -664,6 +724,9 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
       return;
     }
     try {
+      if (text.length > 1024 * 1024) {
+        throw const FormatException('큰 백업은 붙여넣기 대신 백업 파일 선택을 사용해주세요.');
+      }
       final backup = widget.service.decode(text);
       setState(() {
         _preview = backup;
@@ -726,14 +789,26 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
   }
 
   Future<void> _pickBackupFile() async {
+    if (_reading) return;
+    setState(() => _reading = true);
     try {
       final document = await widget.documentExchangeService.pickTextDocument(
         allowedExtensions: const ['json'],
+        maxBytes: 80 * 1024 * 1024,
       );
       if (!mounted || document == null) {
         return;
       }
-      _restoreController.text = document.content;
+      final backup = document.content.length > 1024 * 1024
+          ? await compute(_decodeBackup, document.content)
+          : _decodeBackup(document.content);
+      if (!mounted) return;
+      _restoreController.clear();
+      setState(() {
+        _preview = backup;
+        _error = null;
+        _pickedName = document.name;
+      });
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('${document.name} 파일을 불러왔습니다.')));
@@ -743,6 +818,14 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
           context,
         ).showSnackBar(SnackBar(content: Text('백업 파일을 읽지 못했습니다: $error')));
       }
+      if (mounted) {
+        setState(() {
+          _preview = null;
+          _error = '$error';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _reading = false);
     }
   }
 
@@ -763,7 +846,7 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
             ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
-          const Text('실험 노트, 연결 Plate와 사용자 템플릿을 하나의 백업으로 보관합니다.'),
+          const Text('실험 노트, 연결 Plate, 사용자 템플릿과 첨부 원본을 하나의 백업으로 보관합니다.'),
           const SizedBox(height: 18),
           Text(
             '백업 내보내기',
@@ -774,7 +857,7 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
           const SizedBox(height: 8),
           if (widget.exportText == null)
             const Text(
-                '현재 데이터를 읽을 수 없어 새 백업을 만들지 못했습니다. 아래에서 기존 백업 파일을 선택할 수 있습니다.',
+                '데이터 또는 첨부 원본을 읽지 못해 백업을 만들 수 없습니다. 첨부 화면에서 누락·손상을 확인하거나 기존 백업으로 복원해주세요.',
                 key: ValueKey('backup-export-unavailable'))
           else ...[
             Container(
@@ -786,7 +869,7 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
               ),
               child: SingleChildScrollView(
                 child: SelectableText(
-                  widget.exportText!,
+                  widget.exportSummary ?? '전체 백업을 파일로 저장할 수 있습니다.',
                   key: const ValueKey('backup-export-text'),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
@@ -801,7 +884,9 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
                 alignment: WrapAlignment.end,
                 children: [
                   OutlinedButton.icon(
-                    onPressed: _copyBackup,
+                    onPressed: widget.exportText!.length > 1024 * 1024
+                        ? null
+                        : _copyBackup,
                     icon: const Icon(Icons.copy_all_outlined),
                     label: const Text('JSON 복사'),
                   ),
@@ -817,6 +902,9 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
               ),
             ),
           ],
+          if (widget.exportText != null &&
+              widget.exportText!.length > 1024 * 1024)
+            const Text('큰 백업은 JSON 복사 대신 파일 공유를 사용해주세요.'),
           const Divider(height: 32),
           Text(
             '백업 복원',
@@ -838,6 +926,12 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
               value: _replace,
               onChanged: (value) => setState(() => _replace = value),
             ),
+          if (_reading) const LinearProgressIndicator(),
+          if (_pickedName != null) Text('선택한 백업: $_pickedName'),
+          if (preview != null)
+            Text(preview.schemaVersion >= 4
+                ? '첨부 ${preview.attachmentCount}개 · 원본 무결성 검사 완료'
+                : '이전 버전 백업: 첨부 원본 미포함'),
           if (preview != null)
             Text(preview.includesTemplates
                 ? '사용자 템플릿 ${preview.templates.length}개 포함'
@@ -845,13 +939,14 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
           const SizedBox(height: 10),
           OutlinedButton.icon(
             key: const ValueKey('pick-backup-file-button'),
-            onPressed: _pickBackupFile,
+            onPressed: _reading ? null : _pickBackupFile,
             icon: const Icon(Icons.file_open_outlined),
             label: const Text('백업 파일 선택'),
           ),
           const SizedBox(height: 10),
           TextField(
             key: const ValueKey('backup-restore-field'),
+            enabled: !_reading,
             controller: _restoreController,
             minLines: 5,
             maxLines: 9,
@@ -865,7 +960,7 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
           Row(
             children: [
               TextButton.icon(
-                onPressed: _pasteBackup,
+                onPressed: _reading ? null : _pasteBackup,
                 icon: const Icon(Icons.content_paste),
                 label: const Text('클립보드 붙여넣기'),
               ),
@@ -884,7 +979,7 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
             width: double.infinity,
             child: FilledButton.icon(
               key: const ValueKey('restore-backup-button'),
-              onPressed: preview == null
+              onPressed: preview == null || _reading
                   ? null
                   : () => Navigator.of(context)
                       .pop(_BackupRestoreRequest(preview, replace: _replace)),
@@ -1508,3 +1603,13 @@ Rect _sharePositionOrigin(BuildContext context) {
   }
   return const Rect.fromLTWH(0, 0, 1, 1);
 }
+
+String _encodeBackup(EasyCheckBackup backup) =>
+    const EasyCheckBackupService().encode(
+        experiments: backup.experiments,
+        plates: backup.plates,
+        templates: backup.templates,
+        attachmentFiles: backup.attachmentFiles,
+        exportedAt: backup.exportedAt);
+EasyCheckBackup _decodeBackup(String source) =>
+    const EasyCheckBackupService().decode(source);

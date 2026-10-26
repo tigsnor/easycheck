@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../../attachments/domain/experiment_attachment.dart';
 
 import '../../../shared/data/json_validation.dart';
 import '../../experiments/domain/experiment.dart';
@@ -12,6 +13,7 @@ class EasyCheckBackup {
     required this.experiments,
     required this.plates,
     this.templates = const [],
+    this.attachmentFiles = const {},
   });
 
   final int schemaVersion;
@@ -19,6 +21,9 @@ class EasyCheckBackup {
   final List<Experiment> experiments;
   final List<Plate> plates;
   final List<PlateTemplate> templates;
+  final Map<String, AttachmentBlob> attachmentFiles;
+  int get attachmentCount =>
+      experiments.fold(0, (n, e) => n + e.attachments.length);
 
   bool get includesTemplates => schemaVersion >= 2;
 }
@@ -28,12 +33,13 @@ class EasyCheckBackupService {
 
   static const backupFormat = 'platenote-backup';
   static const legacyBackupFormat = 'easycheck-backup';
-  static const currentSchemaVersion = 3;
+  static const currentSchemaVersion = 4;
 
   String encode({
     required List<Experiment> experiments,
     required List<Plate> plates,
     List<PlateTemplate> templates = const [],
+    Map<String, AttachmentBlob> attachmentFiles = const {},
     DateTime? exportedAt,
   }) {
     final backup = EasyCheckBackup(
@@ -42,6 +48,7 @@ class EasyCheckBackupService {
       experiments: experiments,
       plates: plates,
       templates: templates,
+      attachmentFiles: attachmentFiles,
     );
     validate(backup);
     return const JsonEncoder.withIndent('  ').convert({
@@ -51,10 +58,17 @@ class EasyCheckBackupService {
       'experiments': experiments.map((item) => item.toJson()).toList(),
       'plates': plates.map((item) => item.toJson()).toList(),
       'templates': templates.map((item) => item.toJson()).toList(),
+      'attachmentFiles': {
+        for (final entry in attachmentFiles.entries)
+          entry.key: base64Encode(entry.value.bytes)
+      },
     });
   }
 
   EasyCheckBackup decode(String source) {
+    if (source.length > 80 * 1024 * 1024) {
+      throw const FormatException('백업 파일이 지원 크기를 초과합니다.');
+    }
     if (source.trim().isEmpty) {
       throw const FormatException('백업 JSON이 비어 있습니다.');
     }
@@ -78,6 +92,9 @@ class EasyCheckBackupService {
     try {
       final backup = EasyCheckBackup(
         schemaVersion: version,
+        attachmentFiles: version >= 4
+            ? AttachmentBlob.decodeFiles(decoded['attachmentFiles'])
+            : const {},
         exportedAt: DateTime.parse(decoded['exportedAt'] as String),
         experiments: jsonObjectList(decoded['experiments'], 'experiments',
                 required: true)
@@ -129,8 +146,35 @@ class EasyCheckBackupService {
     if (filenames.length != ids.length) {
       throw const FormatException('파일 이름이 충돌하는 실험 ID가 있습니다.');
     }
+    final referenced = <String>{};
     for (final experiment in backup.experiments) {
       Experiment.fromJson(experiment.toJson());
+      for (final attachment in experiment.attachments) {
+        final blob = backup.attachmentFiles[attachment.digest];
+        if (backup.schemaVersion < 4 ||
+            blob == null ||
+            blob.digest != attachment.digest ||
+            blob.bytes.length != attachment.byteLength) {
+          throw FormatException('${attachment.fileName}: 백업에 원본이 없거나 손상되었습니다.');
+        }
+        referenced.add(attachment.digest);
+        if (attachment.scope != AttachmentScope.experiment) {
+          final plate = backup.plates
+              .where((p) => p.experimentId == experiment.id)
+              .firstOrNull;
+          if (plate == null ||
+              (attachment.scope == AttachmentScope.well &&
+                  !plate.wells.any((w) => w.label == attachment.wellLabel))) {
+            throw const FormatException('첨부파일에 연결된 Plate 또는 well이 없습니다.');
+          }
+        }
+      }
+    }
+    if (backup.attachmentFiles.keys.any((key) => !referenced.contains(key)) ||
+        backup.attachmentFiles.values
+                .fold<int>(0, (sum, blob) => sum + blob.bytes.length) >
+            maxBackupAttachmentBytes) {
+      throw const FormatException('사용되지 않는 첨부 원본이 있거나 전체 첨부 크기가 50MB를 초과합니다.');
     }
     for (final plate in backup.plates) {
       if (!ids.contains(plate.experimentId)) {
