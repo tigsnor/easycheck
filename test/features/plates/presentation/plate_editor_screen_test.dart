@@ -1160,7 +1160,7 @@ void main() {
       expect(find.text('농도별 차트'), findsOneWidget);
       expect(find.text('Control 대비 (%)'), findsOneWidget);
       expect(
-        find.byKey(const ValueKey('analysis-chart-Drug A-OD450')),
+        find.byKey(const ValueKey('analysis-chart-drug-a-treatment-µM-OD450')),
         findsOneWidget,
       );
 

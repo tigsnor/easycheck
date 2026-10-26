@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'plate.dart';
+import 'plate_analysis_reference.dart';
 import 'well.dart';
 import 'well_group.dart';
 import 'well_role.dart';
@@ -39,6 +40,27 @@ class PlateAnalysisControl {
   final int wellCount;
 }
 
+class PlateAnalysisReference {
+  const PlateAnalysisReference({
+    required this.manual,
+    required this.blankWellLabels,
+    required this.controlWellLabels,
+    required this.blankMean,
+    required this.controlRawMean,
+    required this.controlCorrectedMean,
+    required this.blankValid,
+    required this.warnings,
+  });
+  final bool manual;
+  final List<String> blankWellLabels;
+  final List<String> controlWellLabels;
+  final double? blankMean;
+  final double? controlRawMean;
+  final double? controlCorrectedMean;
+  final bool blankValid;
+  final List<String> warnings;
+}
+
 class PlateAnalysisSeries {
   const PlateAnalysisSeries({
     required this.label,
@@ -53,6 +75,8 @@ class PlateAnalysisSeries {
     required this.standardDeviation,
     required this.coefficientOfVariation,
     required this.normalizedPercent,
+    this.groupId,
+    this.reference,
   });
 
   final String label;
@@ -63,7 +87,9 @@ class PlateAnalysisSeries {
   final List<String> includedWellLabels;
   final List<String> excludedWellLabels;
   final double rawMean;
-  final double blankCorrectedMean;
+  final double? blankCorrectedMean;
+  final String? groupId;
+  final PlateAnalysisReference? reference;
   final double? standardDeviation;
   final double? coefficientOfVariation;
   final double? normalizedPercent;
@@ -74,12 +100,6 @@ class PlateAnalysisSeries {
 
 class PlateAnalysisService {
   const PlateAnalysisService();
-
-  static const _controlPriority = [
-    WellRole.vehicleControl,
-    WellRole.untreatedControl,
-    WellRole.negativeControl,
-  ];
 
   PlateAnalysisReport analyze(Plate plate) {
     final measured = plate.wells
@@ -110,16 +130,22 @@ class PlateAnalysisService {
       }
       final rawValues = values.map((well) => well.resultValue!).toList();
       final rawMean = _mean(rawValues);
-      final blankMean = blankMeanByUnit[key.resultUnit] ?? 0;
-      final correctedMean = rawMean - blankMean;
+      final reference = _reference(plate, key.groupId, key.resultUnit);
+      final correctedMean =
+          reference.blankValid ? rawMean - (reference.blankMean ?? 0) : null;
       final standardDeviation = _sampleStandardDeviation(rawValues, rawMean);
-      final control = controlByUnit[key.resultUnit];
-      final normalizedPercent = control == null || control.correctedMean == 0
-          ? null
-          : correctedMean / control.correctedMean * 100;
+      final denominator = reference.controlCorrectedMean;
+      final normalized =
+          correctedMean == null || denominator == null || denominator == 0
+              ? null
+              : correctedMean / denominator * 100;
+      final normalizedPercent =
+          normalized?.isFinite == true ? normalized : null;
       series.add(
         PlateAnalysisSeries(
           label: key.label,
+          groupId: key.groupId,
+          reference: reference,
           role: key.role,
           concentrationValue: key.concentrationValue,
           concentrationUnit: key.concentrationUnit,
@@ -154,7 +180,7 @@ class PlateAnalysisService {
     final byUnit = <String, List<double>>{};
     for (final well in wells.where((well) => well.role == WellRole.blank)) {
       byUnit
-          .putIfAbsent(_resultUnit(well), () => <double>[])
+          .putIfAbsent(analysisResultUnit(well), () => <double>[])
           .add(well.resultValue!);
     }
     return {for (final entry in byUnit.entries) entry.key: _mean(entry.value)};
@@ -164,12 +190,13 @@ class PlateAnalysisService {
     List<Well> wells,
     Map<String, double> blankMeanByUnit,
   ) {
-    final units = wells.map(_resultUnit).toSet();
+    final units = wells.map(analysisResultUnit).toSet();
     final controls = <String, PlateAnalysisControl>{};
     for (final unit in units) {
-      for (final role in _controlPriority) {
+      for (final role in analysisControlRoles) {
         final matches = wells
-            .where((well) => well.role == role && _resultUnit(well) == unit)
+            .where(
+                (well) => well.role == role && analysisResultUnit(well) == unit)
             .toList();
         if (matches.isEmpty) {
           continue;
@@ -195,7 +222,7 @@ class PlateAnalysisService {
       role: well.role,
       concentrationValue: well.concentrationValue,
       concentrationUnit: well.concentrationUnit ?? group?.concentrationUnit,
-      resultUnit: _resultUnit(well),
+      resultUnit: analysisResultUnit(well),
     );
   }
 
@@ -209,9 +236,70 @@ class PlateAnalysisService {
     return concentrationB.compareTo(concentrationA);
   }
 
-  String _resultUnit(Well well) {
-    final unit = well.resultUnit?.trim();
-    return unit == null || unit.isEmpty ? '결과값' : unit;
+  PlateAnalysisReference _reference(Plate plate, String? groupId, String unit) {
+    final selection = plate.analysisReferences
+        .where((s) => s.groupId == groupId && s.resultUnit == unit)
+        .firstOrNull;
+    final eligible = plate.wells
+        .where((w) =>
+            !w.excluded &&
+            w.resultValue != null &&
+            analysisResultUnit(w) == unit)
+        .toList();
+    final automaticBlanks =
+        eligible.where((w) => w.role == WellRole.blank).toList();
+    var automaticControls = <Well>[];
+    for (final role in analysisControlRoles) {
+      automaticControls = eligible.where((w) => w.role == role).toList();
+      if (automaticControls.isNotEmpty) break;
+    }
+    final blankLabels = selection?.blankWellLabels ??
+        [for (final w in automaticBlanks) w.label];
+    final controlLabels = selection?.controlWellLabels ??
+        [for (final w in automaticControls) w.label];
+    final byLabel = {for (final w in eligible) w.label: w};
+    final warnings = <String>[];
+    bool valid(List<String> labels, bool blank) {
+      final invalid = labels.where((label) {
+        final w = byLabel[label];
+        return w == null ||
+            (blank
+                ? w.role != WellRole.blank
+                : !analysisControlRoles.contains(w.role));
+      }).toList();
+      if (invalid.isNotEmpty) {
+        warnings.add(
+            '${blank ? 'Blank' : 'Control'} 기준 확인 필요: ${invalid.join(', ')} (미입력·제외·단위/역할 변경 또는 없는 좌표)');
+        return false;
+      }
+      return true;
+    }
+
+    final blankValid = valid(blankLabels, true);
+    final controlValid = valid(controlLabels, false);
+    double? mean(List<String> labels, bool valid) => !valid || labels.isEmpty
+        ? null
+        : _mean([for (final label in labels) byLabel[label]!.resultValue!]);
+    final blankMean = mean(blankLabels, blankValid);
+    final controlRawMean = mean(controlLabels, controlValid);
+    final controlCorrectedMean = blankValid && controlRawMean != null
+        ? controlRawMean - (blankMean ?? 0)
+        : null;
+    if (blankLabels.isEmpty) warnings.add('Blank 기준 없음: 보정 없이 원값을 사용합니다.');
+    if (controlLabels.isEmpty) warnings.add('Control 기준 없음: 정규화하지 않습니다.');
+    if (controlCorrectedMean == 0) {
+      warnings.add('Control 보정 평균이 0이므로 정규화할 수 없습니다.');
+    }
+    return PlateAnalysisReference(
+      manual: selection != null,
+      blankWellLabels: blankLabels,
+      controlWellLabels: controlLabels,
+      blankMean: blankMean,
+      controlRawMean: controlRawMean,
+      controlCorrectedMean: controlCorrectedMean,
+      blankValid: blankValid,
+      warnings: warnings,
+    );
   }
 
   double _mean(List<double> values) {

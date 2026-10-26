@@ -13,7 +13,7 @@ class PlateAnalysisExportService {
       ..writeln('Included wells\t${report.includedWellCount}')
       ..writeln('Excluded wells\t${report.excludedWellCount}')
       ..writeln()
-      ..writeln('References')
+      ..writeln('Automatic references (used only for series in automatic mode)')
       ..writeln(
         'result_unit\tblank_mean\tcontrol_role\tcontrol_raw_mean\tcontrol_corrected_mean\tcontrol_well_count',
       );
@@ -39,13 +39,39 @@ class PlateAnalysisExportService {
 
     buffer
       ..writeln()
+      ..writeln('Applied references by series')
+      ..writeln(
+          'group_id\tgroup\trole\tconcentration\tconcentration_unit\tresult_unit\tmode\tblank_wells\tcontrol_wells\tblank_mean\tcontrol_raw_mean\tcontrol_corrected_mean\twarnings');
+    for (final series in report.series) {
+      final ref = series.reference;
+      if (ref == null) continue;
+      buffer.writeln([
+        series.groupId ?? '',
+        series.label,
+        series.role.name,
+        _numberOrEmpty(series.concentrationValue),
+        series.concentrationUnit ?? '',
+        series.resultUnit,
+        ref.manual ? 'manual' : 'automatic',
+        ref.blankWellLabels.join(', '),
+        ref.controlWellLabels.join(', '),
+        _numberOrEmpty(ref.blankMean),
+        _numberOrEmpty(ref.controlRawMean),
+        _numberOrEmpty(ref.controlCorrectedMean),
+        ref.warnings.join(' / '),
+      ].map(_escape).join('\t'));
+    }
+
+    buffer
+      ..writeln()
       ..writeln('Series')
       ..writeln(
-        'group\trole\tconcentration\tconcentration_unit\tresult_unit\treplicates\tincluded_wells\texcluded_count\texcluded_wells\traw_mean\tblank_corrected_mean\tsample_sd\tcv_percent\tnormalized_percent',
+        'group_id\tgroup\trole\tconcentration\tconcentration_unit\tresult_unit\treplicates\tincluded_wells\texcluded_count\texcluded_wells\traw_mean\tblank_corrected_mean\tsample_sd\tcv_percent\tnormalized_percent',
       );
     for (final series in report.series) {
       buffer.writeln(
         [
+          series.groupId ?? '',
           series.label,
           series.role.name,
           _numberOrEmpty(series.concentrationValue),
@@ -67,13 +93,13 @@ class PlateAnalysisExportService {
   }
 
   String _numberOrEmpty(double? value) {
-    if (value == null) {
+    if (value == null || !value.isFinite) {
       return '';
     }
-    if (value == value.roundToDouble()) {
+    if (value.abs() < 1e15 && value == value.roundToDouble()) {
       return value.toInt().toString();
     }
-    return value.toStringAsFixed(6).replaceFirst(RegExp(r'\.?0+$'), '');
+    return value.toString();
   }
 
   String _escape(String value) {

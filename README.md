@@ -54,6 +54,7 @@ PlateNote는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 - 실험 담당자와 시약 제조사·catalog·lot, 장비 model·serial 정보를 저장하는 사용 자원 기록
 - Blank/Control 누락, 반복 well 부족, 농도 단위 혼용, 일부 결과 누락을 알려주는 실험 준비 점검
 - 분석 제외 well을 반영한 농도별 평균·표본 표준편차·CV·blank 보정·control 대비 정규화
+- 그룹·결과 단위별 Blank/Control well 지정, 자동/수동 기준과 실제 좌표 표시, 기준 누락·제외·단위 변경 시 계산 중단 및 안내
 - 농도별 기초 차트와 분석 reference/series를 포함한 TSV 복사·파일 공유
 - 완료된 Plate와 well 선택 중에도 상단에서 분석 조회·내보내기 가능, 개별 well 역할에 따라 처리군·대조군 구분
 - 빈 Plate를 기본으로 생성하고, 기본 예시·사용자 템플릿은 선택 시에만 적용

@@ -1,3 +1,4 @@
+import 'widgets/analysis_reference_sheet.dart';
 import 'widgets/plate_grid.dart';
 import 'widgets/sequential_result_sheet.dart';
 import 'widgets/result_import_preview_sheet.dart';
@@ -724,28 +725,73 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   }
 
   Future<void> _showPlateAnalysis() async {
-    final plate = _plate;
-    if (plate == null) return;
+    if (_plate == null) return;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: ListView(
+      builder: (sheetContext) => StatefulBuilder(builder: (context, refresh) {
+        final plate = _plate!;
+        final report = _plateAnalysisService.analyze(plate);
+        final targets = <(String?, String), PlateAnalysisSeries>{};
+        for (final series in report.series) {
+          targets[(series.groupId, series.resultUnit)] = series;
+        }
+        return SafeArea(
+            child: ListView(
           shrinkWrap: true,
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
           children: [
             Text('분석', style: Theme.of(context).textTheme.titleLarge),
+            if (!widget.readOnly && _failedPlate == null)
+              for (final target in targets.values)
+                OutlinedButton.icon(
+                  key: ValueKey(
+                      'edit-reference-${target.groupId}-${target.resultUnit}'),
+                  icon: const Icon(Icons.tune),
+                  label: Text(
+                      '${target.groupId == null ? '그룹 없음' : target.label} · ${target.resultUnit} 기준 설정'),
+                  onPressed: () async {
+                    await showModalBottomSheet<void>(
+                      context: context,
+                      isScrollControlled: true,
+                      isDismissible: false,
+                      enableDrag: false,
+                      builder: (_) => AnalysisReferenceSheet(
+                        plate: plate,
+                        groupId: target.groupId,
+                        groupLabel:
+                            target.groupId == null ? '그룹 없음' : target.label,
+                        resultUnit: target.resultUnit,
+                        onSave: (selection) => _savePlate(
+                            _plate!.copyWith(
+                              analysisReferences: [
+                                for (final item in _plate!.analysisReferences)
+                                  if (item.groupId != target.groupId ||
+                                      item.resultUnit != target.resultUnit)
+                                    item,
+                                if (selection != null) selection,
+                              ],
+                            ),
+                            changeSummary:
+                                '분석 기준 변경: ${target.label} · ${target.resultUnit}',
+                            retainFailedDraft: false,
+                            showSuccessMessage: false),
+                      ),
+                    );
+                    if (sheetContext.mounted) refresh(() {});
+                  },
+                ),
             const SizedBox(height: 12),
             _PlateAnalysisCard(
-              report: _plateAnalysisService.analyze(plate),
+              report: report,
               onCopy: () => _copyAnalysisExport(plate),
               onShare: (shareContext) =>
                   _shareAnalysisExport(plate, shareContext),
             ),
           ],
-        ),
-      ),
+        ));
+      }),
     );
   }
 
@@ -2059,23 +2105,21 @@ class _PlateAnalysisCard extends StatelessWidget {
                         ),
                   ),
                 ),
-                if (report.hasResults)
-                  Text(
-                    '사용 ${report.includedWellCount} · 제외 ${report.excludedWellCount}',
-                    style: Theme.of(context).textTheme.labelMedium,
-                  ),
               ],
             ),
+            if (report.hasResults)
+              Text(
+                '사용 ${report.includedWellCount} · 제외 ${report.excludedWellCount}',
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
             const SizedBox(height: 8),
             if (!report.hasResults)
               const Text('측정 결과를 입력하면 실험군·농도별 평균과 반복 오차를 계산합니다.')
             else ...[
               Text(
-                '분석 제외 well은 계산에서 빼고, 같은 실험군·역할·농도·결과 단위를 반복 측정으로 묶습니다. 정규화 기준은 Vehicle → Untreated → Negative control 순으로 선택합니다.',
+                '분석 제외 well은 계산에서 빼고, 같은 실험군·역할·농도·결과 단위를 반복 측정으로 묶습니다. 기준은 그룹·결과 단위별로 지정할 수 있으며, 자동 모드에서는 Vehicle → Untreated → Negative control 순으로 선택합니다.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
-              const SizedBox(height: 10),
-              _AnalysisReferenceSummary(report: report),
               const SizedBox(height: 12),
               _AnalysisConcentrationCharts(report: report),
               const SizedBox(height: 12),
@@ -2122,7 +2166,9 @@ class _AnalysisConcentrationCharts extends StatelessWidget {
     final groups = <String, List<PlateAnalysisSeries>>{};
     for (final series in report.series.where(_isChartSeries)) {
       final key = [
+        series.groupId ?? '',
         series.label,
+        series.role.name,
         series.concentrationUnit ?? '',
         series.resultUnit,
       ].join('\u0000');
@@ -2176,9 +2222,15 @@ class _AnalysisConcentrationChart extends StatelessWidget {
     final useNormalized = points.every(
       (point) => point.normalizedPercent != null,
     );
+    final useCorrected = points.every((point) =>
+        point.blankCorrectedMean != null && point.reference?.blankMean != null);
     final values = [
       for (final point in points)
-        useNormalized ? point.normalizedPercent! : point.blankCorrectedMean,
+        useNormalized
+            ? point.normalizedPercent!
+            : useCorrected
+                ? point.blankCorrectedMean!
+                : point.rawMean,
     ];
     final minimum = values.fold<double>(
       0,
@@ -2194,7 +2246,8 @@ class _AnalysisConcentrationChart extends StatelessWidget {
     final unit = first.concentrationUnit ?? '';
 
     return Container(
-      key: ValueKey('analysis-chart-${first.label}-${first.resultUnit}'),
+      key: ValueKey(
+          'analysis-chart-${first.groupId}-${first.role.name}-${first.concentrationUnit}-${first.resultUnit}'),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xFFF8F8FA),
@@ -2211,7 +2264,11 @@ class _AnalysisConcentrationChart extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            useNormalized ? 'Control 대비 (%)' : 'Blank 보정 결과',
+            useNormalized
+                ? 'Control 대비 (%)'
+                : useCorrected
+                    ? 'Blank 보정 결과'
+                    : '원값 (보정·정규화 미적용)',
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 8),
@@ -2317,52 +2374,6 @@ class _AnalysisBarRow extends StatelessWidget {
   }
 }
 
-class _AnalysisReferenceSummary extends StatelessWidget {
-  const _AnalysisReferenceSummary({required this.report});
-
-  final PlateAnalysisReport report;
-
-  @override
-  Widget build(BuildContext context) {
-    final units = {
-      ...report.blankMeanByUnit.keys,
-      ...report.controlByUnit.keys,
-    }.toList()
-      ..sort();
-    if (units.isEmpty) {
-      return Text(
-        'Blank 또는 normalization control이 없어 raw 결과만 표시합니다.',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.error,
-            ),
-      );
-    }
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        for (final unit in units)
-          Chip(
-            label: Text(_referenceLabel(unit)),
-            visualDensity: VisualDensity.compact,
-          ),
-      ],
-    );
-  }
-
-  String _referenceLabel(String unit) {
-    final blank = report.blankMeanByUnit[unit];
-    final control = report.controlByUnit[unit];
-    final parts = <String>[
-      unit,
-      if (blank != null) 'Blank ${_formatAnalysisNumber(blank)}',
-      if (control != null)
-        '${control.role.label} ${_formatAnalysisNumber(control.rawMean)}',
-    ];
-    return parts.join(' · ');
-  }
-}
-
 class _AnalysisSeriesRow extends StatelessWidget {
   const _AnalysisSeriesRow({required this.series});
 
@@ -2375,7 +2386,7 @@ class _AnalysisSeriesRow extends StatelessWidget {
         : '${_formatDose(series.concentrationValue!)} ${series.concentrationUnit ?? ''}';
     return Column(
       key: ValueKey(
-        'analysis-${series.label}-${series.role.name}-${series.concentrationValue}-${series.resultUnit}',
+        'analysis-${series.groupId}-${series.label}-${series.role.name}-${series.concentrationValue}-${series.concentrationUnit}-${series.resultUnit}',
       ),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2401,7 +2412,9 @@ class _AnalysisSeriesRow extends StatelessWidget {
             ),
             _AnalysisMetric(
               label: 'Blank 보정',
-              value: _formatAnalysisNumber(series.blankCorrectedMean),
+              value: series.blankCorrectedMean == null
+                  ? '기준 확인 필요'
+                  : _formatAnalysisNumber(series.blankCorrectedMean!),
             ),
             _AnalysisMetric(
               label: 'SD',
@@ -2418,11 +2431,22 @@ class _AnalysisSeriesRow extends StatelessWidget {
             _AnalysisMetric(
               label: 'Control 대비',
               value: series.normalizedPercent == null
-                  ? '기준 없음'
+                  ? '계산 불가'
                   : '${_formatAnalysisNumber(series.normalizedPercent!)}%',
             ),
           ],
         ),
+        if (series.reference case final reference?) ...[
+          const SizedBox(height: 8),
+          Text('${reference.manual ? '수동' : '자동'} 기준 · ${series.resultUnit}'),
+          Text(
+              'Blank: ${reference.blankWellLabels.isEmpty ? '없음' : reference.blankWellLabels.join(', ')}${reference.blankMean == null ? '' : ' · 평균 ${reference.blankMean}'}'),
+          Text(
+              'Control: ${reference.controlWellLabels.isEmpty ? '없음' : reference.controlWellLabels.join(', ')}${reference.controlRawMean == null ? '' : ' · 평균 ${reference.controlRawMean}'}'),
+          for (final warning in reference.warnings)
+            Text(warning,
+                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+        ],
         if (series.excludedCount > 0) ...[
           const SizedBox(height: 6),
           Text(
