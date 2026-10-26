@@ -1,3 +1,4 @@
+import 'plate_analysis_reference.dart';
 import '../../../shared/data/json_validation.dart';
 import 'plate_layout_validation.dart';
 import '../../../shared/models/well_position.dart';
@@ -81,6 +82,7 @@ class PlateSnapshot {
     required this.groups,
     required this.notes,
     required this.importHistory,
+    this.analysisReferences = const [],
   });
 
   factory PlateSnapshot.fromPlate(Plate plate) => PlateSnapshot(
@@ -91,6 +93,7 @@ class PlateSnapshot {
         groups: plate.groups,
         notes: plate.notes,
         importHistory: plate.importHistory,
+        analysisReferences: plate.analysisReferences,
       );
 
   factory PlateSnapshot.fromJson(Map<String, Object?> json) {
@@ -105,6 +108,8 @@ class PlateSnapshot {
           .map(WellGroup.fromJson)
           .toList(),
       notes: json['notes'] as String? ?? '',
+      analysisReferences:
+          PlateAnalysisReferenceSelection.parseList(json['analysisReferences']),
       importHistory: jsonObjectList(json['importHistory'], 'importHistory')
           .map(PlateResultImportRecord.fromJson)
           .toList(),
@@ -124,6 +129,7 @@ class PlateSnapshot {
   final List<WellGroup> groups;
   final String notes;
   final List<PlateResultImportRecord> importHistory;
+  final List<PlateAnalysisReferenceSelection> analysisReferences;
 
   Map<String, Object?> toJson() => {
         'name': name,
@@ -132,6 +138,8 @@ class PlateSnapshot {
         'wells': wells.map((well) => well.toJson()).toList(),
         'groups': groups.map((group) => group.toJson()).toList(),
         'notes': notes,
+        'analysisReferences':
+            analysisReferences.map((item) => item.toJson()).toList(),
         'importHistory': importHistory.map((item) => item.toJson()).toList(),
       };
 
@@ -145,6 +153,7 @@ class PlateSnapshot {
         groups: groups,
         notes: notes,
         importHistory: importHistory,
+        analysisReferences: analysisReferences,
       );
 }
 
@@ -160,6 +169,7 @@ class Plate {
     this.notes = '',
     this.importHistory = const [],
     this.revisions = const [],
+    this.analysisReferences = const [],
   }) : wells = wells ?? _buildEmptyWells(rowCount, columnCount);
 
   factory Plate.fromJson(Map<String, Object?> json) {
@@ -176,6 +186,8 @@ class Plate {
           .map(WellGroup.fromJson)
           .toList(),
       notes: json['notes'] as String? ?? '',
+      analysisReferences:
+          PlateAnalysisReferenceSelection.parseList(json['analysisReferences']),
       importHistory: jsonObjectList(json['importHistory'], 'importHistory')
           .map(PlateResultImportRecord.fromJson)
           .toList(),
@@ -203,6 +215,7 @@ class Plate {
   final List<WellGroup> groups;
   final String notes;
   final List<PlateResultImportRecord> importHistory;
+  final List<PlateAnalysisReferenceSelection> analysisReferences;
   final List<PlateRevision> revisions;
 
   Map<String, Object?> toJson() {
@@ -215,6 +228,8 @@ class Plate {
       'wells': wells.map((well) => well.toJson()).toList(),
       'groups': groups.map((group) => group.toJson()).toList(),
       'notes': notes,
+      'analysisReferences':
+          analysisReferences.map((item) => item.toJson()).toList(),
       'importHistory': importHistory.map((record) => record.toJson()).toList(),
       'revisions': revisions.map((revision) => revision.toJson()).toList(),
     };
@@ -231,6 +246,7 @@ class Plate {
     String? notes,
     List<PlateResultImportRecord>? importHistory,
     List<PlateRevision>? revisions,
+    List<PlateAnalysisReferenceSelection>? analysisReferences,
   }) {
     return Plate(
       id: id ?? this.id,
@@ -243,6 +259,7 @@ class Plate {
       notes: notes ?? this.notes,
       importHistory: importHistory ?? this.importHistory,
       revisions: revisions ?? this.revisions,
+      analysisReferences: analysisReferences ?? this.analysisReferences,
     );
   }
 

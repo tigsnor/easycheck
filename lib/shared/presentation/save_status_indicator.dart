@@ -40,13 +40,17 @@ class SaveStatusIndicator extends StatelessWidget {
         Icon(icon, size: compact ? 14 : 20, color: color),
         const SizedBox(width: 6),
         if (compact)
-          Text(
-            label,
-            key: const ValueKey('save-status-label'),
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w700,
-                ),
+          Flexible(
+            child: Text(
+              label,
+              key: const ValueKey('save-status-label'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
           )
         else
           Expanded(
