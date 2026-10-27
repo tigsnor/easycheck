@@ -22,6 +22,7 @@ class PlateGrid extends StatefulWidget {
     required this.onRectangleSelected,
     required this.onToggleDragSelection,
     this.dragSelectionEnabled = false,
+    this.initialResultsView = false,
     required this.onRowSelected,
     required this.onColumnSelected,
     super.key,
@@ -38,6 +39,7 @@ class PlateGrid extends StatefulWidget {
   final void Function(WellPosition start, WellPosition end) onRectangleSelected;
   final VoidCallback onToggleDragSelection;
   final bool dragSelectionEnabled;
+  final bool initialResultsView;
   final ValueChanged<int> onRowSelected;
   final ValueChanged<int> onColumnSelected;
 
@@ -47,7 +49,7 @@ class PlateGrid extends StatefulWidget {
 
 class _PlateGridState extends State<PlateGrid> {
   static const _spacing = 6.0;
-  bool _showResults = false;
+  late bool _showResults;
   final _gridKey = GlobalKey();
   final _viewportKey = GlobalKey();
   final _horizontalScroll = ScrollController();
@@ -56,6 +58,12 @@ class _PlateGridState extends State<PlateGrid> {
   WellPosition? _dragEnd;
   Offset? _pointer;
   double _cellSize = 48;
+
+  @override
+  void initState() {
+    super.initState();
+    _showResults = widget.initialResultsView;
+  }
 
   @override
   void dispose() {

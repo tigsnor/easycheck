@@ -25,6 +25,7 @@ PlateNote는 생명과학 연구원이 96-well plate 실험 설계, 농도 계�
 - Flutter 앱 진입점과 iOS 메모앱 느낌의 기본 테마
 - iOS/Android 로컬 실행을 위한 Flutter platform scaffold
 - 실험 노트 홈 화면, 검색, 생성, 수정, 복제, 삭제 확인/실행 취소와 versioned JSON 로컬 저장
+- 실험 상세의 설계·실행·결과 화면 분리, 진행 중 타이머/다음 단계 우선 표시, 결과 현황·입력·분석·완료 점검 바로가기
 - 새 실험 노트 생성·상세 편집에서 세포수 정보를 구조화해 저장하고, 기존 메모 기반 `세포수:` 기록도 자동 인식
 - 임시 파일 교체, 직전 정상본 보관, 손상 파일 자동 복구·사용자 안내와 legacy JSON migration
 - 모든 실험·연결 Plate·사용자 템플릿을 첨부 원본을 포함한 PlateNote v4 백업 JSON으로 복사·파일 공유하고, Files/iCloud에서 선택해 사전 검증·실패 rollback과 함께 ID 기준 병합 복원하는 전체 백업
