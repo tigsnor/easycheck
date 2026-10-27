@@ -1,3 +1,5 @@
+import '../../attachments/domain/experiment_attachment.dart';
+
 enum ExperimentStatus { draft, planned, inProgress, completed, archived }
 
 enum ExperimentResourceType { reagent, equipment }
@@ -152,6 +154,7 @@ class Experiment {
     this.resources = const [],
     this.completedAt,
     this.revisions = const [],
+    this.attachments = const [],
   });
 
   factory Experiment.fromJson(Map<String, Object?> json) {
@@ -166,6 +169,7 @@ class Experiment {
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
       notes: notes,
+      attachments: ExperimentAttachment.parseList(json['attachments']),
       cellCountLabel:
           json['cellCountLabel'] as String? ?? _cellCountLabelFromNotes(notes),
       tags: (json['tags'] as List<dynamic>? ?? const [])
@@ -204,6 +208,7 @@ class Experiment {
   final List<ExperimentResource> resources;
   final DateTime? completedAt;
   final List<ExperimentRevision> revisions;
+  final List<ExperimentAttachment> attachments;
 
   String get notesWithoutCellCountLine {
     return notes
@@ -224,6 +229,7 @@ class Experiment {
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'notes': notes,
+      'attachments': attachments.map((a) => a.toJson()).toList(),
       'cellCountLabel': cellCountLabel,
       'tags': tags,
       'tasks': tasks.map((task) => task.toJson()).toList(),
@@ -249,6 +255,7 @@ class Experiment {
     List<ExperimentResource>? resources,
     Object? completedAt = _unset,
     List<ExperimentRevision>? revisions,
+    List<ExperimentAttachment>? attachments,
   }) {
     return Experiment(
       id: id ?? this.id,
@@ -274,6 +281,7 @@ class Experiment {
           ? this.completedAt
           : completedAt as DateTime?,
       revisions: revisions ?? this.revisions,
+      attachments: attachments ?? this.attachments,
     );
   }
 }

@@ -29,7 +29,7 @@ void main() {
     );
     final backup = service.decode(encoded);
 
-    expect(backup.schemaVersion, 3);
+    expect(backup.schemaVersion, 4);
     expect(backup.exportedAt, DateTime.utc(2026, 6, 8, 12));
     expect(backup.experiments.single.title, 'CCK-8 backup');
     expect(backup.plates.single.experimentId, experiment.id);

@@ -15,6 +15,7 @@ class FakeDocumentExchangeService implements DocumentExchangeService {
   @override
   Future<ImportedTextDocument?> pickTextDocument({
     required List<String> allowedExtensions,
+    int? maxBytes,
   }) async {
     pickCalls += 1;
     pickedExtensions = allowedExtensions;

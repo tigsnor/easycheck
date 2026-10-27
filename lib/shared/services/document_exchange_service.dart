@@ -24,6 +24,7 @@ abstract interface class DocumentExchangeService {
 
   Future<ImportedTextDocument?> pickTextDocument({
     required List<String> allowedExtensions,
+    int? maxBytes,
   });
 }
 
@@ -56,6 +57,7 @@ class PlatformDocumentExchangeService implements DocumentExchangeService {
   @override
   Future<ImportedTextDocument?> pickTextDocument({
     required List<String> allowedExtensions,
+    int? maxBytes,
   }) async {
     final result = await FilePicker.pickFiles(
       allowMultiple: false,
@@ -67,6 +69,9 @@ class PlatformDocumentExchangeService implements DocumentExchangeService {
     }
 
     final file = result.xFiles.single;
+    if (maxBytes != null && await file.length() > maxBytes) {
+      throw const FormatException('선택한 파일이 지원 크기를 초과합니다.');
+    }
     return ImportedTextDocument(
       name: file.name,
       content: await file.readAsString(),
