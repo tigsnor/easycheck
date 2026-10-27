@@ -46,6 +46,7 @@ class PlateEditorScreen extends StatefulWidget {
     required this.experimentId,
     this.experimentTitle = 'CCK-8 2배 희석 실험 초안',
     this.readOnly = false,
+    this.initialPosition,
     PlateRepository? repository,
     DocumentExchangeService? documentExchangeService,
     PlateTemplateRepository? templateRepository,
@@ -59,6 +60,7 @@ class PlateEditorScreen extends StatefulWidget {
   final String experimentId;
   final String experimentTitle;
   final bool readOnly;
+  final WellPosition? initialPosition;
   final PlateRepository repository;
   final DocumentExchangeService documentExchangeService;
   final PlateTemplateRepository templateRepository;
@@ -434,6 +436,16 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         _loadError = null;
         _lastSavedAt = DateTime.now();
       });
+      final initialPosition = widget.initialPosition;
+      if (initialPosition != null &&
+          plate.wells.any((well) => well.position == initialPosition)) {
+        _editorController.selectWell(initialPosition);
+        if (!widget.readOnly) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _editSelectedWell();
+          });
+        }
+      }
     } on Object catch (error) {
       if (!mounted) {
         return;
