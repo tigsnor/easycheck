@@ -1,3 +1,5 @@
+import '../../../shared/models/well_position.dart';
+import 'experiment_completion_screen.dart';
 import '../../attachments/data/attachment_file_store.dart';
 import '../../attachments/data/attachment_exchange_service.dart';
 import '../../attachments/presentation/experiment_attachments_screen.dart';
@@ -57,6 +59,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   DateTime? _lastSavedAt;
   Object? _saveError;
   String? _titleError;
+  String _completionReviewNote = '';
 
   @override
   void initState() {
@@ -188,6 +191,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                   child: Column(
                     children: [
                       DropdownButtonFormField<String>(
+                        isExpanded: true,
                         initialValue: _experimentType,
                         decoration: const InputDecoration(labelText: '실험 유형'),
                         items: const [
@@ -217,6 +221,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<ExperimentStatus>(
+                        isExpanded: true,
                         initialValue: _status,
                         decoration: const InputDecoration(labelText: '상태'),
                         items: const [
@@ -443,13 +448,15 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     }
   }
 
-  Future<void> _openPlate({required bool readOnly}) async {
+  Future<void> _openPlate(
+      {required bool readOnly, WellPosition? initialPosition}) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => PlateEditorScreen(
           experimentId: widget.experiment.id,
           experimentTitle: _titleController.text.trim(),
           readOnly: readOnly,
+          initialPosition: initialPosition,
           repository: widget.plateRepository,
           templateRepository: widget.plateTemplateRepository,
           documentExchangeService: widget.documentExchangeService,
@@ -470,6 +477,28 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       _isSaving = true;
       _saveError = null;
     });
+    String? completionRecord;
+    if (_persistedExperiment.status != ExperimentStatus.completed &&
+        _status == ExperimentStatus.completed) {
+      completionRecord = await Navigator.of(context).push<String>(
+        MaterialPageRoute(
+            builder: (_) => ExperimentCompletionScreen(
+                  experiment: _persistedExperiment.copyWith(tasks: [..._tasks]),
+                  repository:
+                      widget.plateRepository ?? const FilePlateRepository(),
+                  initialNote: _completionReviewNote,
+                  onNoteChanged: (value) => _completionReviewNote = value,
+                  onOpenWell: (label) => _openPlate(
+                      readOnly: false,
+                      initialPosition: WellPosition.fromLabel(label)),
+                )),
+      );
+      if (!mounted) return false;
+      if (completionRecord == null) {
+        setState(() => _isSaving = false);
+        return false;
+      }
+    }
     final now = DateTime.now();
     final revisions = [..._persistedExperiment.revisions];
     DateTime? completedAt = _persistedExperiment.completedAt;
@@ -481,6 +510,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
           id: 'revision-${now.microsecondsSinceEpoch}',
           changedAt: now,
           summary: '실험 완료',
+          reason: completionRecord ?? '',
         ),
       );
     }
