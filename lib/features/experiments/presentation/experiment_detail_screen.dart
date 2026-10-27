@@ -1,3 +1,4 @@
+import 'widgets/experiment_result_summary.dart';
 import '../../../shared/models/well_position.dart';
 import 'experiment_completion_screen.dart';
 import '../../attachments/data/attachment_file_store.dart';
@@ -60,10 +61,17 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   Object? _saveError;
   String? _titleError;
   String _completionReviewNote = '';
+  late int _section;
+  int _resultSummaryVersion = 0;
 
   @override
   void initState() {
     super.initState();
+    _section = switch (widget.experiment.status) {
+      ExperimentStatus.inProgress => 1,
+      ExperimentStatus.completed || ExperimentStatus.archived => 2,
+      _ => 0,
+    };
     _persistedExperiment = widget.experiment;
     _lastSavedAt = widget.experiment.updatedAt;
     _isLocked = widget.experiment.status == ExperimentStatus.completed;
@@ -156,8 +164,28 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
               ),
           ],
         ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: _section,
+          onDestinationSelected: _isSaving ? null : _selectSection,
+          destinations: const [
+            NavigationDestination(
+                key: ValueKey('experiment-section-design'),
+                icon: Icon(Icons.edit_note),
+                label: '설계'),
+            NavigationDestination(
+                key: ValueKey('experiment-section-execution'),
+                icon: Icon(Icons.play_circle_outline),
+                label: '실행'),
+            NavigationDestination(
+                key: ValueKey('experiment-section-results'),
+                icon: Icon(Icons.analytics_outlined),
+                label: '결과'),
+          ],
+        ),
         body: SafeArea(
           child: ListView(
+            key: PageStorageKey('experiment-section-$_section'),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.all(20),
             children: [
               if (_hasUnsavedChanges || _saveError != null) ...[
@@ -172,166 +200,247 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                 const _CompletionLockBanner(),
                 const SizedBox(height: 12),
               ],
-              TextField(
-                controller: _titleController,
-                enabled: !_isLocked,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                decoration: InputDecoration(
-                  border: InputBorder.none,
-                  hintText: '실험 제목',
-                  errorText: _titleError,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    children: [
-                      DropdownButtonFormField<String>(
-                        isExpanded: true,
-                        initialValue: _experimentType,
-                        decoration: const InputDecoration(labelText: '실험 유형'),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'CCK-8',
-                            child: Text('CCK-8'),
-                          ),
-                          DropdownMenuItem(value: 'MTT', child: Text('MTT')),
-                          DropdownMenuItem(
-                            value: 'ELISA',
-                            child: Text('ELISA'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Dose-response',
-                            child: Text('Dose-response'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Custom',
-                            child: Text('Custom'),
-                          ),
-                        ],
-                        onChanged: _isLocked
-                            ? null
-                            : (value) => setState(
-                                  () => _experimentType = value ?? 'Custom',
-                                ),
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<ExperimentStatus>(
-                        isExpanded: true,
-                        initialValue: _status,
-                        decoration: const InputDecoration(labelText: '상태'),
-                        items: const [
-                          DropdownMenuItem(
-                            value: ExperimentStatus.draft,
-                            child: Text('초안'),
-                          ),
-                          DropdownMenuItem(
-                            value: ExperimentStatus.planned,
-                            child: Text('계획됨'),
-                          ),
-                          DropdownMenuItem(
-                            value: ExperimentStatus.inProgress,
-                            child: Text('진행 중'),
-                          ),
-                          DropdownMenuItem(
-                            value: ExperimentStatus.completed,
-                            child: Text('완료'),
-                          ),
-                          DropdownMenuItem(
-                            value: ExperimentStatus.archived,
-                            child: Text('보관됨'),
-                          ),
-                        ],
-                        onChanged: _isLocked
-                            ? null
-                            : (value) => setState(
-                                  () =>
-                                      _status = value ?? ExperimentStatus.draft,
-                                ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _projectController,
-                        enabled: !_isLocked,
-                        decoration: const InputDecoration(labelText: '프로젝트'),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _researcherController,
-                        enabled: !_isLocked,
-                        textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
-                          labelText: '담당자',
-                          hintText: '예: 홍길동',
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _cellCountController,
-                        enabled: !_isLocked,
-                        decoration: const InputDecoration(
-                          labelText: '세포수',
-                          hintText: '예: hek293: 1×10^6/ml',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              _ExperimentChecklistCard(
-                tasks: _tasks,
-                enabled: !_isLocked,
-                onChanged: (tasks) => setState(() => _tasks = tasks),
-              ),
-              const SizedBox(height: 16),
-              _ExperimentResourcesCard(
-                resources: _resources,
-                enabled: !_isLocked,
-                onChanged: (resources) =>
-                    setState(() => _resources = resources),
-              ),
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: TextField(
-                    controller: _notesController,
-                    enabled: !_isLocked,
-                    minLines: 8,
-                    maxLines: 16,
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      hintText: '실험 조건, 세포주, 처리 시간, 관찰 내용을 메모하세요.',
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (_persistedExperiment.completedAt != null ||
-                  _persistedExperiment.revisions.isNotEmpty) ...[
-                _ExperimentHistoryCard(experiment: _persistedExperiment),
-                const SizedBox(height: 16),
+              if (_section != 0) ...[
+                Text(_titleController.text,
+                    style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 8),
               ],
-              FilledButton.icon(
-                onPressed: _isLocked
-                    ? () => _openPlate(readOnly: true)
-                    : _saveAndOpenPlate,
-                icon: const Icon(Icons.grid_on_rounded),
-                label: Text(
-                  _isLocked ? '96-well Plate 보기' : '96-well Plate 열기',
-                ),
-              ),
+              ...switch (_section) {
+                0 => _designContent(),
+                1 => _executionContent(),
+                _ => _resultsContent(),
+              },
             ],
           ),
         ),
       ),
     );
   }
+
+  void _selectSection(int index) {
+    if (_isSaving) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => _section = index);
+  }
+
+  List<Widget> _designContent() => [
+        TextField(
+          controller: _titleController,
+          enabled: !_isLocked,
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+          decoration: InputDecoration(
+            border: InputBorder.none,
+            hintText: '실험 제목',
+            errorText: _titleError,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              children: [
+                DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  initialValue: _experimentType,
+                  decoration: const InputDecoration(labelText: '실험 유형'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'CCK-8',
+                      child: Text('CCK-8'),
+                    ),
+                    DropdownMenuItem(value: 'MTT', child: Text('MTT')),
+                    DropdownMenuItem(
+                      value: 'ELISA',
+                      child: Text('ELISA'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Dose-response',
+                      child: Text('Dose-response'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Custom',
+                      child: Text('Custom'),
+                    ),
+                  ],
+                  onChanged: _isLocked
+                      ? null
+                      : (value) => setState(
+                            () => _experimentType = value ?? 'Custom',
+                          ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<ExperimentStatus>(
+                  key: ValueKey('experiment-status-${_status.name}'),
+                  isExpanded: true,
+                  initialValue: _status,
+                  decoration: const InputDecoration(labelText: '상태'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: ExperimentStatus.draft,
+                      child: Text('초안'),
+                    ),
+                    DropdownMenuItem(
+                      value: ExperimentStatus.planned,
+                      child: Text('계획됨'),
+                    ),
+                    DropdownMenuItem(
+                      value: ExperimentStatus.inProgress,
+                      child: Text('진행 중'),
+                    ),
+                    DropdownMenuItem(
+                      value: ExperimentStatus.completed,
+                      child: Text('완료'),
+                    ),
+                    DropdownMenuItem(
+                      value: ExperimentStatus.archived,
+                      child: Text('보관됨'),
+                    ),
+                  ],
+                  onChanged: _isLocked
+                      ? null
+                      : (value) => setState(
+                            () => _status = value ?? ExperimentStatus.draft,
+                          ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _projectController,
+                  enabled: !_isLocked,
+                  decoration: const InputDecoration(labelText: '프로젝트'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _researcherController,
+                  enabled: !_isLocked,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: '담당자',
+                    hintText: '예: 홍길동',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _cellCountController,
+                  enabled: !_isLocked,
+                  decoration: const InputDecoration(
+                    labelText: '세포수',
+                    hintText: '예: hek293: 1×10^6/ml',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        _ExperimentResourcesCard(
+          resources: _resources,
+          enabled: !_isLocked,
+          onChanged: (resources) => setState(() => _resources = resources),
+        ),
+        const SizedBox(height: 16),
+        FilledButton.icon(
+          onPressed:
+              _isLocked ? () => _openPlate(readOnly: true) : _saveAndOpenPlate,
+          icon: const Icon(Icons.grid_on_rounded),
+          label: Text(
+            _isLocked ? '96-well Plate 보기' : '96-well Plate 열기',
+          ),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+            onPressed: () => _selectSection(1),
+            icon: const Icon(Icons.play_arrow),
+            label: const Text('실행 단계로 이동')),
+      ];
+
+  List<Widget> _executionContent() => [
+        _ExperimentChecklistCard(
+          tasks: _tasks,
+          enabled: !_isLocked && !_isSaving,
+          onChanged: (tasks) => setState(() => _tasks = tasks),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: TextField(
+              controller: _notesController,
+              enabled: !_isLocked,
+              minLines: 8,
+              maxLines: 16,
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                labelText: '실행·관찰 메모',
+                hintText: '실험 조건, 세포주, 처리 시간, 관찰 내용을 메모하세요.',
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        OutlinedButton.icon(
+            onPressed: () => _selectSection(2),
+            icon: const Icon(Icons.analytics_outlined),
+            label: const Text('결과 확인으로 이동')),
+      ];
+
+  List<Widget> _resultsContent() => [
+        ExperimentResultSummary(
+          key: ValueKey('result-summary-$_resultSummaryVersion'),
+          experimentId: widget.experiment.id,
+          repository: widget.plateRepository ?? const FilePlateRepository(),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          key: const ValueKey('open-result-plate'),
+          onPressed: _isSaving ? null : () => _saveAndOpenPlate(results: true),
+          icon: const Icon(Icons.grid_on),
+          label: Text(_isLocked ? '결과 Plate 보기' : '결과 입력·가져오기'),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          key: const ValueKey('open-result-analysis'),
+          onPressed: _isSaving
+              ? null
+              : () => _saveAndOpenPlate(analysis: true, results: true),
+          icon: const Icon(Icons.analytics_outlined),
+          label: const Text('분석·내보내기'),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+            onPressed: _isSaving ? null : _openAttachments,
+            icon: const Icon(Icons.attach_file),
+            label:
+                Text('사진·원본 파일 (${_persistedExperiment.attachments.length})')),
+        const SizedBox(height: 12),
+        if (!_isLocked)
+          FilledButton.icon(
+            key: const ValueKey('complete-experiment'),
+            onPressed: _isSaving
+                ? null
+                : () async {
+                    final previousStatus = _status;
+                    setState(() => _status = ExperimentStatus.completed);
+                    final saved = await _save();
+                    if (!saved && mounted && _saveError == null) {
+                      setState(() => _status = previousStatus);
+                    }
+                  },
+            icon: const Icon(Icons.task_alt),
+            label: Text(
+                _persistedExperiment.status == ExperimentStatus.completed
+                    ? '수정 내용 저장'
+                    : '완료 전 점검'),
+          ),
+        const SizedBox(height: 16),
+        if (_persistedExperiment.completedAt != null ||
+            _persistedExperiment.revisions.isNotEmpty) ...[
+          _ExperimentHistoryCard(experiment: _persistedExperiment),
+          const SizedBox(height: 16),
+        ],
+      ];
 
   bool get _hasUnsavedChanges =>
       !_isLocked &&
@@ -400,8 +509,10 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     }
   }
 
-  Future<void> _saveAndOpenPlate() async {
-    if (!await _save(showMessage: false)) {
+  Future<void> _saveAndOpenPlate(
+      {bool results = false, bool analysis = false}) async {
+    if (_isSaving) return;
+    if (!_isLocked && !await _save(showMessage: false)) {
       return;
     }
     if (_hasUnsavedChanges) return;
@@ -411,7 +522,9 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     }
 
     await _openPlate(
-        readOnly: _persistedExperiment.status == ExperimentStatus.completed);
+        readOnly: _persistedExperiment.status == ExperimentStatus.completed,
+        results: results,
+        analysis: analysis);
   }
 
   Future<void> _openAttachments() async {
@@ -449,7 +562,10 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   }
 
   Future<void> _openPlate(
-      {required bool readOnly, WellPosition? initialPosition}) async {
+      {required bool readOnly,
+      WellPosition? initialPosition,
+      bool results = false,
+      bool analysis = false}) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => PlateEditorScreen(
@@ -457,19 +573,25 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
           experimentTitle: _titleController.text.trim(),
           readOnly: readOnly,
           initialPosition: initialPosition,
+          initialResultsView: results,
+          openAnalysisOnLoad: analysis,
           repository: widget.plateRepository,
           templateRepository: widget.plateTemplateRepository,
           documentExchangeService: widget.documentExchangeService,
         ),
       ),
     );
+    if (mounted) setState(() => _resultSummaryVersion++);
   }
 
   Future<bool> _save({bool showMessage = true}) async {
     if (_isSaving) return false;
     final title = _titleController.text.trim();
     if (title.isEmpty) {
-      setState(() => _titleError = '실험 제목을 입력해주세요.');
+      setState(() {
+        _titleError = '실험 제목을 입력해주세요.';
+        _section = 0;
+      });
       return false;
     }
 
@@ -1012,43 +1134,51 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                 ],
               ),
             ),
-            const SizedBox(height: 4),
-            for (var index = 0; index < tasks.length; index++)
-              CheckboxListTile(
-                key: ValueKey('experiment-task-${tasks[index].id}'),
-                dense: true,
-                controlAffinity: ListTileControlAffinity.leading,
-                title: Text(
-                  tasks[index].title,
-                  style: TextStyle(
-                    decoration: tasks[index].isCompleted
-                        ? TextDecoration.lineThrough
+            const SizedBox(height: 12),
+            ..._focusedTasks(),
+            ExpansionTile(
+              key: const PageStorageKey('all-experiment-tasks'),
+              title: const Text('전체 단계 확인'),
+              children: [
+                for (var index = 0; index < tasks.length; index++)
+                  CheckboxListTile(
+                    key: ValueKey('experiment-task-${tasks[index].id}'),
+                    dense: true,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: Text(
+                      tasks[index].title,
+                      style: TextStyle(
+                        decoration: tasks[index].isCompleted
+                            ? TextDecoration.lineThrough
+                            : null,
+                      ),
+                    ),
+                    subtitle: tasks[index].completedAt == null
+                        ? _runningLabel(tasks[index])
+                        : Text(_completedLabel(tasks[index])),
+                    secondary: _TaskTimerButton(
+                      task: tasks[index],
+                      onPressed:
+                          widget.enabled ? () => _toggleTimer(index) : null,
+                    ),
+                    value: tasks[index].isCompleted,
+                    onChanged: widget.enabled
+                        ? (value) {
+                            final updated = [...tasks];
+                            final now = DateTime.now();
+                            updated[index] = tasks[index].copyWith(
+                              isCompleted: value ?? false,
+                              startedAt: value == true
+                                  ? tasks[index].startedAt ?? now
+                                  : tasks[index].startedAt,
+                              completedAt: value == true ? now : null,
+                            );
+                            widget.onChanged(updated);
+                          }
                         : null,
                   ),
-                ),
-                subtitle: tasks[index].completedAt == null
-                    ? _runningLabel(tasks[index])
-                    : Text(_completedLabel(tasks[index])),
-                secondary: _TaskTimerButton(
-                  task: tasks[index],
-                  onPressed: widget.enabled ? () => _toggleTimer(index) : null,
-                ),
-                value: tasks[index].isCompleted,
-                onChanged: widget.enabled
-                    ? (value) {
-                        final updated = [...tasks];
-                        final now = DateTime.now();
-                        updated[index] = tasks[index].copyWith(
-                          isCompleted: value ?? false,
-                          startedAt: value == true
-                              ? tasks[index].startedAt ?? now
-                              : tasks[index].startedAt,
-                          completedAt: value == true ? now : null,
-                        );
-                        widget.onChanged(updated);
-                      }
-                    : null,
-              ),
+              ],
+            ),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
@@ -1061,6 +1191,52 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
         ),
       ),
     );
+  }
+
+  List<Widget> _focusedTasks() {
+    final running = [
+      for (var i = 0; i < widget.tasks.length; i++)
+        if (widget.tasks[i].startedAt != null && !widget.tasks[i].isCompleted) i
+    ];
+    final next = widget.tasks.indexWhere((task) => !task.isCompleted);
+    if (next < 0) {
+      return [
+        const Padding(
+            padding: EdgeInsets.all(8),
+            child: Text('모든 단계가 완료되었습니다. 결과를 확인하세요.'))
+      ];
+    }
+    final focused = running.isEmpty ? [next] : running;
+    return [
+      Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text(running.isEmpty ? '다음 단계' : '진행 중 ${running.length}개 단계',
+              style: Theme.of(context).textTheme.titleMedium)),
+      for (final index in focused)
+        Padding(
+            padding: const EdgeInsets.all(8),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(widget.tasks[index].title,
+                      style: Theme.of(context).textTheme.titleLarge),
+                  if (widget.tasks[index].startedAt != null)
+                    _runningLabel(widget.tasks[index])!,
+                  const SizedBox(height: 8),
+                  FilledButton.icon(
+                    key: ValueKey('focused-task-${widget.tasks[index].id}'),
+                    onPressed:
+                        widget.enabled ? () => _toggleTimer(index) : null,
+                    icon:
+                        Icon(running.isEmpty ? Icons.play_arrow : Icons.check),
+                    label: Text(running.isEmpty ? '이 단계 시작' : '단계 완료'),
+                  ),
+                ])),
+      const Padding(
+          padding: EdgeInsets.all(8),
+          child: Text(
+              '단계 변경과 메모는 상단 저장을 눌러 보관하세요. 타이머는 경과 시간 표시이며 종료 알림은 제공하지 않습니다.')),
+    ];
   }
 
   Future<void> _addTask(BuildContext context) async {

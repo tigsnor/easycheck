@@ -205,9 +205,16 @@ void main() {
       ),
     );
 
+    await tester
+        .tap(find.byKey(const ValueKey('experiment-section-execution')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const PageStorageKey('all-experiment-tasks')));
+    await tester.pumpAndSettle();
     expect(find.text('실험 실행 체크리스트'), findsOneWidget);
     expect(find.text('0/7 완료'), findsOneWidget);
 
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('experiment-task-default-0')));
     await tester.tap(find.byKey(const ValueKey('experiment-task-default-0')));
     await tester.pump();
     expect(find.text('1/7 완료'), findsOneWidget);
@@ -255,13 +262,18 @@ void main() {
       ),
     );
 
+    await tester
+        .tap(find.byKey(const ValueKey('experiment-section-execution')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const PageStorageKey('all-experiment-tasks')));
+    await tester.pumpAndSettle();
     final timerButton = find.byKey(
       const ValueKey('experiment-task-timer-default-0'),
     );
     await tester.ensureVisible(timerButton);
     await tester.tap(timerButton);
     await tester.pump(const Duration(seconds: 2));
-    expect(find.textContaining('경과'), findsOneWidget);
+    expect(find.textContaining('경과'), findsWidgets);
     expect(find.widgetWithText(TextButton, '완료'), findsOneWidget);
 
     await tester.ensureVisible(timerButton);
@@ -350,6 +362,8 @@ void main() {
       ),
     );
 
+    await tester.tap(find.byKey(const ValueKey('experiment-section-design')));
+    await tester.pumpAndSettle();
     expect(find.text('완료된 실험 노트입니다'), findsOneWidget);
     expect(find.widgetWithText(TextButton, '저장'), findsNothing);
     expect(

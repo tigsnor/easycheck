@@ -47,6 +47,8 @@ class PlateEditorScreen extends StatefulWidget {
     this.experimentTitle = 'CCK-8 2배 희석 실험 초안',
     this.readOnly = false,
     this.initialPosition,
+    this.initialResultsView = false,
+    this.openAnalysisOnLoad = false,
     PlateRepository? repository,
     DocumentExchangeService? documentExchangeService,
     PlateTemplateRepository? templateRepository,
@@ -61,6 +63,8 @@ class PlateEditorScreen extends StatefulWidget {
   final String experimentTitle;
   final bool readOnly;
   final WellPosition? initialPosition;
+  final bool initialResultsView;
+  final bool openAnalysisOnLoad;
   final PlateRepository repository;
   final DocumentExchangeService documentExchangeService;
   final PlateTemplateRepository templateRepository;
@@ -319,6 +323,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                             ),
                             const SizedBox(height: 18),
                             PlateGrid(
+                              initialResultsView: widget.initialResultsView,
                               plate: plate,
                               selectedPositions: _selectedPositions,
                               requestedCellSize: _plateCellSize,
@@ -436,6 +441,11 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         _loadError = null;
         _lastSavedAt = DateTime.now();
       });
+      if (widget.openAnalysisOnLoad) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _showPlateAnalysis();
+        });
+      }
       final initialPosition = widget.initialPosition;
       if (initialPosition != null &&
           plate.wells.any((well) => well.position == initialPosition)) {
