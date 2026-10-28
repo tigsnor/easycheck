@@ -122,6 +122,14 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('덮어쓰기'));
     await tester.pumpAndSettle();
+    expect(find.text('측정 후 조건 정정'), findsOneWidget);
+    expect(repository.saveCount, 0);
+    await tester.enterText(
+        find.byKey(const ValueKey('condition-correction-reason')),
+        'reader 파장 기록 정정');
+    await tester
+        .tap(find.byKey(const ValueKey('confirm-condition-correction')));
+    await tester.pumpAndSettle();
     expect(repository.saveCount, 1);
     expect(repository.plate!.wells[0].resultValue, 0.5);
     expect(repository.plate!.wells[0].resultUnit, 'OD570');

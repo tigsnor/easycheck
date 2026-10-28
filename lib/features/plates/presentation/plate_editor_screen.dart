@@ -1,7 +1,10 @@
+import 'dart:convert';
+
 import 'widgets/analysis_reference_sheet.dart';
 import 'widgets/plate_grid.dart';
 import 'widgets/sequential_result_sheet.dart';
 import 'widgets/result_import_preview_sheet.dart';
+import 'widgets/measured_condition_review_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -17,6 +20,7 @@ import '../application/plate_editor_controller.dart';
 import '../data/file_plate_repository.dart';
 import '../data/plate_repository.dart';
 import '../domain/plate.dart';
+import '../domain/measured_condition_review.dart';
 import '../domain/plate_analysis_export_service.dart';
 import '../domain/plate_analysis_service.dart';
 import '../domain/plate_dilution_service.dart';
@@ -101,6 +105,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   bool _failedRecordHistory = true;
   bool _allowPop = false;
   bool _confirmingExit = false;
+  ({String fingerprint, String record})? _reviewedConditionDraft;
   final List<Plate> _undoHistory = [];
 
   @override
@@ -385,6 +390,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         _saveError = null;
         _failedSuccessMessage = null;
         _failedChangeSummary = null;
+        _reviewedConditionDraft = null;
       });
     }
     if (exitAfter && mounted) {
@@ -574,7 +580,23 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
 
   Future<void> _chooseAndApplyTemplate() async {
     final plate = _plate;
-    if (plate == null) {
+    if (plate == null || widget.readOnly || _isSaving || _failedPlate != null) {
+      return;
+    }
+    if (plate.wells.any((well) => well.resultValue != null)) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('측정값이 있는 Plate입니다'),
+          content: const Text(
+              '템플릿 적용은 기존 배치와 결과를 교체하므로 이 Plate에는 적용할 수 없습니다. 새 실험을 만들 때 템플릿을 선택하세요. 기록 정정은 well 편집·그룹 지정·희석 적용에서 변경 내용을 확인한 뒤 진행할 수 있습니다.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('확인'))
+          ],
+        ),
+      );
       return;
     }
     final templates = await _loadPlateTemplatesForAction();
@@ -1043,6 +1065,9 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         },
       ),
     );
+    // Leaving continuous entry discards any failed, unsaved correction approval.
+    // A later edit must be reviewed again, even if its values happen to match.
+    _reviewedConditionDraft = null;
   }
 
   Future<void> _editSelectedWell() async {
@@ -1091,6 +1116,33 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       return false;
     }
     final previous = _plate;
+    final isRetry = identical(plate, _failedPlate);
+    setState(() => _isSaving = true);
+    // A failed draft is immutable while retry is pending; retain its reviewed
+    // record instead of asking again or appending a duplicate correction.
+    // Immediate undo is an explicit reversal with the original review retained.
+    if (previous != null && recordHistory && !isRetry) {
+      final review = MeasuredConditionReview.compare(previous, plate);
+      if (review.changes.isNotEmpty) {
+        final fingerprint = jsonEncode([previous.toJson(), plate.toJson()]);
+        final record = _reviewedConditionDraft?.fingerprint == fingerprint
+            ? _reviewedConditionDraft!.record
+            : await Navigator.of(context).push<String>(MaterialPageRoute(
+                builder: (_) => MeasuredConditionReviewScreen(review: review)));
+        if (!mounted) return false;
+        if (record == null) {
+          setState(() {
+            _isSaving = false;
+            _reviewedConditionDraft = null;
+          });
+          return false;
+        }
+        _reviewedConditionDraft = (fingerprint: fingerprint, record: record);
+        changeSummary = '$changeSummary\n$record';
+      } else {
+        _reviewedConditionDraft = null;
+      }
+    }
     final savedAt = DateTime.now().toUtc();
     final revisions = previous?.revisions ?? plate.revisions;
     final retainedRevisions = revisions.length >= 20
@@ -1149,6 +1201,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       _failedPlate = null;
       _failedSuccessMessage = null;
       _failedChangeSummary = null;
+      _reviewedConditionDraft = null;
     });
     if (showSuccessMessage) {
       ScaffoldMessenger.of(context)
@@ -1219,8 +1272,19 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
             for (final revision in revisions.reversed)
               ListTile(
                 leading: const Icon(Icons.history),
-                title: Text(revision.summary),
+                title: Text(revision.summary.split('\n').first),
                 subtitle: Text(_plateRevisionDate(revision.changedAt)),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => Scaffold(
+                    appBar: AppBar(title: const Text('Plate 변경 상세')),
+                    body: SafeArea(
+                        child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: SelectableText(
+                          '${_plateRevisionDate(revision.changedAt)}\n\n${revision.summary}'),
+                    )),
+                  ),
+                )),
                 trailing: widget.readOnly || revision.snapshot == null
                     ? null
                     : TextButton(
@@ -1262,12 +1326,12 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    await _savePlate(
+    final saved = await _savePlate(
       snapshot.restore(id: plate.id, experimentId: plate.experimentId),
       successMessage: '선택한 시점의 Plate 상태를 복원했습니다.',
-      changeSummary: '이력 복원: ${revision.summary}',
+      changeSummary: '이력 복원: ${revision.summary.split('\n').first}',
     );
-    if (mounted) _clearSelection();
+    if (saved && mounted) _clearSelection();
   }
 }
 
