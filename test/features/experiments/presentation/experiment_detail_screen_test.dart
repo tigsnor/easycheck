@@ -432,9 +432,11 @@ void main() {
     await tester.pump();
 
     expect(saved!.title, 'Corrected test');
-    expect(saved!.revisions.single.summary, '완료 후 수정');
-    expect(saved!.revisions.single.reason, 'Lot 번호 정정');
-    expect(find.text('완료된 실험 노트입니다'), findsOneWidget);
+    expect(saved!.revisions.first.summary, '완료 후 정정 시작');
+    expect(saved!.revisions.first.reason, 'Lot 번호 정정');
+    expect(saved!.revisions.last.before!.title, 'Completed test');
+    expect(saved!.status, ExperimentStatus.correcting);
+    expect(find.text('정정 중 · 재검토 필요'), findsWidgets);
   });
 }
 

@@ -2,6 +2,7 @@ import '../../reminders/application/task_reminder_coordinator.dart';
 import '../../reminders/presentation/reminder_status_card.dart';
 import '../../reminders/presentation/task_timer_settings.dart';
 import 'widgets/experiment_result_summary.dart';
+import 'widgets/experiment_revision_screen.dart';
 import '../../../shared/models/well_position.dart';
 import 'experiment_completion_screen.dart';
 import '../../attachments/data/attachment_file_store.dart';
@@ -58,7 +59,15 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   late List<ExperimentResource> _resources;
   late Experiment _persistedExperiment;
   late bool _isLocked;
-  String? _editReason;
+  String _pendingCorrectionReason = '';
+  bool get _isCorrecting =>
+      _persistedExperiment.status == ExperimentStatus.correcting;
+  bool get _editingEnabled =>
+      !_isLocked &&
+      !(_isSaving &&
+          (_isCorrecting ||
+              _status == ExperimentStatus.completed ||
+              _status == ExperimentStatus.archived));
   late String _savedFingerprint;
   bool _isSaving = false;
   bool _allowPop = false;
@@ -74,12 +83,15 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     super.initState();
     _section = switch (widget.experiment.status) {
       ExperimentStatus.inProgress => 1,
-      ExperimentStatus.completed || ExperimentStatus.archived => 2,
+      ExperimentStatus.completed ||
+      ExperimentStatus.archived ||
+      ExperimentStatus.correcting =>
+        2,
       _ => 0,
     };
     _persistedExperiment = widget.experiment;
     _lastSavedAt = widget.experiment.updatedAt;
-    _isLocked = widget.experiment.status == ExperimentStatus.completed;
+    _isLocked = widget.experiment.isReadOnly;
     _titleController = TextEditingController(text: widget.experiment.title);
     _projectController = TextEditingController(
       text: widget.experiment.projectName ?? '',
@@ -95,7 +107,9 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     );
     _status = widget.experiment.status;
     _experimentType = widget.experiment.experimentType;
-    _tasks = widget.experiment.tasks.isEmpty
+    _tasks = widget.experiment.tasks.isEmpty &&
+            !widget.experiment.isReadOnly &&
+            widget.experiment.status != ExperimentStatus.correcting
         ? _defaultTasks(widget.experiment.experimentType)
         : [...widget.experiment.tasks];
     _resources = [...widget.experiment.resources];
@@ -159,8 +173,16 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                 icon: const Icon(Icons.attach_file)),
             if (_isLocked)
               TextButton(
-                onPressed: _requestUnlock,
-                child: const Text('수정 잠금 해제'),
+                onPressed: _isSaving
+                    ? null
+                    : _persistedExperiment.status == ExperimentStatus.archived
+                        ? _restoreArchive
+                        : _requestUnlock,
+                child: Text(_isSaving
+                    ? '저장 중…'
+                    : _persistedExperiment.status == ExperimentStatus.archived
+                        ? '보관 해제'
+                        : '수정 잠금 해제'),
               )
             else
               TextButton(
@@ -202,7 +224,18 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                 const SizedBox(height: 12),
               ],
               if (_isLocked) ...[
-                const _CompletionLockBanner(),
+                _CompletionLockBanner(
+                    archived: _persistedExperiment.status ==
+                        ExperimentStatus.archived),
+                const SizedBox(height: 12),
+              ],
+              if (_isCorrecting) ...[
+                const Card(
+                    child: ListTile(
+                        leading: Icon(Icons.edit_note),
+                        title: Text('정정 중 · 재검토 필요'),
+                        subtitle: Text(
+                            '저장 후에도 정정을 이어갈 수 있습니다. 결과 탭에서 재검토 후 완료하세요. 정정 중에는 단계 종료 알림을 예약하지 않습니다. 새 실험은 복사본에서 시작하세요.'))),
                 const SizedBox(height: 12),
               ],
               if (_section != 0) ...[
@@ -231,7 +264,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   List<Widget> _designContent() => [
         TextField(
           controller: _titleController,
-          enabled: !_isLocked,
+          enabled: _editingEnabled,
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w800,
               ),
@@ -270,7 +303,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                       child: Text('Custom'),
                     ),
                   ],
-                  onChanged: _isLocked
+                  onChanged: !_editingEnabled
                       ? null
                       : (value) => setState(
                             () => _experimentType = value ?? 'Custom',
@@ -282,29 +315,33 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                   isExpanded: true,
                   initialValue: _status,
                   decoration: const InputDecoration(labelText: '상태'),
-                  items: const [
-                    DropdownMenuItem(
+                  items: [
+                    if (_isCorrecting)
+                      const DropdownMenuItem(
+                          value: ExperimentStatus.correcting,
+                          child: Text('정정 중 · 재검토 필요')),
+                    const DropdownMenuItem(
                       value: ExperimentStatus.draft,
                       child: Text('초안'),
                     ),
-                    DropdownMenuItem(
+                    const DropdownMenuItem(
                       value: ExperimentStatus.planned,
                       child: Text('계획됨'),
                     ),
-                    DropdownMenuItem(
+                    const DropdownMenuItem(
                       value: ExperimentStatus.inProgress,
                       child: Text('진행 중'),
                     ),
-                    DropdownMenuItem(
+                    const DropdownMenuItem(
                       value: ExperimentStatus.completed,
                       child: Text('완료'),
                     ),
-                    DropdownMenuItem(
+                    const DropdownMenuItem(
                       value: ExperimentStatus.archived,
                       child: Text('보관됨'),
                     ),
                   ],
-                  onChanged: _isLocked
+                  onChanged: (_isLocked || _isSaving || _isCorrecting)
                       ? null
                       : (value) => setState(
                             () => _status = value ?? ExperimentStatus.draft,
@@ -313,13 +350,13 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _projectController,
-                  enabled: !_isLocked,
+                  enabled: _editingEnabled,
                   decoration: const InputDecoration(labelText: '프로젝트'),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _researcherController,
-                  enabled: !_isLocked,
+                  enabled: _editingEnabled,
                   textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(
                     labelText: '담당자',
@@ -329,7 +366,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _cellCountController,
-                  enabled: !_isLocked,
+                  enabled: _editingEnabled,
                   decoration: const InputDecoration(
                     labelText: '세포수',
                     hintText: '예: hek293: 1×10^6/ml',
@@ -342,7 +379,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
         const SizedBox(height: 16),
         _ExperimentResourcesCard(
           resources: _resources,
-          enabled: !_isLocked,
+          enabled: _editingEnabled,
           onChanged: (resources) => setState(() => _resources = resources),
         ),
         const SizedBox(height: 16),
@@ -364,7 +401,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   List<Widget> _executionContent() => [
         _ExperimentChecklistCard(
           tasks: _tasks,
-          enabled: !_isLocked && !_isSaving,
+          enabled: _editingEnabled && !_isSaving,
           onChanged: (tasks) => setState(() => _tasks = tasks),
         ),
         const SizedBox(height: 16),
@@ -377,7 +414,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
             padding: const EdgeInsets.all(18),
             child: TextField(
               controller: _notesController,
-              enabled: !_isLocked,
+              enabled: _editingEnabled,
               minLines: 8,
               maxLines: 16,
               decoration: const InputDecoration(
@@ -430,7 +467,8 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
             onPressed: _isSaving
                 ? null
                 : () async {
-                    final previousStatus = _status;
+                    final previousStatus =
+                        _isCorrecting ? ExperimentStatus.correcting : _status;
                     setState(() => _status = ExperimentStatus.completed);
                     final saved = await _save();
                     if (!saved && mounted && _saveError == null) {
@@ -438,11 +476,13 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                     }
                   },
             icon: const Icon(Icons.task_alt),
-            label: Text(
-                _persistedExperiment.status == ExperimentStatus.completed
-                    ? '수정 내용 저장'
-                    : '완료 전 점검'),
+            label: Text(_isCorrecting ? '정정 내용 재검토 후 완료' : '완료 전 점검'),
           ),
+        if (_persistedExperiment.status == ExperimentStatus.completed)
+          OutlinedButton.icon(
+              onPressed: _isSaving ? null : _archive,
+              icon: const Icon(Icons.archive_outlined),
+              label: const Text('노트 보관')),
         const SizedBox(height: 16),
         if (_persistedExperiment.completedAt != null ||
             _persistedExperiment.revisions.isNotEmpty) ...[
@@ -452,8 +492,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       ];
 
   bool get _hasUnsavedChanges =>
-      !_isLocked &&
-      (_editReason != null || _fingerprint() != _savedFingerprint);
+      !_isLocked && _fingerprint() != _savedFingerprint;
 
   SaveStatus get _saveStatus {
     if (_isSaving) return SaveStatus.saving;
@@ -531,7 +570,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     }
 
     await _openPlate(
-        readOnly: _persistedExperiment.status == ExperimentStatus.completed,
+        readOnly: _persistedExperiment.isReadOnly,
         results: results,
         analysis: analysis);
   }
@@ -548,8 +587,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
           builder: (_) => ExperimentAttachmentsScreen(
                 experiment: _persistedExperiment,
                 plate: plate,
-                readOnly:
-                    _persistedExperiment.status == ExperimentStatus.completed,
+                readOnly: _persistedExperiment.isReadOnly,
                 fileStore: widget.attachmentFileStore,
                 exchange: widget.attachmentExchange,
                 onChanged: (updated) async {
@@ -594,7 +632,8 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   }
 
   Future<bool> _save({bool showMessage = true}) async {
-    if (_isSaving) return false;
+    if (_isSaving || _isLocked) return false;
+    if (_isCorrecting && !_hasUnsavedChanges) return true;
     final title = _titleController.text.trim();
     if (title.isEmpty) {
       setState(() {
@@ -626,7 +665,10 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       );
       if (!mounted) return false;
       if (completionRecord == null) {
-        setState(() => _isSaving = false);
+        setState(() {
+          _isSaving = false;
+          if (_isCorrecting) _status = ExperimentStatus.correcting;
+        });
         return false;
       }
     }
@@ -635,25 +677,35 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     DateTime? completedAt = _persistedExperiment.completedAt;
     if (_persistedExperiment.status != ExperimentStatus.completed &&
         _status == ExperimentStatus.completed) {
-      completedAt ??= now;
+      if (!_isCorrecting) completedAt ??= now;
       revisions.add(
         ExperimentRevision(
           id: 'revision-${now.microsecondsSinceEpoch}',
           changedAt: now,
-          summary: '실험 완료',
+          summary: _isCorrecting ? '정정 후 재검토 완료' : '실험 완료',
           reason: completionRecord ?? '',
+          before: _isCorrecting
+              ? _persistedExperiment.copyWith(revisions: [])
+              : null,
         ),
       );
     }
-    if (_editReason != null) {
-      revisions.add(
-        ExperimentRevision(
+    if (_isCorrecting &&
+        _status == ExperimentStatus.correcting &&
+        _fingerprint() != _savedFingerprint) {
+      revisions.add(ExperimentRevision(
           id: 'revision-${now.microsecondsSinceEpoch}-edit',
           changedAt: now,
-          summary: '완료 후 수정',
-          reason: _editReason!,
-        ),
-      );
+          summary: '정정 내용 저장',
+          before: _persistedExperiment.copyWith(revisions: [])));
+    }
+    if (_status == ExperimentStatus.archived &&
+        _persistedExperiment.status != ExperimentStatus.archived) {
+      revisions.add(ExperimentRevision(
+          id: 'revision-${now.microsecondsSinceEpoch}-archive',
+          changedAt: now,
+          summary: '노트 보관',
+          before: _persistedExperiment.copyWith(revisions: [])));
     }
     final updated = _persistedExperiment.copyWith(
       title: title,
@@ -688,15 +740,13 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       return false;
     }
     _persistedExperiment = updated;
-    _editReason = null;
     _savedFingerprint = savingFingerprint;
     if (mounted) {
       setState(() {
         _isSaving = false;
         _lastSavedAt = now;
         _saveError = null;
-        _isLocked = updated.status == ExperimentStatus.completed &&
-            _fingerprint() == savingFingerprint;
+        _isLocked = updated.isReadOnly && _fingerprint() == savingFingerprint;
       });
     }
 
@@ -714,13 +764,17 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   }
 
   Future<void> _requestUnlock() async {
-    final controller = TextEditingController();
+    if (_isSaving ||
+        _persistedExperiment.status != ExperimentStatus.completed) {
+      return;
+    }
+    final controller = TextEditingController(text: _pendingCorrectionReason);
     String? errorText;
     final reason = await showDialog<String>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('완료 노트 수정'),
+          title: const Text('완료 노트 정정 시작'),
           content: TextField(
             key: const ValueKey('completion-edit-reason-field'),
             controller: controller,
@@ -728,6 +782,8 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
             decoration: InputDecoration(
               labelText: '수정 사유',
               hintText: '예: 시약 Lot 번호 정정',
+              helperText: '사유와 정정 전 노트를 저장한 뒤 편집합니다. 완료 상태로 돌아가려면 재검토가 필요합니다.',
+              helperMaxLines: 4,
               errorText: errorText,
             ),
           ),
@@ -751,12 +807,111 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
         ),
       ),
     );
-    if (reason != null && mounted) {
-      setState(() {
-        _isLocked = false;
-        _editReason = reason;
-      });
+    // Wait for the dialog route to finish before disposing its controller.
+    await WidgetsBinding.instance.endOfFrame;
+    controller.dispose();
+    if (reason == null || !mounted) return;
+    _pendingCorrectionReason = reason;
+    if (await _persistTransition(
+        _persistedExperiment.beginCorrection(reason, DateTime.now()))) {
+      _pendingCorrectionReason = '';
+      _completionReviewNote = '';
     }
+  }
+
+  Future<bool> _persistTransition(Experiment updated) async {
+    if (_isSaving) return false;
+    setState(() {
+      _isSaving = true;
+      _saveError = null;
+    });
+    try {
+      await widget.onChanged(updated);
+      if (!mounted) return true;
+      setState(() {
+        _persistedExperiment = updated;
+        _status = updated.status;
+        _isLocked = updated.isReadOnly;
+        _lastSavedAt = updated.updatedAt;
+        _savedFingerprint = _fingerprint();
+        _isSaving = false;
+      });
+      return true;
+    } on Object {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('상태를 저장하지 못했습니다. 다시 시도해주세요.')));
+      }
+      return false;
+    }
+  }
+
+  Future<void> _archive() async {
+    if (_isSaving ||
+        _persistedExperiment.status != ExperimentStatus.completed) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+                title: const Text('완료 노트를 보관할까요?'),
+                content: const Text('보관 중에는 노트·Plate·첨부를 읽기 전용으로 열 수 있습니다.'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('취소')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('보관'))
+                ]));
+    if (confirmed != true || !mounted) return;
+    await _changeArchiveStatus(ExperimentStatus.archived, '노트 보관');
+  }
+
+  Future<void> _restoreArchive() async {
+    if (_isSaving || _persistedExperiment.status != ExperimentStatus.archived) {
+      return;
+    }
+    final wasCompleted = _persistedExperiment.completedAt != null ||
+        _persistedExperiment.revisions.any((r) =>
+            r.summary == '노트 보관' &&
+            r.before?.status == ExperimentStatus.completed);
+    final target =
+        wasCompleted ? ExperimentStatus.completed : ExperimentStatus.draft;
+    final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+                title: const Text('보관을 해제할까요?'),
+                content: Text(target == ExperimentStatus.completed
+                    ? '완료 상태로 돌아갑니다. 내용을 정정하려면 수정 사유를 남기고 시작하세요.'
+                    : '최초 완료 기록이 없어 초안 상태로 돌아갑니다.'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('취소')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('보관 해제'))
+                ]));
+    if (confirmed != true || !mounted) return;
+    await _changeArchiveStatus(target, '보관 해제');
+  }
+
+  Future<void> _changeArchiveStatus(
+      ExperimentStatus status, String summary) async {
+    final now = DateTime.now();
+    await _persistTransition(_persistedExperiment
+        .copyWith(status: status, updatedAt: now, revisions: [
+      ..._persistedExperiment.revisions,
+      ExperimentRevision(
+          id: 'revision-${now.microsecondsSinceEpoch}',
+          changedAt: now,
+          summary: summary,
+          before: _persistedExperiment.copyWith(revisions: []))
+    ]));
   }
 
   List<ExperimentTask> _defaultTasks(String experimentType) {
@@ -791,16 +946,19 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
 enum _ExperimentExitAction { save, discard }
 
 class _CompletionLockBanner extends StatelessWidget {
-  const _CompletionLockBanner();
+  const _CompletionLockBanner({required this.archived});
+  final bool archived;
 
   @override
   Widget build(BuildContext context) {
     return Card(
       color: Theme.of(context).colorScheme.secondaryContainer,
-      child: const ListTile(
-        leading: Icon(Icons.lock_outline),
-        title: Text('완료된 실험 노트입니다'),
-        subtitle: Text('내용 변경과 Plate 편집을 시작하려면 수정 사유를 남기고 잠금을 해제하세요.'),
+      child: ListTile(
+        leading: const Icon(Icons.lock_outline),
+        title: Text(archived ? '보관된 실험 노트입니다' : '완료된 실험 노트입니다'),
+        subtitle: Text(archived
+            ? '노트·Plate·첨부는 읽기 전용입니다. 편집하려면 먼저 보관을 해제하세요.'
+            : '내용 변경과 Plate 편집을 시작하려면 수정 사유를 남기고 잠금을 해제하세요.'),
       ),
     );
   }
@@ -833,6 +991,9 @@ class _ExperimentHistoryCard extends StatelessWidget {
               ),
             for (final revision in revisions)
               ListTile(
+                onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                    builder: (_) =>
+                        ExperimentRevisionScreen(revision: revision))),
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.history),
                 title: Text(revision.summary),

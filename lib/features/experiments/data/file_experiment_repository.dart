@@ -13,7 +13,7 @@ class FileExperimentRepository implements ExperimentRepository {
     this.fileStore = const SafeJsonFileStore(),
   });
 
-  static const schemaVersion = 3;
+  static const schemaVersion = 4;
 
   final String fileName;
   final String? rootDirectory;

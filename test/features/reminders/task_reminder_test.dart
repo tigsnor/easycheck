@@ -68,7 +68,7 @@ void main() {
     const backupService = EasyCheckBackupService();
     final backup = backupService
         .decode(backupService.encode(experiments: [loaded], plates: []));
-    expect(backup.schemaVersion, 5);
+    expect(backup.schemaVersion, 6);
     await FileBackupRecoveryService(rootDirectory: restoredDir.path)
         .recover(backup);
     final restored =
@@ -117,6 +117,7 @@ void main() {
       timedExperiment(id: 'other'),
       e.copyWith(id: 'completed', status: ExperimentStatus.completed),
       e.copyWith(id: 'archived', status: ExperimentStatus.archived),
+      e.copyWith(id: 'correcting', status: ExperimentStatus.correcting),
       e.copyWith(
           id: 'no-start', tasks: [e.tasks.single.copyWith(startedAt: null)]),
       e.copyWith(
