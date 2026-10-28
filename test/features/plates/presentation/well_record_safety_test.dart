@@ -112,11 +112,21 @@ void main() {
     await tester.enterText(field('result-unit'), 'RFU');
     await tester.enterText(field('concentration-unit'), '');
     await save(tester);
+    expect(repo.plate!.wells.first.toJson(), original.toJson());
+    await tester.enterText(
+        find.byKey(const ValueKey('condition-correction-reason')), '단위 오기 정정');
+    await tap(
+        tester, find.byKey(const ValueKey('confirm-condition-correction')));
     expect(repo.plate!.wells.first.toJson(),
         original.copyWith(resultUnit: 'RFU', concentrationUnit: null).toJson());
     await edit(tester);
     await tester.enterText(field('result-unit'), '');
     await save(tester);
+    await tester.enterText(
+        find.byKey(const ValueKey('condition-correction-reason')),
+        '단위 미지정으로 정정');
+    await tap(
+        tester, find.byKey(const ValueKey('confirm-condition-correction')));
     expect(repo.plate!.wells.first.resultValue, 0);
     expect(repo.plate!.wells.first.resultUnit, isNull);
     await edit(tester);

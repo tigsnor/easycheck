@@ -254,7 +254,7 @@ class _SequentialResultSheetState extends State<SequentialResultSheet> {
               if (_failed)
                 const Padding(
                   padding: EdgeInsets.only(top: 12),
-                  child: Text('저장하지 못했습니다. 입력을 유지했습니다. 다시 저장해주세요.',
+                  child: Text('저장되지 않았습니다. 입력을 유지했습니다. 다시 확인하고 저장해주세요.',
                       key: ValueKey('sequential-save-error')),
                 ),
               const SizedBox(height: 16),
