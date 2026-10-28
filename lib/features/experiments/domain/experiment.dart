@@ -1,6 +1,13 @@
 import '../../attachments/domain/experiment_attachment.dart';
 
-enum ExperimentStatus { draft, planned, inProgress, completed, archived }
+enum ExperimentStatus {
+  draft,
+  planned,
+  inProgress,
+  completed,
+  archived,
+  correcting
+}
 
 enum ExperimentResourceType { reagent, equipment }
 
@@ -140,6 +147,7 @@ class ExperimentRevision {
     required this.changedAt,
     required this.summary,
     this.reason = '',
+    this.before,
   });
 
   factory ExperimentRevision.fromJson(Map<String, Object?> json) {
@@ -148,6 +156,12 @@ class ExperimentRevision {
       changedAt: DateTime.parse(json['changedAt'] as String),
       summary: json['summary'] as String,
       reason: json['reason'] as String? ?? '',
+      before: json['before'] == null
+          ? null
+          : Experiment.fromJson({
+              ...Map<String, Object?>.from(json['before'] as Map),
+              'revisions': <Object?>[]
+            }),
     );
   }
 
@@ -155,12 +169,14 @@ class ExperimentRevision {
   final DateTime changedAt;
   final String summary;
   final String reason;
+  final Experiment? before;
 
   Map<String, Object?> toJson() => {
         'id': id,
         'changedAt': changedAt.toIso8601String(),
         'summary': summary,
         'reason': reason,
+        if (before != null) 'before': before!.copyWith(revisions: []).toJson(),
       };
 }
 
@@ -236,6 +252,28 @@ class Experiment {
   final DateTime? completedAt;
   final List<ExperimentRevision> revisions;
   final List<ExperimentAttachment> attachments;
+
+  bool get isReadOnly =>
+      status == ExperimentStatus.completed ||
+      status == ExperimentStatus.archived;
+
+  Experiment beginCorrection(String reason, DateTime now) {
+    if (status != ExperimentStatus.completed || reason.trim().isEmpty) {
+      throw StateError('완료 노트의 정정 사유가 필요합니다.');
+    }
+    return copyWith(
+        status: ExperimentStatus.correcting,
+        updatedAt: now,
+        revisions: [
+          ...revisions,
+          ExperimentRevision(
+              id: 'revision-${now.microsecondsSinceEpoch}-correction',
+              changedAt: now,
+              summary: '완료 후 정정 시작',
+              reason: reason.trim(),
+              before: copyWith(revisions: []))
+        ]);
+  }
 
   String get notesWithoutCellCountLine {
     return notes

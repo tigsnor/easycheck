@@ -250,6 +250,33 @@ void main() {
         find.byKey(const ValueKey('edit-selected-well-action')), findsNothing);
   });
 
+  testWidgets('home opens archived experiments with a read-only plate',
+      (tester) async {
+    final experiment = Experiment(
+        id: 'e',
+        title: 'Completed',
+        createdAt: DateTime.utc(2026),
+        updatedAt: DateTime.utc(2026),
+        status: ExperimentStatus.archived);
+    await tester.pumpWidget(MaterialApp(
+        home: ExperimentsHomeScreen(
+      repository: FakeExperimentRepository([experiment]),
+      plateRepository: FakePlateRepository()
+        ..plate = Plate(id: 'p', experimentId: 'e', name: 'Plate'),
+      plateTemplateRepository: FakePlateTemplateRepository(),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Plate 열기'));
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<PlateEditorScreen>(find.byType(PlateEditorScreen))
+            .readOnly,
+        isTrue);
+    expect(
+        find.byKey(const ValueKey('edit-selected-well-action')), findsNothing);
+  });
+
   testWidgets('renders saved experiments and filters by search query', (
     tester,
   ) async {

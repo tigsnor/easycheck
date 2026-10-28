@@ -34,7 +34,8 @@ List<TaskReminder> buildTaskReminders(
   final keys = <String>{};
   for (final experiment in experiments) {
     if (experiment.status == ExperimentStatus.completed ||
-        experiment.status == ExperimentStatus.archived) {
+        experiment.status == ExperimentStatus.archived ||
+        experiment.status == ExperimentStatus.correcting) {
       continue;
     }
     for (final task in experiment.tasks) {

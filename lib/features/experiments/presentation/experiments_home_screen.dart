@@ -336,7 +336,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
         builder: (_) => PlateEditorScreen(
           experimentId: experiment.id,
           experimentTitle: experiment.title,
-          readOnly: experiment.status == ExperimentStatus.completed,
+          readOnly: experiment.isReadOnly,
           repository: widget.plateRepository,
           templateRepository: widget.plateTemplateRepository,
           documentExchangeService: widget.documentExchangeService,
@@ -1631,6 +1631,8 @@ extension _ExperimentStatusLabel on ExperimentStatus {
         return '완료';
       case ExperimentStatus.archived:
         return '보관됨';
+      case ExperimentStatus.correcting:
+        return '정정 중 · 재검토 필요';
     }
   }
 }
