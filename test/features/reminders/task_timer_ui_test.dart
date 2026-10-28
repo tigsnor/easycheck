@@ -91,6 +91,83 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> toggleTask(WidgetTester tester) async {
+    final checkbox = find.descendant(
+        of: find.byKey(const ValueKey('experiment-task-t')),
+        matching: find.byType(Checkbox));
+    await reveal(tester, checkbox);
+    await tester.tap(checkbox);
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+      'completion without start never invents a start or alarm after reopening',
+      (tester) async {
+    await open(tester);
+    await configure(tester);
+    final all = find.byKey(const PageStorageKey('all-experiment-tasks'));
+    await reveal(tester, all);
+    await tester.tap(all);
+    await tester.pumpAndSettle();
+    await toggleTask(tester);
+    await reveal(tester, find.textContaining('시작 시각 미기록'));
+    expect(find.textContaining('시작 시각 미기록'), findsOneWidget);
+    repo.fail = true;
+    await save(tester);
+    expect(repo.experiments.single.tasks.single.isCompleted, false);
+    expect(repo.experiments.single.tasks.single.startedAt, isNull);
+    expect(os.entries, isEmpty);
+    repo.fail = false;
+    await save(tester);
+    final completed = repo.experiments.single.tasks.single;
+    expect(completed.isCompleted, true);
+    expect(completed.startedAt, isNull);
+    expect(completed.completedAt, isNotNull);
+    expect(completed.dueAt, isNull);
+    expect(os.scheduled, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+    await open(tester);
+    await reveal(tester, all);
+    await tester.tap(all);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('시작 시각 미기록'), findsOneWidget);
+    expect(find.textContaining('경과'), findsNothing);
+    await toggleTask(tester);
+    await save(tester);
+    final reopened = repo.experiments.single.tasks.single;
+    expect(reopened.isCompleted, false);
+    expect(reopened.startedAt, isNull);
+    expect(reopened.completedAt, isNull);
+    expect(os.entries, isEmpty);
+    await tap(tester, 'focused-task-t');
+    await save(tester);
+    expect(repo.experiments.single.tasks.single.startedAt, isNotNull);
+    expect(os.entries.length, 1);
+  });
+
+  testWidgets('checkbox completion and undo retain an actual recorded start',
+      (tester) async {
+    await open(tester);
+    await configure(tester);
+    await tap(tester, 'focused-task-t');
+    await save(tester);
+    final start = repo.experiments.single.tasks.single.startedAt;
+    expect(os.entries.length, 1);
+    final all = find.byKey(const PageStorageKey('all-experiment-tasks'));
+    await reveal(tester, all);
+    await tester.tap(all);
+    await tester.pumpAndSettle();
+    await toggleTask(tester);
+    await save(tester);
+    expect(repo.experiments.single.tasks.single.startedAt, start);
+    expect(os.entries, isEmpty);
+    await toggleTask(tester);
+    await save(tester);
+    expect(repo.experiments.single.tasks.single.startedAt, start);
+    expect(repo.experiments.single.tasks.single.completedAt, isNull);
+    expect(os.entries.length, 1);
+  });
+
   testWidgets(
       'settings validate, cancel, and remain unscheduled until start is saved',
       (tester) async {

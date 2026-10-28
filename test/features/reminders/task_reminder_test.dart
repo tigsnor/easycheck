@@ -15,6 +15,39 @@ import '../plates/presentation/plate_editor_screen_test.dart'
 
 void main() {
   test(
+      'missing start survives file and fresh backup recovery without becoming an alarm',
+      () async {
+    final dir = await Directory.systemTemp.createTemp('missing-start-');
+    final restoredDir =
+        await Directory.systemTemp.createTemp('missing-start-restored-');
+    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => restoredDir.delete(recursive: true));
+    final source = timedExperiment();
+    final completed = source.tasks.single
+        .copyWith(isCompleted: true, startedAt: null, completedAt: reminderNow);
+    final repo = FileExperimentRepository(rootDirectory: dir.path);
+    await repo.saveExperiment(source.copyWith(tasks: [completed]));
+    final loaded = (await repo.loadExperiments()).single;
+    expect(loaded.tasks.single.toJson(), completed.toJson());
+    const service = EasyCheckBackupService();
+    final backup =
+        service.decode(service.encode(experiments: [loaded], plates: []));
+    await FileBackupRecoveryService(rootDirectory: restoredDir.path)
+        .recover(backup);
+    final restored =
+        (await FileExperimentRepository(rootDirectory: restoredDir.path)
+                .loadExperiments())
+            .single;
+    expect(restored.tasks.single.toJson(), completed.toJson());
+    expect(buildTaskReminders([restored], reminderNow), isEmpty);
+    final reopened = restored.copyWith(tasks: [
+      restored.tasks.single.copyWith(isCompleted: false, completedAt: null)
+    ]);
+    expect(reopened.tasks.single.startedAt, isNull);
+    expect(buildTaskReminders([reopened], reminderNow), isEmpty);
+  });
+
+  test(
       'UTC deadlines, planned time and preferences survive disk and fresh backup recovery',
       () async {
     final dir = await Directory.systemTemp.createTemp('reminders-');

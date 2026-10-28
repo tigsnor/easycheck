@@ -6,6 +6,30 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets(
+      'legacy completed tasks show missing timestamps without inventing them',
+      (tester) async {
+    Experiment? saved;
+    final experiment = Experiment(
+        id: 'legacy-task',
+        title: 'Legacy',
+        status: ExperimentStatus.inProgress,
+        createdAt: DateTime.utc(2026),
+        updatedAt: DateTime.utc(2026),
+        tasks: const [ExperimentTask(id: 't', title: '반응', isCompleted: true)]);
+    await tester.pumpWidget(MaterialApp(
+        home: ExperimentDetailScreen(
+            experiment: experiment,
+            onChanged: (value) async => saved = value)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const PageStorageKey('all-experiment-tasks')));
+    await tester.pumpAndSettle();
+    expect(find.text('완료 시각 미기록 · 시작 시각 미기록'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, '저장'));
+    await tester.pumpAndSettle();
+    expect(saved!.tasks.single.toJson(), experiment.tasks.single.toJson());
+  });
+
+  testWidgets(
       'edits made during a save stay dirty and cannot be silently discarded',
       (tester) async {
     final gate = Completer<void>();
@@ -238,6 +262,7 @@ void main() {
     expect(saved, isNotNull);
     expect(saved!.tasks, hasLength(8));
     expect(saved!.tasks.first.isCompleted, isTrue);
+    expect(saved!.tasks.first.startedAt, isNull);
     expect(saved!.tasks.first.completedAt, isNotNull);
     expect(saved!.tasks.last.title, '현미경 사진 촬영');
   });
