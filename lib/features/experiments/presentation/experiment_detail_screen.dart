@@ -1,3 +1,6 @@
+import '../../reminders/application/task_reminder_coordinator.dart';
+import '../../reminders/presentation/reminder_status_card.dart';
+import '../../reminders/presentation/task_timer_settings.dart';
 import 'widgets/experiment_result_summary.dart';
 import '../../../shared/models/well_position.dart';
 import 'experiment_completion_screen.dart';
@@ -22,6 +25,7 @@ class ExperimentDetailScreen extends StatefulWidget {
     required this.experiment,
     required this.onChanged,
     this.plateRepository,
+    this.reminders,
     this.plateTemplateRepository,
     this.documentExchangeService,
     this.attachmentFileStore = const FileAttachmentFileStore(),
@@ -32,6 +36,7 @@ class ExperimentDetailScreen extends StatefulWidget {
   final Experiment experiment;
   final Future<void> Function(Experiment experiment) onChanged;
   final PlateRepository? plateRepository;
+  final TaskReminderCoordinator? reminders;
   final PlateTemplateRepository? plateTemplateRepository;
   final DocumentExchangeService? documentExchangeService;
   final AttachmentFileStore attachmentFileStore;
@@ -363,6 +368,10 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
           onChanged: (tasks) => setState(() => _tasks = tasks),
         ),
         const SizedBox(height: 16),
+        if (widget.reminders != null) ...[
+          ReminderStatusCard(coordinator: widget.reminders!),
+          const SizedBox(height: 16),
+        ],
         Card(
           child: Padding(
             padding: const EdgeInsets.all(18),
@@ -1153,9 +1162,21 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                             : null,
                       ),
                     ),
-                    subtitle: tasks[index].completedAt == null
-                        ? _runningLabel(tasks[index])
-                        : Text(_completedLabel(tasks[index])),
+                    subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (tasks[index].completedAt != null)
+                            Text(_completedLabel(tasks[index]))
+                          else if (tasks[index].startedAt != null)
+                            _runningLabel(tasks[index])!,
+                          _deadlineLabel(tasks[index]),
+                          TextButton(
+                              key: ValueKey('task-time-${tasks[index].id}'),
+                              onPressed: widget.enabled
+                                  ? () => _configureTimer(index)
+                                  : null,
+                              child: const Text('예정 시간 설정')),
+                        ]),
                     secondary: _TaskTimerButton(
                       task: tasks[index],
                       onPressed:
@@ -1220,6 +1241,13 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                 children: [
                   Text(widget.tasks[index].title,
                       style: Theme.of(context).textTheme.titleLarge),
+                  _deadlineLabel(widget.tasks[index]),
+                  TextButton(
+                      key: ValueKey(
+                          'focused-task-time-${widget.tasks[index].id}'),
+                      onPressed:
+                          widget.enabled ? () => _configureTimer(index) : null,
+                      child: const Text('예정 시간 설정')),
                   if (widget.tasks[index].startedAt != null)
                     _runningLabel(widget.tasks[index])!,
                   const SizedBox(height: 8),
@@ -1235,8 +1263,33 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
       const Padding(
           padding: EdgeInsets.all(8),
           child: Text(
-              '단계 변경과 메모는 상단 저장을 눌러 보관하세요. 타이머는 경과 시간 표시이며 종료 알림은 제공하지 않습니다.')),
+              '단계 변경·예정 시간·메모는 상단 저장을 눌러 보관하세요. 종료 알림은 저장한 시작 시각과 예정 시간을 기준으로 예약합니다.')),
     ];
+  }
+
+  Future<void> _configureTimer(int index) async {
+    final updated = await showDialog<ExperimentTask>(
+        context: context,
+        builder: (_) => TaskTimerSettings(task: widget.tasks[index]));
+    if (updated == null || !mounted) return;
+    final tasks = [...widget.tasks];
+    tasks[index] = updated;
+    widget.onChanged(tasks);
+  }
+
+  Widget _deadlineLabel(ExperimentTask task) {
+    final minutes = task.plannedMinutes;
+    if (minutes == null) return const Text('예정 시간 없음');
+    final due = task.dueAt;
+    final remaining = due?.difference(DateTime.now());
+    final text = due == null || task.isCompleted
+        ? '예정 $minutes분'
+        : '${_dateTimeLabel(due.toLocal())} 예정 · ${remaining!.isNegative ? '${_durationLabel(-remaining)} 초과' : '${_durationLabel(remaining)} 남음'}';
+    return Text('$text · ${task.reminderEnabled ? '알림 설정' : '알림 꺼짐'}',
+        style: TextStyle(
+            color: !task.isCompleted && (remaining?.isNegative ?? false)
+                ? Theme.of(context).colorScheme.error
+                : null));
   }
 
   Future<void> _addTask(BuildContext context) async {
@@ -1308,7 +1361,8 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
     return '${_dateTimeLabel(completedAt)} 완료 · ${_durationLabel(completedAt.difference(startedAt))}';
   }
 
-  String _dateTimeLabel(DateTime value) {
+  String _dateTimeLabel(DateTime timestamp) {
+    final value = timestamp.toLocal();
     String twoDigits(int number) => number.toString().padLeft(2, '0');
     return '${value.year}.${twoDigits(value.month)}.${twoDigits(value.day)} ${twoDigits(value.hour)}:${twoDigits(value.minute)}';
   }

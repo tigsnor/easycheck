@@ -58,7 +58,10 @@ class ExperimentDuplicationService {
       notes: '',
       tasks: source.tasks
           .map((task) => task.copyWith(
-              isCompleted: false, startedAt: null, completedAt: null))
+              isCompleted: false,
+              startedAt: null,
+              completedAt: null,
+              reminderEnabled: false))
           .toList(),
       revisions: [],
       attachments: [],

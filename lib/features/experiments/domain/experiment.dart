@@ -13,19 +13,32 @@ class ExperimentTask {
     this.isCompleted = false,
     this.startedAt,
     this.completedAt,
+    this.plannedMinutes,
+    this.reminderEnabled = false,
   });
 
   factory ExperimentTask.fromJson(Map<String, Object?> json) {
+    final minutes = json['plannedMinutes'];
+    final reminder = json['reminderEnabled'] as bool? ?? false;
+    if (minutes != null &&
+        (minutes is! int || minutes < 1 || minutes > 43200)) {
+      throw const FormatException('단계 예정 시간은 1~43200분이어야 합니다.');
+    }
+    if (reminder && minutes == null) {
+      throw const FormatException('종료 알림에는 예정 시간이 필요합니다.');
+    }
     return ExperimentTask(
       id: json['id'] as String,
       title: json['title'] as String,
+      plannedMinutes: minutes as int?,
+      reminderEnabled: reminder,
       isCompleted: json['isCompleted'] as bool? ?? false,
       startedAt: json['startedAt'] == null
           ? null
-          : DateTime.parse(json['startedAt'] as String),
+          : DateTime.parse(json['startedAt'] as String).toUtc(),
       completedAt: json['completedAt'] == null
           ? null
-          : DateTime.parse(json['completedAt'] as String),
+          : DateTime.parse(json['completedAt'] as String).toUtc(),
     );
   }
 
@@ -34,24 +47,38 @@ class ExperimentTask {
   final bool isCompleted;
   final DateTime? startedAt;
   final DateTime? completedAt;
+  final int? plannedMinutes;
+  final bool reminderEnabled;
+
+  DateTime? get dueAt => startedAt == null || plannedMinutes == null
+      ? null
+      : startedAt!.toUtc().add(Duration(minutes: plannedMinutes!));
 
   Map<String, Object?> toJson() => {
         'id': id,
         'title': title,
         'isCompleted': isCompleted,
-        'startedAt': startedAt?.toIso8601String(),
-        'completedAt': completedAt?.toIso8601String(),
+        'plannedMinutes': plannedMinutes,
+        'reminderEnabled': reminderEnabled,
+        'startedAt': startedAt?.toUtc().toIso8601String(),
+        'completedAt': completedAt?.toUtc().toIso8601String(),
       };
 
   ExperimentTask copyWith({
     bool? isCompleted,
     Object? startedAt = _unset,
     Object? completedAt = _unset,
+    Object? plannedMinutes = _unset,
+    bool? reminderEnabled,
   }) {
     return ExperimentTask(
       id: id,
       title: title,
       isCompleted: isCompleted ?? this.isCompleted,
+      plannedMinutes: identical(plannedMinutes, _unset)
+          ? this.plannedMinutes
+          : plannedMinutes as int?,
+      reminderEnabled: reminderEnabled ?? this.reminderEnabled,
       startedAt: identical(startedAt, _unset)
           ? this.startedAt
           : startedAt as DateTime?,
