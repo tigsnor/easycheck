@@ -196,6 +196,13 @@ void main() {
                 find.byType(ExperimentAttachmentsScreen))
             .readOnly,
         isTrue);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await start(tester, reason: '두 번째 정정');
+    await review(tester);
+    final note = find.byKey(const ValueKey('completion-review-note'));
+    await tap(tester, note);
+    expect(tester.widget<TextField>(note).controller!.text, isEmpty);
   });
 
   testWidgets(

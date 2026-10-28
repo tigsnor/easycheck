@@ -815,6 +815,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     if (await _persistTransition(
         _persistedExperiment.beginCorrection(reason, DateTime.now()))) {
       _pendingCorrectionReason = '';
+      _completionReviewNote = '';
     }
   }
 
