@@ -1,3 +1,6 @@
+import 'dart:async';
+import '../../reminders/application/task_reminder_coordinator.dart';
+import '../../reminders/data/task_reminder_service.dart';
 import 'package:flutter/foundation.dart';
 import '../../attachments/domain/experiment_attachment.dart';
 import '../../attachments/data/attachment_file_store.dart';
@@ -31,6 +34,7 @@ class ExperimentsHomeScreen extends StatefulWidget {
     DocumentExchangeService? documentExchangeService,
     PlateTemplateRepository? plateTemplateRepository,
     this.recoveryService,
+    this.reminderService,
     this.attachmentFileStore,
     this.attachmentExchange = const PlatformAttachmentExchangeService(),
     super.key,
@@ -42,6 +46,7 @@ class ExperimentsHomeScreen extends StatefulWidget {
             plateTemplateRepository ?? const FilePlateTemplateRepository();
 
   final BackupRecoveryService? recoveryService;
+  final TaskReminderService? reminderService;
   final AttachmentFileStore? attachmentFileStore;
   final AttachmentExchangeService attachmentExchange;
   final ExperimentRepository repository;
@@ -53,7 +58,10 @@ class ExperimentsHomeScreen extends StatefulWidget {
   State<ExperimentsHomeScreen> createState() => _ExperimentsHomeScreenState();
 }
 
-class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
+class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
+    with WidgetsBindingObserver {
+  late final TaskReminderCoordinator _reminders;
+
   static const _backupService = EasyCheckBackupService();
 
   final _searchController = TextEditingController();
@@ -99,6 +107,10 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
   @override
   void initState() {
     super.initState();
+    _reminders = TaskReminderCoordinator(
+        loadExperiments: widget.repository.loadExperiments,
+        service: widget.reminderService ?? PlatformTaskReminderService());
+    WidgetsBinding.instance.addObserver(this);
     _searchController.addListener(() {
       setState(() => _query = _searchController.text.trim().toLowerCase());
     });
@@ -107,8 +119,15 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _reminders.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_reminders.refresh());
   }
 
   List<Experiment> get _filteredExperiments {
@@ -186,6 +205,22 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
                         ],
                       ),
                       const SizedBox(height: 20),
+                      ListenableBuilder(
+                          listenable: _reminders,
+                          builder: (context, _) => _reminders.error == null
+                              ? const SizedBox.shrink()
+                              : Card(
+                                  child: ListTile(
+                                  title: const Text('종료 알림 동기화 필요'),
+                                  subtitle: const Text(
+                                      '저장된 실험 기록은 유지됩니다. 예약을 다시 확인하세요.'),
+                                  trailing: IconButton(
+                                      tooltip: '알림 다시 확인',
+                                      onPressed: _reminders.busy
+                                          ? null
+                                          : () => _reminders.refresh(),
+                                      icon: const Icon(Icons.refresh)),
+                                ))),
                       _QuickActionsCard(onCreate: _showCreateExperimentSheet),
                       const SizedBox(height: 18),
                       Text(
@@ -263,6 +298,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
         _isLoading = false;
         _loadError = null;
       });
+      await _reminders.refresh();
     } on Object catch (error) {
       if (!mounted) {
         return;
@@ -283,6 +319,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
         builder: (_) => ExperimentDetailScreen(
           experiment: experiment,
           onChanged: _saveExperiment,
+          reminders: _reminders,
           attachmentFileStore: _attachmentStore,
           attachmentExchange: widget.attachmentExchange,
           plateRepository: widget.plateRepository,
@@ -323,6 +360,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
       return;
     }
     setState(() => _upsertLocalExperiment(saved));
+    await _reminders.refresh();
   }
 
   Future<void> _duplicateExperiment(Experiment experiment) async {
@@ -418,6 +456,8 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
       _experiments =
           _experiments.where((item) => item.id != experiment.id).toList();
     });
+    await _reminders.refresh();
+    if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -453,6 +493,8 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
       return;
     }
     setState(() => _upsertLocalExperiment(experiment));
+    await _reminders.refresh();
+    if (!mounted) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('실험과 Plate 데이터를 복원했습니다.')));
@@ -529,6 +571,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
       builder: (context) => AlertDialog(
         title: Text(request.replace ? '백업으로 전체 복구할까요?' : '백업을 복원할까요?'),
         content: Text(
+          '복원된 미래 시각의 종료 알림은 현재 기기 권한에 따라 다시 예약됩니다. 지난 시각은 새로 알리지 않습니다.\n\n'
           '실험 ${backup.experiments.length}개 · Plate ${backup.plates.length}개 · 첨부 ${backup.attachmentCount}개 · $templateMessage\n\n'
           '${request.replace ? '현재 실험과 Plate 대신 백업 내용을 사용합니다. 백업에 없는 실험은 목록에서 사라집니다. 기존 파일은 별도로 보존하며 새 데이터 검증이 끝난 뒤 전환합니다.' : '같은 ID는 백업 내용으로 덮어쓰고 다른 데이터는 유지합니다. 저장 실패 시 복원 시작 전 상태로 되돌립니다.'}',
         ),
@@ -571,6 +614,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen> {
         )));
       }
     } on Object catch (error) {
+      await _reminders.refresh();
       if (mounted) _showError('백업을 복원하지 못했습니다: $error');
     } finally {
       if (mounted) setState(() => _isRestoring = false);
