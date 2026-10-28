@@ -1165,7 +1165,7 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                     subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (tasks[index].completedAt != null)
+                          if (tasks[index].isCompleted)
                             Text(_completedLabel(tasks[index]))
                           else if (tasks[index].startedAt != null)
                             _runningLabel(tasks[index])!,
@@ -1189,9 +1189,6 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                             final now = DateTime.now();
                             updated[index] = tasks[index].copyWith(
                               isCompleted: value ?? false,
-                              startedAt: value == true
-                                  ? tasks[index].startedAt ?? now
-                                  : tasks[index].startedAt,
                               completedAt: value == true ? now : null,
                             );
                             widget.onChanged(updated);
@@ -1355,9 +1352,14 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
   }
 
   String _completedLabel(ExperimentTask task) {
-    final completedAt = task.completedAt!;
+    final completedAt = task.completedAt;
     final startedAt = task.startedAt;
-    if (startedAt == null) return '${_dateTimeLabel(completedAt)} 완료';
+    final completed =
+        completedAt == null ? '완료 시각 미기록' : '${_dateTimeLabel(completedAt)} 완료';
+    if (startedAt == null) return '$completed · 시작 시각 미기록';
+    if (completedAt == null) {
+      return '$completed · ${_dateTimeLabel(startedAt)} 시작';
+    }
     return '${_dateTimeLabel(completedAt)} 완료 · ${_durationLabel(completedAt.difference(startedAt))}';
   }
 
