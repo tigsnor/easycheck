@@ -2,6 +2,7 @@ import '../../reminders/application/task_reminder_coordinator.dart';
 import '../../reminders/presentation/reminder_status_card.dart';
 import '../../reminders/presentation/task_timer_settings.dart';
 import '../../reminders/presentation/task_record_status.dart';
+import '../../reminders/domain/task_reminder_target.dart';
 import 'widgets/experiment_result_summary.dart';
 import 'widgets/experiment_revision_screen.dart';
 import '../../../shared/models/well_position.dart';
@@ -28,6 +29,7 @@ class ExperimentDetailScreen extends StatefulWidget {
     required this.onChanged,
     this.plateRepository,
     this.reminders,
+    this.reminderTarget,
     this.plateTemplateRepository,
     this.documentExchangeService,
     this.attachmentFileStore = const FileAttachmentFileStore(),
@@ -39,6 +41,7 @@ class ExperimentDetailScreen extends StatefulWidget {
   final Future<void> Function(Experiment experiment) onChanged;
   final PlateRepository? plateRepository;
   final TaskReminderCoordinator? reminders;
+  final TaskReminderTarget? reminderTarget;
   final PlateTemplateRepository? plateTemplateRepository;
   final DocumentExchangeService? documentExchangeService;
   final AttachmentFileStore attachmentFileStore;
@@ -88,14 +91,16 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _section = switch (widget.experiment.status) {
-      ExperimentStatus.inProgress => 1,
-      ExperimentStatus.completed ||
-      ExperimentStatus.archived ||
-      ExperimentStatus.correcting =>
-        2,
-      _ => 0,
-    };
+    _section = widget.reminderTarget != null
+        ? 1
+        : switch (widget.experiment.status) {
+            ExperimentStatus.inProgress => 1,
+            ExperimentStatus.completed ||
+            ExperimentStatus.archived ||
+            ExperimentStatus.correcting =>
+              2,
+            _ => 0,
+          };
     _persistedExperiment = widget.experiment;
     _lastSavedAt = widget.experiment.updatedAt;
     _isLocked = widget.experiment.isReadOnly;
@@ -114,7 +119,8 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     );
     _status = widget.experiment.status;
     _experimentType = widget.experiment.experimentType;
-    _tasks = widget.experiment.tasks.isEmpty &&
+    _tasks = widget.reminderTarget == null &&
+            widget.experiment.tasks.isEmpty &&
             !widget.experiment.isReadOnly &&
             widget.experiment.status != ExperimentStatus.correcting
         ? _defaultTasks(widget.experiment.experimentType)
@@ -430,7 +436,15 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       ];
 
   List<Widget> _executionContent() => [
+        if (widget.reminderTarget != null)
+          Card(
+              key: const ValueKey('reminder-open-context'),
+              child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                      widget.reminderTarget!.message(_persistedExperiment)))),
         _ExperimentChecklistCard(
+          focusTaskId: widget.reminderTarget?.taskId,
           tasks: _tasks,
           enabled: _editingEnabled &&
               !_isSaving &&
@@ -1182,8 +1196,10 @@ class _ExperimentChecklistCard extends StatefulWidget {
     required this.enabled,
     required this.onRecord,
     required this.recordStatus,
+    this.focusTaskId,
   });
 
+  final String? focusTaskId;
   final Future<void> Function(ExperimentTask task) onRecord;
   final Widget Function(ExperimentTask task) recordStatus;
   final List<ExperimentTask> tasks;
@@ -1534,27 +1550,52 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
         if (widget.tasks[i].startedAt != null && !widget.tasks[i].isCompleted) i
     ];
     final next = widget.tasks.indexWhere((task) => !task.isCompleted);
-    if (next < 0) {
+    final target =
+        widget.tasks.indexWhere((task) => task.id == widget.focusTaskId);
+    final regular = running.isEmpty ? (next < 0 ? <int>[] : [next]) : running;
+    final focused = [
+      if (target >= 0) target,
+      ...regular.where((index) => index != target)
+    ];
+    if (focused.isEmpty) {
       return [
-        const Padding(
-            padding: EdgeInsets.all(8),
-            child: Text('모든 단계가 완료되었습니다. 결과를 확인하세요.'))
+        Padding(
+            padding: const EdgeInsets.all(8),
+            child: Text(widget.tasks.isEmpty
+                ? '등록된 단계가 없습니다.'
+                : '모든 단계가 완료되었습니다. 결과를 확인하세요.'))
       ];
     }
-    final focused = running.isEmpty ? [next] : running;
     return [
       Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Text(running.isEmpty ? '다음 단계' : '진행 중 ${running.length}개 단계',
+          child: Text(
+              target >= 0
+                  ? '알림에서 연 단계'
+                  : running.isEmpty
+                      ? '다음 단계'
+                      : '진행 중 ${running.length}개 단계',
               style: Theme.of(context).textTheme.titleMedium)),
       for (final index in focused)
-        Padding(
-            padding: const EdgeInsets.all(8),
+        Container(
+            key: index == target
+                ? ValueKey('reminder-target-task-${widget.tasks[index].id}')
+                : null,
+            margin: const EdgeInsets.all(8),
+            padding:
+                index == target ? const EdgeInsets.all(12) : EdgeInsets.zero,
+            decoration: index == target
+                ? BoxDecoration(
+                    color: Theme.of(context).colorScheme.secondaryContainer,
+                    borderRadius: BorderRadius.circular(12))
+                : null,
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(widget.tasks[index].title,
                       style: Theme.of(context).textTheme.titleLarge),
+                  if (widget.tasks[index].isCompleted)
+                    Text(_completedLabel(widget.tasks[index])),
                   _deadlineLabel(widget.tasks[index]),
                   widget.recordStatus(widget.tasks[index]),
                   TextButton(
@@ -1563,17 +1604,22 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                       onPressed:
                           widget.enabled ? () => _configureTimer(index) : null,
                       child: const Text('예정 시간 설정')),
-                  if (widget.tasks[index].startedAt != null)
+                  if (!widget.tasks[index].isCompleted &&
+                      widget.tasks[index].startedAt != null)
                     _runningLabel(widget.tasks[index])!,
-                  const SizedBox(height: 8),
-                  FilledButton.icon(
-                    key: ValueKey('focused-task-${widget.tasks[index].id}'),
-                    onPressed:
-                        widget.enabled ? () => _toggleTimer(index) : null,
-                    icon:
-                        Icon(running.isEmpty ? Icons.play_arrow : Icons.check),
-                    label: Text(running.isEmpty ? '시작하고 저장' : '완료하고 저장'),
-                  ),
+                  if (!widget.tasks[index].isCompleted) ...[
+                    const SizedBox(height: 8),
+                    FilledButton.icon(
+                        key: ValueKey('focused-task-${widget.tasks[index].id}'),
+                        onPressed:
+                            widget.enabled ? () => _toggleTimer(index) : null,
+                        icon: Icon(widget.tasks[index].startedAt == null
+                            ? Icons.play_arrow
+                            : Icons.check),
+                        label: Text(widget.tasks[index].startedAt == null
+                            ? '시작하고 저장'
+                            : '완료하고 저장')),
+                  ],
                 ])),
       const Padding(
           padding: EdgeInsets.all(8),

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import '../domain/task_reminder.dart';
@@ -12,20 +13,75 @@ abstract class TaskReminderService {
   Future<void> cancel(int id);
 }
 
-class PlatformTaskReminderService implements TaskReminderService {
+abstract interface class TaskReminderOpenSource {
+  Future<void> listenForOpens(void Function(String? payload) onOpen);
+  void stopListeningForOpens();
+}
+
+class PlatformTaskReminderService
+    implements TaskReminderService, TaskReminderOpenSource {
+  PlatformTaskReminderService() : _testPlatform = null;
+
+  @visibleForTesting
+  PlatformTaskReminderService.forPlatformTests(TargetPlatform platform)
+      : _testPlatform = platform;
+
+  final TargetPlatform? _testPlatform;
+  TargetPlatform? get _platform =>
+      _testPlatform ??
+      (Platform.isAndroid
+          ? TargetPlatform.android
+          : Platform.isIOS
+              ? TargetPlatform.iOS
+              : null);
   final _plugin = FlutterLocalNotificationsPlugin();
   bool _initialized = false;
-  bool get _supported => Platform.isAndroid || Platform.isIOS;
+  Future<void>? _initializing;
+  bool _launchRead = false;
+  void Function(String? payload)? _onOpen;
+
+  @override
+  Future<void> listenForOpens(void Function(String? payload) onOpen) async {
+    _onOpen = onOpen;
+    if (!_supported) return;
+    await _initialize();
+    if (_launchRead) return;
+    final launch = await _plugin.getNotificationAppLaunchDetails();
+    _launchRead = true;
+    if (launch?.didNotificationLaunchApp == true) {
+      _onOpen?.call(launch?.notificationResponse?.payload);
+    }
+  }
+
+  @override
+  void stopListeningForOpens() => _onOpen = null;
+  bool get _supported => _platform != null;
 
   Future<void> _initialize() async {
     if (_initialized || !_supported) return;
-    final ok = await _plugin.initialize(const InitializationSettings(
-      android: AndroidInitializationSettings('ic_task_reminder'),
-      iOS: DarwinInitializationSettings(
-          requestAlertPermission: false,
-          requestBadgePermission: false,
-          requestSoundPermission: false),
-    ));
+    final pending = _initializing ??= _initializePlugin();
+    try {
+      await pending;
+    } on Object {
+      _initializing = null;
+      rethrow;
+    }
+  }
+
+  Future<void> _initializePlugin() async {
+    final ok = await _plugin.initialize(
+        const InitializationSettings(
+          android: AndroidInitializationSettings('ic_task_reminder'),
+          iOS: DarwinInitializationSettings(
+              requestAlertPermission: false,
+              requestBadgePermission: false,
+              requestSoundPermission: false),
+        ), onDidReceiveNotificationResponse: (response) {
+      if (response.notificationResponseType ==
+          NotificationResponseType.selectedNotification) {
+        _onOpen?.call(response.payload);
+      }
+    });
     if (ok != true) throw StateError('알림 기능을 초기화하지 못했습니다.');
     _initialized = true;
   }
@@ -35,7 +91,7 @@ class PlatformTaskReminderService implements TaskReminderService {
     if (!_supported) return ReminderPermission.unsupported;
     await _initialize();
     bool enabled;
-    if (Platform.isAndroid) {
+    if (_platform == TargetPlatform.android) {
       final android = _plugin.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>()!;
       if (request) await android.requestNotificationsPermission();
