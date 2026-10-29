@@ -21,6 +21,7 @@ class TaskReminderCoordinator extends ChangeNotifier {
   ReminderPermission? permission;
   Set<String> scheduledKeys = {};
   int deferredCount = 0;
+  Set<String> deferredKeys = {};
 
   Future<void> refresh({bool requestPermission = false}) {
     _queue = _queue.then((_) => _refresh(requestPermission));
@@ -55,6 +56,9 @@ class TaskReminderCoordinator extends ChangeNotifier {
       deferredCount = permission == ReminderPermission.granted
           ? desired.length - selected.length
           : 0;
+      deferredKeys = permission == ReminderPermission.granted
+          ? desired.skip(limit).map((item) => item.key).toSet()
+          : {};
       final wanted = {for (final item in selected) item.id: item};
       scheduledKeys = {};
       for (final entry in pending.entries) {
@@ -63,6 +67,7 @@ class TaskReminderCoordinator extends ChangeNotifier {
           await service.cancel(entry.key);
         }
       }
+      final expected = <int, String>{};
       for (final item in selected) {
         if (foreign.contains(item.id)) {
           throw StateError('다른 알림과 ID가 겹칩니다. 예약 상태를 확인해주세요.');
@@ -73,8 +78,20 @@ class TaskReminderCoordinator extends ChangeNotifier {
           continue;
         }
         if (pending[item.id] != item.payload) await service.schedule(item);
-        scheduledKeys.add(item.key);
+        expected[item.id] = item.payload;
       }
+      final confirmed = await service.pending();
+      if (confirmed.entries.any((entry) =>
+          (entry.value?.startsWith(taskReminderPrefix) ?? false) &&
+          expected[entry.key] != entry.value)) {
+        throw StateError('이전 알림의 취소를 확인하지 못했습니다.');
+      }
+      scheduledKeys = {
+        for (final item in selected)
+          if (expected[item.id] == item.payload &&
+              confirmed[item.id] == item.payload)
+            item.key
+      };
     } on Object catch (cause) {
       error = cause;
       scheduledKeys = {};

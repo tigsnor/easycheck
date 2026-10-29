@@ -301,7 +301,7 @@ void main() {
     await tester.tap(timerButton);
     await tester.pump(const Duration(seconds: 2));
     expect(find.textContaining('경과'), findsWidgets);
-    expect(find.widgetWithText(TextButton, '완료'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, '완료·저장'), findsOneWidget);
 
     await tester.ensureVisible(timerButton);
     await tester.pumpAndSettle();

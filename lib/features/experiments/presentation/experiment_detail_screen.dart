@@ -1,6 +1,7 @@
 import '../../reminders/application/task_reminder_coordinator.dart';
 import '../../reminders/presentation/reminder_status_card.dart';
 import '../../reminders/presentation/task_timer_settings.dart';
+import '../../reminders/presentation/task_record_status.dart';
 import 'widgets/experiment_result_summary.dart';
 import 'widgets/experiment_revision_screen.dart';
 import '../../../shared/models/well_position.dart';
@@ -70,6 +71,12 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
               _status == ExperimentStatus.archived));
   late String _savedFingerprint;
   bool _isSaving = false;
+  ({
+    Experiment experiment,
+    ExperimentTask before,
+    ExperimentTask task
+  })? _pendingTask;
+
   bool _allowPop = false;
   DateTime? _lastSavedAt;
   Object? _saveError;
@@ -215,6 +222,30 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.all(20),
             children: [
+              if (_pendingTask != null && _saveError != null) ...[
+                Card(
+                    child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                  '${_pendingTask!.task.title}: 단계 기록을 저장하지 못했습니다.'),
+                              const Text(
+                                  '처음 누른 시각으로 다시 저장합니다. 알림은 저장된 기록을 따릅니다.'),
+                              Wrap(spacing: 8, children: [
+                                TextButton(
+                                    key: const ValueKey('retry-task-record'),
+                                    onPressed: _isSaving ? null : _commitTask,
+                                    child: const Text('단계 저장 재시도')),
+                                TextButton(
+                                    key: const ValueKey('discard-task-record'),
+                                    onPressed: _isSaving ? null : _discardTask,
+                                    child: const Text('실패한 단계 변경 취소')),
+                              ]),
+                            ]))),
+                const SizedBox(height: 12),
+              ],
               if (_hasUnsavedChanges || _saveError != null) ...[
                 SaveStatusIndicator(
                   status: _saveStatus,
@@ -401,8 +432,18 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   List<Widget> _executionContent() => [
         _ExperimentChecklistCard(
           tasks: _tasks,
-          enabled: _editingEnabled && !_isSaving,
+          enabled: _editingEnabled &&
+              !_isSaving &&
+              _saveError == null &&
+              _pendingTask == null,
           onChanged: (tasks) => setState(() => _tasks = tasks),
+          onRecord: _recordTask,
+          recordStatus: (task) => TaskRecordStatus(
+              task: task,
+              experiment: _persistedExperiment,
+              coordinator: widget.reminders,
+              saving: _pendingTask?.task.id == task.id && _isSaving,
+              failed: _pendingTask?.task.id == task.id && _saveError != null),
         ),
         const SizedBox(height: 16),
         if (widget.reminders != null) ...[
@@ -492,7 +533,8 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       ];
 
   bool get _hasUnsavedChanges =>
-      !_isLocked && _fingerprint() != _savedFingerprint;
+      !_isLocked &&
+      (_pendingTask != null || _fingerprint() != _savedFingerprint);
 
   SaveStatus get _saveStatus {
     if (_isSaving) return SaveStatus.saving;
@@ -631,8 +673,125 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     if (mounted) setState(() => _resultSummaryVersion++);
   }
 
+  Future<void> _recordTask(ExperimentTask task) async {
+    if (_isSaving || _isLocked || _pendingTask != null || _saveError != null) {
+      return;
+    }
+    final before = _tasks.firstWhere((item) => item.id == task.id);
+    final baseline = jsonDecode(_savedFingerprint) as Map<String, dynamic>;
+    final savedTasks = (baseline['tasks'] as List)
+        .map((item) =>
+            ExperimentTask.fromJson(Map<String, Object?>.from(item as Map)))
+        .toList();
+    final index = savedTasks.indexWhere((item) => item.id == task.id);
+    if (index < 0) {
+      final savedIds = savedTasks.map((item) => item.id).toSet();
+      final insertAt = _tasks
+          .takeWhile((item) => item.id != task.id)
+          .where((item) => savedIds.contains(item.id))
+          .length;
+      savedTasks.insert(insertAt, task);
+    } else {
+      savedTasks[index] = task;
+    }
+    final now = DateTime.now();
+    final shouldProgress = task.startedAt != null &&
+        !task.isCompleted &&
+        (_persistedExperiment.status == ExperimentStatus.draft ||
+            _persistedExperiment.status == ExperimentStatus.planned);
+    final updated = _persistedExperiment.copyWith(
+        tasks: savedTasks,
+        updatedAt: now,
+        status: shouldProgress
+            ? ExperimentStatus.inProgress
+            : _persistedExperiment.status,
+        revisions: [
+          ..._persistedExperiment.revisions,
+          if (_isCorrecting)
+            ExperimentRevision(
+                id: 'revision-${now.microsecondsSinceEpoch}-task',
+                changedAt: now,
+                summary: '정정 단계 기록 저장: ${task.title}',
+                before: _persistedExperiment.copyWith(revisions: [])),
+        ]);
+    setState(() {
+      _tasks = [for (final item in _tasks) item.id == task.id ? task : item];
+      _pendingTask = (experiment: updated, before: before, task: task);
+    });
+    await _commitTask();
+  }
+
+  Future<bool> _commitTask() async {
+    final pending = _pendingTask;
+    if (pending == null || _isSaving) return false;
+    setState(() {
+      _isSaving = true;
+      _saveError = null;
+    });
+    try {
+      await widget.onChanged(pending.experiment);
+    } on Object catch (error) {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+          _saveError = error;
+        });
+      }
+      return false;
+    }
+    if (!mounted) return true;
+    setState(() {
+      final baseline = jsonDecode(_savedFingerprint) as Map<String, dynamic>;
+      if (_status.name == baseline['status']) {
+        _status = pending.experiment.status;
+      }
+      baseline['status'] = pending.experiment.status.name;
+      baseline['tasks'] =
+          pending.experiment.tasks.map((task) => task.toJson()).toList();
+      _savedFingerprint = jsonEncode(baseline);
+      _persistedExperiment = pending.experiment;
+      _lastSavedAt = pending.experiment.updatedAt;
+      _pendingTask = null;
+      _isSaving = false;
+      _saveError = null;
+    });
+    return true;
+  }
+
+  Future<void> _discardTask() async {
+    final pending = _pendingTask;
+    if (pending == null || _isSaving) return;
+    final discard = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+                title: const Text('실패한 단계 변경을 취소할까요?'),
+                content:
+                    const Text('이번 시작·완료 조작 직전으로 돌아갑니다. 다른 미저장 입력은 유지합니다.'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('계속 편집')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('단계 변경 취소'))
+                ]));
+    if (discard != true || !mounted) return;
+    setState(() {
+      _tasks = [
+        for (final item in _tasks)
+          item.id == pending.task.id ? pending.before : item
+      ];
+      _pendingTask = null;
+      _saveError = null;
+    });
+  }
+
   Future<bool> _save({bool showMessage = true}) async {
     if (_isSaving || _isLocked) return false;
+    if (_pendingTask != null) {
+      if (!await _commitTask() || !mounted) return false;
+      if (!_hasUnsavedChanges) return true;
+    }
     if (_isCorrecting && !_hasUnsavedChanges) return true;
     final title = _titleController.text.trim();
     if (title.isEmpty) {
@@ -1021,8 +1180,12 @@ class _ExperimentChecklistCard extends StatefulWidget {
     required this.tasks,
     required this.onChanged,
     required this.enabled,
+    required this.onRecord,
+    required this.recordStatus,
   });
 
+  final Future<void> Function(ExperimentTask task) onRecord;
+  final Widget Function(ExperimentTask task) recordStatus;
   final List<ExperimentTask> tasks;
   final ValueChanged<List<ExperimentTask>> onChanged;
   final bool enabled;
@@ -1331,6 +1494,7 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                           else if (tasks[index].startedAt != null)
                             _runningLabel(tasks[index])!,
                           _deadlineLabel(tasks[index]),
+                          widget.recordStatus(tasks[index]),
                           TextButton(
                               key: ValueKey('task-time-${tasks[index].id}'),
                               onPressed: widget.enabled
@@ -1345,15 +1509,7 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                     ),
                     value: tasks[index].isCompleted,
                     onChanged: widget.enabled
-                        ? (value) {
-                            final updated = [...tasks];
-                            final now = DateTime.now();
-                            updated[index] = tasks[index].copyWith(
-                              isCompleted: value ?? false,
-                              completedAt: value == true ? now : null,
-                            );
-                            widget.onChanged(updated);
-                          }
+                        ? (value) => _setCompleted(index, value ?? false)
                         : null,
                   ),
               ],
@@ -1400,6 +1556,7 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                   Text(widget.tasks[index].title,
                       style: Theme.of(context).textTheme.titleLarge),
                   _deadlineLabel(widget.tasks[index]),
+                  widget.recordStatus(widget.tasks[index]),
                   TextButton(
                       key: ValueKey(
                           'focused-task-time-${widget.tasks[index].id}'),
@@ -1415,13 +1572,13 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                         widget.enabled ? () => _toggleTimer(index) : null,
                     icon:
                         Icon(running.isEmpty ? Icons.play_arrow : Icons.check),
-                    label: Text(running.isEmpty ? '이 단계 시작' : '단계 완료'),
+                    label: Text(running.isEmpty ? '시작하고 저장' : '완료하고 저장'),
                   ),
                 ])),
       const Padding(
           padding: EdgeInsets.all(8),
           child: Text(
-              '단계 변경·예정 시간·메모는 상단 저장을 눌러 보관하세요. 종료 알림은 저장한 시작 시각과 예정 시간을 기준으로 예약합니다.')),
+              '시작·완료는 이 단계의 시간·알림 설정과 함께 바로 저장합니다. 다른 단계 설정·추가한 단계·메모는 상단 저장이 필요합니다. 완료 체크를 해제할 때도 확인 후 저장합니다.')),
     ];
   }
 
@@ -1495,13 +1652,39 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
   }
 
   void _toggleTimer(int index) {
+    if (!widget.enabled) return;
     final task = widget.tasks[index];
+    if (task.isCompleted) return;
     final now = DateTime.now();
-    final updated = [...widget.tasks];
-    updated[index] = task.startedAt == null
+    widget.onRecord(task.startedAt == null
         ? task.copyWith(startedAt: now)
-        : task.copyWith(isCompleted: true, completedAt: now);
-    widget.onChanged(updated);
+        : task.copyWith(isCompleted: true, completedAt: now));
+  }
+
+  Future<void> _setCompleted(int index, bool completed) async {
+    if (!widget.enabled) return;
+    final task = widget.tasks[index];
+    if (!completed) {
+      final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+                  title: const Text('완료를 해제하고 저장할까요?'),
+                  content: const Text(
+                      '기존 시작 시각은 유지합니다. 미래 예정 시각과 알림 설정이 있으면 다시 예약될 수 있습니다.'),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('취소')),
+                    FilledButton(
+                        key: const ValueKey('confirm-reopen-task'),
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('완료 해제하고 저장'))
+                  ]));
+      if (confirmed != true || !mounted || !widget.enabled) return;
+    }
+    await widget.onRecord(task.copyWith(
+        isCompleted: completed,
+        completedAt: completed ? DateTime.now() : null));
   }
 
   Widget? _runningLabel(ExperimentTask task) {
@@ -1556,7 +1739,7 @@ class _TaskTimerButton extends StatelessWidget {
     return TextButton(
       key: ValueKey('experiment-task-timer-${task.id}'),
       onPressed: onPressed,
-      child: Text(task.startedAt == null ? '시작' : '완료'),
+      child: Text(task.startedAt == null ? '시작·저장' : '완료·저장'),
     );
   }
 }

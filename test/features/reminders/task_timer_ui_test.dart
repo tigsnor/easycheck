@@ -98,6 +98,11 @@ void main() {
     await reveal(tester, checkbox);
     await tester.tap(checkbox);
     await tester.pumpAndSettle();
+    final confirm = find.byKey(const ValueKey('confirm-reopen-task'));
+    if (confirm.evaluate().isNotEmpty) {
+      await tester.tap(confirm);
+      await tester.pumpAndSettle();
+    }
   }
 
   testWidgets(
@@ -109,6 +114,7 @@ void main() {
     await reveal(tester, all);
     await tester.tap(all);
     await tester.pumpAndSettle();
+    repo.fail = true;
     await toggleTask(tester);
     await reveal(tester, find.textContaining('시작 시각 미기록'));
     expect(find.textContaining('시작 시각 미기록'), findsOneWidget);
@@ -186,8 +192,6 @@ void main() {
     expect(os.entries, isEmpty);
     await tester.pump(const Duration(seconds: 5));
     await tap(tester, 'focused-task-t');
-    expect(os.entries, isEmpty);
-    await save(tester);
     expect(os.entries.length, 1);
     expect(
         os.scheduled.single.dueAt, repo.experiments.single.tasks.single.dueAt);
@@ -199,8 +203,8 @@ void main() {
       (tester) async {
     await open(tester);
     await configure(tester);
-    await tap(tester, 'focused-task-t');
     repo.fail = true;
+    await tap(tester, 'focused-task-t');
     await save(tester);
     expect(os.entries, isEmpty);
     expect(repo.experiments.single.tasks.single.startedAt, isNull);
@@ -218,8 +222,8 @@ void main() {
       (tester) async {
     await open(tester);
     await configure(tester);
-    await tap(tester, 'focused-task-t');
     os.failSchedule = true;
+    await tap(tester, 'focused-task-t');
     await save(tester);
     expect(repo.experiments.single.tasks.single.startedAt, isNotNull);
     final status = find.textContaining('알림 예약 상태를 확인하지 못했습니다');
@@ -229,9 +233,6 @@ void main() {
     await tap(tester, 'refresh-reminders');
     expect(os.entries.length, 1);
     await tap(tester, 'focused-task-t');
-    expect(os.entries.length,
-        1); // Unsaved completion cannot cancel the saved running step.
-    await save(tester);
     expect(os.entries, isEmpty);
     expect(repo.experiments.single.tasks.single.isCompleted, true);
   });

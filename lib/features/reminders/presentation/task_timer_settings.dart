@@ -60,7 +60,7 @@ class _TaskTimerSettingsState extends State<TaskTimerSettings> {
               value: _reminder,
               onChanged: (value) => setState(() => _reminder = value)),
           const Text(
-              '적용 후 실험 노트를 저장해야 예약됩니다. 알림 권한은 실행 화면에서 허용하세요. Android 절전·집중 모드 등으로 알림이 지연되거나 소리가 나지 않을 수 있습니다.'),
+              '적용 후 상단 저장 또는 이 단계의 시작·완료 저장을 해야 예약에 반영됩니다. 알림 권한은 실행 화면에서 허용하세요. Android 절전·집중 모드 등으로 알림이 지연되거나 소리가 나지 않을 수 있습니다.'),
           if (widget.task.startedAt != null)
             const Text(
                 '진행 중인 단계는 기존 시작 시각을 기준으로 예정 시각이 바뀝니다. 이미 지난 시각은 다시 알리지 않습니다.'),
