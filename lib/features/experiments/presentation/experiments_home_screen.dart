@@ -1,6 +1,7 @@
 import 'dart:async';
 import '../../reminders/application/task_reminder_coordinator.dart';
 import '../../reminders/data/task_reminder_service.dart';
+import '../../reminders/domain/task_reminder_target.dart';
 import 'package:flutter/foundation.dart';
 import '../../attachments/domain/experiment_attachment.dart';
 import '../../attachments/data/attachment_file_store.dart';
@@ -61,6 +62,16 @@ class ExperimentsHomeScreen extends StatefulWidget {
 class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
     with WidgetsBindingObserver {
   late final TaskReminderCoordinator _reminders;
+  TaskReminderOpenSource? _reminderOpenSource;
+  final List<TaskReminderTarget> _pendingReminderTargets = [];
+  String? _activeReminderIdentity;
+  bool _openingReminder = false;
+  bool _homeDependenciesReady = false;
+  bool _reminderFrameScheduled = false;
+  bool _reminderTargetFailed = false;
+  bool _reminderListenerFailed = false;
+  bool _attachingReminderListener = false;
+  String? _reminderNotice;
 
   static const _backupService = EasyCheckBackupService();
 
@@ -114,12 +125,27 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
     _searchController.addListener(() {
       setState(() => _query = _searchController.text.trim().toLowerCase());
     });
+    final service = _reminders.service;
+    if (service is TaskReminderOpenSource) {
+      _reminderOpenSource = service as TaskReminderOpenSource;
+      unawaited(_listenForReminderOpens());
+    }
     _loadExperiments();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _homeDependenciesReady = true;
+    // Subscribe to route visibility, including closing sheets/child editors.
+    ModalRoute.of(context);
+    _scheduleReminderOpen();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _reminderOpenSource?.stopListeningForOpens();
     _reminders.dispose();
     _searchController.dispose();
     super.dispose();
@@ -127,7 +153,111 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) unawaited(_reminders.refresh());
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_reminders.refresh());
+      _scheduleReminderOpen();
+    }
+  }
+
+  Future<void> _listenForReminderOpens() async {
+    if (_attachingReminderListener) {
+      return;
+    }
+    _attachingReminderListener = true;
+    try {
+      await _reminderOpenSource?.listenForOpens(_receiveReminderOpen);
+      if (mounted) setState(() => _reminderListenerFailed = false);
+    } on Object {
+      if (mounted) setState(() => _reminderListenerFailed = true);
+    } finally {
+      _attachingReminderListener = false;
+    }
+  }
+
+  void _receiveReminderOpen(String? payload) {
+    if (!mounted) return;
+    final target = TaskReminderTarget.parse(payload);
+    if (target == null) {
+      setState(
+          () => _reminderNotice = '알림의 실험·단계 정보를 확인할 수 없습니다. 홈에서 노트를 선택하세요.');
+      return;
+    }
+    if (target.identity == _activeReminderIdentity ||
+        _pendingReminderTargets
+            .any((item) => item.identity == target.identity)) {
+      return;
+    }
+    setState(() {
+      _pendingReminderTargets.add(target);
+    });
+    if (_homeDependenciesReady && ModalRoute.of(context)?.isCurrent != true) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('알림 이동이 대기 중입니다. 현재 화면을 마치고 홈으로 돌아오면 해당 단계를 엽니다.')));
+    }
+    _scheduleReminderOpen();
+  }
+
+  void _scheduleReminderOpen() {
+    if (_reminderFrameScheduled ||
+        !mounted ||
+        _pendingReminderTargets.isEmpty) {
+      return;
+    }
+    _reminderFrameScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _reminderFrameScheduled = false;
+      if (mounted) unawaited(_openPendingReminder());
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  bool get _canOpenReminder =>
+      !_isLoading &&
+      !_isDataBusy &&
+      !_isBackupOpen &&
+      !_isDuplicateOpen &&
+      ModalRoute.of(context)?.isCurrent == true &&
+      (WidgetsBinding.instance.lifecycleState == null ||
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed);
+
+  Future<void> _openPendingReminder() async {
+    if (_openingReminder ||
+        _reminderTargetFailed ||
+        _pendingReminderTargets.isEmpty ||
+        !_canOpenReminder) {
+      return;
+    }
+    _openingReminder = true;
+    final target = _pendingReminderTargets.first;
+    try {
+      final records = await widget.repository.loadExperiments();
+      if (!mounted ||
+          !_canOpenReminder ||
+          !_pendingReminderTargets.contains(target)) {
+        return;
+      }
+      final experiment =
+          records.where((item) => item.id == target.experimentId).firstOrNull;
+      setState(() {
+        _experiments = records;
+        _loadError = null;
+        _pendingReminderTargets.remove(target);
+        _reminderNotice =
+            experiment == null ? '알림의 실험이 삭제되었거나 현재 저장소에 없습니다.' : null;
+      });
+      if (experiment == null) {
+        return;
+      }
+      _activeReminderIdentity = target.identity;
+      ScaffoldMessenger.of(context).removeCurrentSnackBar();
+      await _openExperiment(experiment, reminderTarget: target);
+    } on Object {
+      if (mounted) setState(() => _reminderTargetFailed = true);
+    } finally {
+      _openingReminder = false;
+      _activeReminderIdentity = null;
+      if (mounted && !_reminderTargetFailed) _scheduleReminderOpen();
+    }
   }
 
   List<Experiment> get _filteredExperiments {
@@ -151,6 +281,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    _scheduleReminderOpen();
     final experiments = _filteredExperiments;
 
     return PopScope(
@@ -205,6 +336,56 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
                         ],
                       ),
                       const SizedBox(height: 20),
+                      if (_reminderListenerFailed ||
+                          _reminderTargetFailed ||
+                          _reminderNotice != null)
+                        Card(
+                            child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(_reminderListenerFailed
+                                          ? '알림 이동을 준비하지 못했습니다.'
+                                          : _reminderTargetFailed
+                                              ? '알림 대상 기록을 읽지 못했습니다. 기록을 복구하거나 다시 시도하세요.'
+                                              : _reminderNotice!),
+                                      Wrap(spacing: 8, children: [
+                                        if (_reminderListenerFailed)
+                                          TextButton(
+                                              key: const ValueKey(
+                                                  'retry-reminder-listener'),
+                                              onPressed:
+                                                  _attachingReminderListener
+                                                      ? null
+                                                      : _listenForReminderOpens,
+                                              child: const Text('알림 이동 다시 준비')),
+                                        if (_reminderTargetFailed)
+                                          TextButton(
+                                              key: const ValueKey(
+                                                  'retry-reminder-target'),
+                                              onPressed: () {
+                                                setState(() =>
+                                                    _reminderTargetFailed =
+                                                        false);
+                                                _scheduleReminderOpen();
+                                              },
+                                              child: const Text('알림 대상 다시 열기')),
+                                        TextButton(
+                                            key: const ValueKey(
+                                                'dismiss-reminder-navigation'),
+                                            onPressed: () => setState(() {
+                                                  _pendingReminderTargets
+                                                      .clear();
+                                                  _reminderTargetFailed = false;
+                                                  _reminderNotice = null;
+                                                  _reminderListenerFailed =
+                                                      false;
+                                                }),
+                                            child: const Text('닫기')),
+                                      ]),
+                                    ]))),
                       ListenableBuilder(
                           listenable: _reminders,
                           builder: (context, _) => _reminders.error == null
@@ -290,9 +471,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
 
     try {
       final experiments = await widget.repository.loadExperiments();
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       setState(() {
         _experiments = experiments;
         _isLoading = false;
@@ -300,9 +479,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
       });
       await _reminders.refresh();
     } on Object catch (error) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _loadError = error;
@@ -313,11 +490,13 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
     }
   }
 
-  void _openExperiment(Experiment experiment) {
-    Navigator.of(context).push(
+  Future<void> _openExperiment(Experiment experiment,
+      {TaskReminderTarget? reminderTarget}) async {
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ExperimentDetailScreen(
           experiment: experiment,
+          reminderTarget: reminderTarget,
           onChanged: _saveExperiment,
           reminders: _reminders,
           attachmentFileStore: _attachmentStore,
@@ -356,9 +535,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
       ]);
     }
     await widget.repository.saveExperiment(saved);
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
     setState(() => _upsertLocalExperiment(saved));
     await _reminders.refresh();
   }
@@ -449,9 +626,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
       }
       return;
     }
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
     setState(() {
       _experiments =
           _experiments.where((item) => item.id != experiment.id).toList();
@@ -489,9 +664,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
       }
       return;
     }
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
     setState(() => _upsertLocalExperiment(experiment));
     await _reminders.refresh();
     if (!mounted) return;
@@ -633,9 +806,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
       }
       return;
     }
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
 
     final draft = await showModalBottomSheet<_CreateExperimentDraft>(
       context: context,
@@ -677,9 +848,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
       return;
     }
 
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
     setState(() => _upsertLocalExperiment(experiment));
     final message = draft.template == null
         ? '새 실험을 생성했습니다.'
@@ -786,9 +955,7 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
 
   Future<void> _copyBackup() async {
     await Clipboard.setData(ClipboardData(text: widget.exportText!));
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('전체 백업 JSON을 복사했습니다.')));
