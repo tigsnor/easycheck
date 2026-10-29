@@ -72,7 +72,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('switches retain unsaved design, tasks and notes without writing',
+  testWidgets('task save preserves unsaved design and notes across sections',
       (tester) async {
     await open(tester);
     await tester.enterText(
@@ -90,13 +90,15 @@ void main() {
     await section(tester, 'execution');
     await reveal(tester, notes);
     expect(find.text('기포 관찰'), findsOneWidget);
-    expect(saved, isEmpty);
+    expect(saved.single.title, 'Assay');
+    expect(saved.single.notes, isEmpty);
+    expect(saved.single.status, ExperimentStatus.inProgress);
     expect(plates.saveCount, 0);
     await tester.tap(find.widgetWithText(TextButton, '저장'));
     await tester.pumpAndSettle();
-    expect(saved.single.title, 'Updated assay');
-    expect(saved.single.notes, '기포 관찰');
-    expect(saved.single.tasks.first.startedAt, isNotNull);
+    expect(saved.last.title, 'Updated assay');
+    expect(saved.last.notes, '기포 관찰');
+    expect(saved.last.tasks.first.startedAt, isNotNull);
   });
 
   testWidgets('leaving results still warns about changes made in design',
@@ -134,9 +136,9 @@ void main() {
     expect(find.byKey(const ValueKey('focused-task-first')), findsOneWidget);
     await tester.tap(find.widgetWithText(TextButton, '저장'));
     await tester.pumpAndSettle();
-    expect(saved.single.tasks[1].startedAt, started);
-    expect(saved.single.tasks[1].isCompleted, true);
-    expect(saved.single.tasks.first.startedAt, isNull);
+    expect(saved.last.tasks[1].startedAt, started);
+    expect(saved.last.tasks[1].isCompleted, true);
+    expect(saved.last.tasks.first.startedAt, isNull);
   });
 
   testWidgets(
