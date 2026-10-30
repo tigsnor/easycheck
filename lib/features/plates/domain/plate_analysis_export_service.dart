@@ -13,7 +13,8 @@ class PlateAnalysisExportService {
       ..writeln('Included wells\t${report.includedWellCount}')
       ..writeln('Excluded wells\t${report.excludedWellCount}')
       ..writeln()
-      ..writeln('Automatic references (used only for series in automatic mode)')
+      ..writeln(
+          'Automatic references for wells without cell conditions (see applied references for each series)')
       ..writeln(
         'result_unit\tblank_mean\tcontrol_role\tcontrol_raw_mean\tcontrol_corrected_mean\tcontrol_well_count',
       );
@@ -41,7 +42,7 @@ class PlateAnalysisExportService {
       ..writeln()
       ..writeln('Applied references by series')
       ..writeln(
-          'group_id\tgroup\trole\tconcentration\tconcentration_unit\tresult_unit\tmode\tblank_wells\tcontrol_wells\tblank_mean\tcontrol_raw_mean\tcontrol_corrected_mean\twarnings');
+          'group_id\tgroup\trole\tconcentration\tconcentration_unit\tresult_unit\tmode\tblank_wells\tcontrol_wells\tblank_mean\tcontrol_raw_mean\tcontrol_corrected_mean\twarnings\tcell_type\tcell_density\tcell_density_unit');
     for (final series in report.series) {
       final ref = series.reference;
       if (ref == null) continue;
@@ -59,6 +60,9 @@ class PlateAnalysisExportService {
         _numberOrEmpty(ref.controlRawMean),
         _numberOrEmpty(ref.controlCorrectedMean),
         ref.warnings.join(' / '),
+        series.cellCondition?.name ?? '',
+        _numberOrEmpty(series.cellCondition?.density),
+        series.cellCondition?.unit ?? '',
       ].map(_escape).join('\t'));
     }
 
@@ -66,7 +70,7 @@ class PlateAnalysisExportService {
       ..writeln()
       ..writeln('Series')
       ..writeln(
-        'group_id\tgroup\trole\tconcentration\tconcentration_unit\tresult_unit\treplicates\tincluded_wells\texcluded_count\texcluded_wells\traw_mean\tblank_corrected_mean\tsample_sd\tcv_percent\tnormalized_percent',
+        'group_id\tgroup\trole\tconcentration\tconcentration_unit\tresult_unit\treplicates\tincluded_wells\texcluded_count\texcluded_wells\traw_mean\tblank_corrected_mean\tsample_sd\tcv_percent\tnormalized_percent\tcell_type\tcell_density\tcell_density_unit',
       );
     for (final series in report.series) {
       buffer.writeln(
@@ -86,6 +90,9 @@ class PlateAnalysisExportService {
           _numberOrEmpty(series.standardDeviation),
           _numberOrEmpty(series.coefficientOfVariation),
           _numberOrEmpty(series.normalizedPercent),
+          series.cellCondition?.name ?? '',
+          _numberOrEmpty(series.cellCondition?.density),
+          series.cellCondition?.unit ?? '',
         ].map((value) => _escape(value.toString())).join('\t'),
       );
     }

@@ -1,3 +1,4 @@
+import '../../domain/cell_condition.dart';
 import 'package:flutter/material.dart';
 
 import '../../domain/plate.dart';
@@ -9,6 +10,7 @@ class AnalysisReferenceSheet extends StatefulWidget {
   const AnalysisReferenceSheet({
     required this.plate,
     required this.groupId,
+    this.cellCondition,
     required this.groupLabel,
     required this.resultUnit,
     required this.onSave,
@@ -16,6 +18,7 @@ class AnalysisReferenceSheet extends StatefulWidget {
   });
   final Plate plate;
   final String? groupId;
+  final CellCondition? cellCondition;
   final String groupLabel;
   final String resultUnit;
   final Future<bool> Function(PlateAnalysisReferenceSelection?) onSave;
@@ -41,7 +44,9 @@ class _AnalysisReferenceSheetState extends State<AnalysisReferenceSheet> {
     super.initState();
     final selected = widget.plate.analysisReferences
         .where((s) =>
-            s.groupId == widget.groupId && s.resultUnit == widget.resultUnit)
+            s.groupId == widget.groupId &&
+            s.resultUnit == widget.resultUnit &&
+            s.cellCondition == widget.cellCondition)
         .firstOrNull;
     _automatic = _initialAutomatic = selected == null;
     _blanks = {...?selected?.blankWellLabels};
@@ -101,6 +106,7 @@ class _AnalysisReferenceSheetState extends State<AnalysisReferenceSheet> {
           ? null
           : PlateAnalysisReferenceSelection(
               groupId: widget.groupId,
+              cellCondition: widget.cellCondition,
               resultUnit: widget.resultUnit,
               blankWellLabels: _ordered(_blanks),
               controlWellLabels: _ordered(_controls),
@@ -131,6 +137,8 @@ class _AnalysisReferenceSheetState extends State<AnalysisReferenceSheet> {
       !w.excluded &&
       w.resultValue != null &&
       analysisResultUnit(w) == widget.resultUnit &&
+      (w.cellCondition == widget.cellCondition ||
+          (blank && w.cellCondition == null)) &&
       (blank
           ? w.role == WellRole.blank
           : analysisControlRoles.contains(w.role));
@@ -144,7 +152,7 @@ class _AnalysisReferenceSheetState extends State<AnalysisReferenceSheet> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Text('$title 기준 · ${selected.length}개 선택',
           style: Theme.of(context).textTheme.titleSmall),
-      if (wells.isEmpty) Text('같은 결과 단위의 사용 가능한 $title well이 없습니다.'),
+      if (wells.isEmpty) Text('이 세포 조건·결과 단위의 사용 가능한 $title well이 없습니다.'),
       for (final w in wells)
         CheckboxListTile(
           key: ValueKey('reference-${blank ? 'blank' : 'control'}-${w.label}'),
@@ -162,7 +170,7 @@ class _AnalysisReferenceSheetState extends State<AnalysisReferenceSheet> {
             WellRole.vehicleControl => 'Vehicle control',
             WellRole.untreatedControl => 'Untreated control',
             _ => 'Negative control'
-          }} · ${widget.plate.groups.where((g) => g.id == w.groupId).firstOrNull?.name ?? '그룹 없음'}'),
+          }} · ${widget.plate.groups.where((g) => g.id == w.groupId).firstOrNull?.name ?? '그룹 없음'} · ${w.cellCondition?.label ?? '세포 조건 미지정'}'),
         ),
       for (final label in unavailable)
         CheckboxListTile(
@@ -173,8 +181,8 @@ class _AnalysisReferenceSheetState extends State<AnalysisReferenceSheet> {
           onChanged:
               _saving ? null : (_) => setState(() => selected.remove(label)),
           title: Text('$label · 사용 불가'),
-          subtitle:
-              const Text('미입력·제외·단위/역할 변경 또는 없는 좌표. 선택을 해제하고 기준을 다시 지정해주세요.'),
+          subtitle: const Text(
+              '미입력·제외·단위/역할/세포 조건 변경 또는 없는 좌표. 선택을 해제하고 기준을 다시 지정해주세요.'),
         ),
       const SizedBox(height: 12),
     ]);
@@ -202,7 +210,7 @@ class _AnalysisReferenceSheetState extends State<AnalysisReferenceSheet> {
                   icon: const Icon(Icons.close)),
             ]),
             Text(
-                '${widget.groupLabel} · ${widget.resultUnit}\n이 그룹·결과 단위의 모든 농도와 역할에 적용합니다.'),
+                '${widget.groupLabel} · ${widget.resultUnit}\n${widget.cellCondition?.label ?? '세포 조건 미지정'}\n이 그룹·결과 단위·세포 조건의 모든 처리 농도와 역할에 적용합니다.'),
             const SizedBox(height: 12),
             SwitchListTile(
               key: const ValueKey('automatic-references'),
@@ -210,12 +218,12 @@ class _AnalysisReferenceSheetState extends State<AnalysisReferenceSheet> {
               title: const Text('자동 기준 사용'),
               value: _automatic,
               subtitle: const Text(
-                  '같은 단위의 Blank 전체와 Vehicle → Untreated → Negative 순의 첫 control 역할 전체를 사용합니다.'),
+                  '같은 세포 조건·단위의 Blank 전체와 Vehicle → Untreated → Negative 순의 첫 control 역할 전체를 사용합니다.'),
               onChanged: _saving ? null : (v) => setState(() => _automatic = v),
             ),
             if (!_automatic) ...[
               const Text(
-                  '수동 기준: 선택한 well의 평균을 사용합니다. Blank를 선택하지 않으면 원값을 사용하고, Control을 선택하지 않으면 정규화하지 않습니다.'),
+                  '수동 기준: 같은 세포 조건의 Control을 선택합니다. 세포 조건 미지정 Blank는 배지·용매를 확인한 뒤 공통 기준으로 직접 선택할 수 있습니다. 선택한 well의 평균을 사용합니다. Blank를 선택하지 않으면 원값을 사용하고, Control을 선택하지 않으면 정규화하지 않습니다.'),
               const SizedBox(height: 16),
               _choices(true),
               _choices(false),

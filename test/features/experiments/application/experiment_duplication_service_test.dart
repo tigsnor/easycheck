@@ -1,3 +1,4 @@
+import '../../../support/cell_condition_fixture.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -69,6 +70,7 @@ void main() {
     sourcePlate = base.copyWith(wells: [
       base.wells.first.copyWith(
           groupId: 'group',
+          cellCondition: hekLow,
           role: WellRole.treatment,
           concentrationValue: 10,
           concentrationUnit: 'µM',
@@ -141,6 +143,7 @@ void main() {
     expect(restartedPlate.rowCount, sourcePlate.rowCount);
     expect(restartedPlate.columnCount, sourcePlate.columnCount);
     expect(restartedPlate.wells.first.concentrationValue, 10);
+    expect(restartedPlate.wells.first.cellCondition, hekLow);
     expect(restartedPlate.wells.first.role, WellRole.treatment);
     expect(restartedPlate.wells.first.volumeValue, 100);
     expect(restartedPlate.wells.first.replicateIndex, 1);

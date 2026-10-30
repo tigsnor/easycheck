@@ -90,6 +90,22 @@ void main() {
     final lines = service.buildTsv(plate, report).split('\n');
     final seriesRow = lines[lines.length - 2].split('\t');
 
-    expect(seriesRow.sublist(seriesRow.length - 5), ['2', '2', '', '', '']);
+    final header = lines[lines.length - 3].split('\t');
+    expect([
+      for (final column in [
+        'raw_mean',
+        'blank_corrected_mean',
+        'sample_sd',
+        'cv_percent',
+        'normalized_percent'
+      ])
+        seriesRow[header.indexOf(column)]
+    ], [
+      '2',
+      '2',
+      '',
+      '',
+      ''
+    ]);
   });
 }

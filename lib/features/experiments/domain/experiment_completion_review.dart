@@ -42,6 +42,7 @@ class ExperimentCompletionReviewService {
       return ExperimentCompletionReview(issues);
     }
     final active = plate.wells.where((well) =>
+        well.cellCondition != null ||
         well.groupId != null ||
         well.role != WellRole.empty ||
         well.concentrationValue != null ||
@@ -95,9 +96,12 @@ class ExperimentCompletionReviewService {
     final seen = <String>{};
     for (final series in const PlateAnalysisService().analyze(plate).series) {
       for (final warning in series.reference?.warnings ?? <String>[]) {
-        final key = '${series.groupId}|${series.resultUnit}|$warning';
+        final key =
+            '${series.groupId}|${series.resultUnit}|${series.cellCondition?.key}|$warning';
         if (seen.add(key)) {
-          issues.add(CompletionReviewIssue('분석 기준 확인: ${series.label}', warning,
+          issues.add(CompletionReviewIssue(
+              '분석 기준 확인: ${series.label}${series.cellCondition == null ? '' : ' · ${series.cellCondition!.label}'}',
+              warning,
               wellLabels: {
                 ...series.includedWellLabels,
                 ...?series.reference?.blankWellLabels,

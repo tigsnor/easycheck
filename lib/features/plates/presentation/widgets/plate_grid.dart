@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import '../../domain/cell_condition.dart';
+
 import 'package:flutter/material.dart';
 
 import '../../../../shared/models/well_position.dart';
@@ -50,6 +52,9 @@ class PlateGrid extends StatefulWidget {
 class _PlateGridState extends State<PlateGrid> {
   static const _spacing = 6.0;
   late bool _showResults;
+  bool _showCells = false;
+  List<CellCondition> get _cellConditions =>
+      widget.plate.wells.map((w) => w.cellCondition).nonNulls.toSet().toList();
   final _gridKey = GlobalKey();
   final _viewportKey = GlobalKey();
   final _horizontalScroll = ScrollController();
@@ -156,6 +161,7 @@ class _PlateGridState extends State<PlateGrid> {
   }
 
   bool _isAssigned(Well well) =>
+      well.cellCondition != null ||
       well.groupId != null ||
       well.role != WellRole.empty ||
       well.concentrationValue != null ||
@@ -190,8 +196,11 @@ class _PlateGridState extends State<PlateGrid> {
               key: const ValueKey('plate-layout-view'),
               label: const Text('배치'),
               avatar: const Icon(Icons.grid_on_outlined, size: 18),
-              selected: !_showResults,
-              onSelected: (_) => setState(() => _showResults = false),
+              selected: !_showResults && !_showCells,
+              onSelected: (_) => setState(() {
+                _showResults = false;
+                _showCells = false;
+              }),
             ),
             ChoiceChip(
               key: const ValueKey('plate-results-view'),
@@ -199,11 +208,33 @@ class _PlateGridState extends State<PlateGrid> {
               avatar: const Icon(Icons.fact_check_outlined, size: 18),
               selected: _showResults,
               onSelected: (_) {
-                setState(() => _showResults = true);
+                setState(() {
+                  _showResults = true;
+                  _showCells = false;
+                });
                 if (fit) widget.onZoomIn?.call();
               },
             ),
+            ChoiceChip(
+              key: const ValueKey('plate-cells-view'),
+              label: const Text('세포'),
+              avatar: const Icon(Icons.biotech_outlined, size: 18),
+              selected: _showCells,
+              onSelected: (_) => setState(() {
+                _showCells = true;
+                _showResults = false;
+              }),
+            ),
           ]),
+          if (_showCells) ...[
+            const Text(
+                'C 번호는 이 Plate의 세포 조건입니다. well/범위를 선택한 뒤 하단 세포 조건에서 지정하세요.'),
+            if (_cellConditions.isEmpty) const Text('지정된 세포 조건이 없습니다.'),
+            for (var i = 0; i < _cellConditions.length; i++)
+              Text(
+                  'C${i + 1} · ${_cellConditions[i].label} · ${plate.wells.where((w) => w.cellCondition == _cellConditions[i]).length}개 well'),
+            const Text('—는 세포 조건 미지정입니다. 기존 실험 노트의 세포 문구는 well에 자동 배분하지 않습니다.'),
+          ],
           if (_showResults) ...[
             const SizedBox(height: 6),
             Text('입력 $measured개 · 미입력 $missing개 · 제외 $excluded개',
@@ -344,6 +375,10 @@ class _PlateGridState extends State<PlateGrid> {
           group: group,
           size: size,
           results: _showResults,
+          cells: _showCells,
+          cellCode: well.cellCondition == null
+              ? '—'
+              : 'C${_cellConditions.indexOf(well.cellCondition!) + 1}',
           assigned: _isAssigned(well),
           selected: widget.selectedPositions.contains(position),
           onTap: () => widget.onSelected(position),
@@ -358,6 +393,8 @@ class _WellCell extends StatelessWidget {
       required this.group,
       required this.size,
       required this.results,
+      required this.cells,
+      required this.cellCode,
       required this.assigned,
       required this.selected,
       required this.onTap,
@@ -368,6 +405,8 @@ class _WellCell extends StatelessWidget {
   final WellGroup? group;
   final double size;
   final bool results;
+  final bool cells;
+  final String cellCode;
   final bool assigned;
   final bool selected;
   final VoidCallback onTap;
@@ -385,46 +424,55 @@ class _WellCell extends StatelessWidget {
                 ? '미입력'
                 : '빈 well';
     final details = '${well.label} well'
+        '${well.cellCondition == null ? '' : ', 세포 조건 ${well.cellCondition!.label}'}'
         '${group == null ? '' : ', 그룹 ${group!.name}'}'
         '${well.concentrationValue == null ? '' : ', 농도 ${well.concentrationValue} ${well.concentrationUnit ?? ''}'}'
         '${hasResult ? ', 결과 ${well.resultValue} ${well.resultUnit ?? ''}' : ''}, $status';
-    final background = results
-        ? well.excluded
-            ? const Color(0xFFE5E7EB)
-            : hasResult
-                ? const Color(0xFFDBEAFE)
-                : assigned
-                    ? const Color(0xFFFFEDD5)
-                    : const Color(0xFFF2F2F7)
-        : group?.color ?? const Color(0xFFF2F2F7);
+    final background = cells
+        ? Theme.of(context).colorScheme.surfaceContainerLow
+        : results
+            ? well.excluded
+                ? const Color(0xFFE5E7EB)
+                : hasResult
+                    ? const Color(0xFFDBEAFE)
+                    : assigned
+                        ? const Color(0xFFFFEDD5)
+                        : const Color(0xFFF2F2F7)
+            : group?.color ?? const Color(0xFFF2F2F7);
     final foreground =
         ThemeData.estimateBrightnessForColor(background) == Brightness.dark
             ? Colors.white
             : const Color(0xFF1F2937);
-    final value = results
-        ? hasResult
-            ? _shortNumber(well.resultValue!)
-            : well.excluded
-                ? '제외'
-                : assigned
-                    ? '미입력'
-                    : '빈 well'
-        : well.concentrationValue == null
-            ? (group?.shortLabel ?? '')
-            : _shortNumber(well.concentrationValue!);
+    final value = cells
+        ? (well.cellCondition?.density == null
+            ? cellCode
+            : _shortNumber(well.cellCondition!.density!))
+        : results
+            ? hasResult
+                ? _shortNumber(well.resultValue!)
+                : well.excluded
+                    ? '제외'
+                    : assigned
+                        ? '미입력'
+                        : '빈 well'
+            : well.concentrationValue == null
+                ? (group?.shortLabel ?? '')
+                : _shortNumber(well.concentrationValue!);
     final coordinate =
-        '${well.label}${!results && group?.shortLabel.isNotEmpty == true ? ' · ${group!.shortLabel}' : ''}${well.excluded ? ' ×' : ''}';
-    final content = results
-        ? (well.excluded
-            ? '×'
-            : hasResult
-                ? '●'
-                : assigned
-                    ? '—'
-                    : '·')
-        : group?.shortLabel.isNotEmpty == true
-            ? group!.shortLabel
-            : well.label;
+        '${well.label}${cells ? ' · $cellCode' : ''}${!cells && !results && group?.shortLabel.isNotEmpty == true ? ' · ${group!.shortLabel}' : ''}${well.excluded ? ' ×' : ''}';
+    final content = cells
+        ? cellCode
+        : results
+            ? (well.excluded
+                ? '×'
+                : hasResult
+                    ? '●'
+                    : assigned
+                        ? '—'
+                        : '·')
+            : group?.shortLabel.isNotEmpty == true
+                ? group!.shortLabel
+                : well.label;
     return Semantics(
       label: details,
       hint: '탭하여 선택, 길게 눌러 범위 선택',
