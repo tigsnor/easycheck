@@ -1491,7 +1491,7 @@ class _PlateWorkspaceIntro extends StatelessWidget {
             ? Theme.of(context).colorScheme.onSurfaceVariant
             : hasWarnings
                 ? Theme.of(context).colorScheme.error
-                : Colors.green,
+                : const Color(0xFF17643B),
       ),
       trailing: TextButton(
         key: const ValueKey('open-plate-overview'),
@@ -2472,7 +2472,9 @@ class _AnalysisBarRow extends StatelessWidget {
                       left: zeroX.clamp(0, width),
                       top: 0,
                       bottom: 0,
-                      child: Container(width: 1, color: Colors.black26),
+                      child: Container(
+                          width: 1,
+                          color: Theme.of(context).colorScheme.outline),
                     ),
                     Positioned(
                       left: valueX < zeroX ? valueX : zeroX,
@@ -2651,7 +2653,8 @@ class _PlateValidationCard extends StatelessWidget {
                   hasWarnings
                       ? Icons.warning_amber_rounded
                       : Icons.task_alt_rounded,
-                  color: hasWarnings ? colorScheme.error : Colors.green,
+                  color:
+                      hasWarnings ? colorScheme.error : const Color(0xFF17643B),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -2665,7 +2668,9 @@ class _PlateValidationCard extends StatelessWidget {
                 Text(
                   hasWarnings ? '경고 ${report.warningCount}' : '필수 경고 없음',
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: hasWarnings ? colorScheme.error : Colors.green,
+                        color: hasWarnings
+                            ? colorScheme.error
+                            : const Color(0xFF17643B),
                         fontWeight: FontWeight.w700,
                       ),
                 ),

@@ -5,6 +5,7 @@ import '../../domain/cell_condition.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../shared/models/well_position.dart';
+import '../../../../shared/presentation/readable_foreground.dart';
 import '../../domain/plate.dart';
 import '../../domain/well.dart';
 import '../../domain/well_group.dart';
@@ -228,7 +229,7 @@ class _PlateGridState extends State<PlateGrid> {
           ]),
           if (_showCells) ...[
             const Text(
-                'C 번호는 이 Plate의 세포 조건입니다. well/범위를 선택한 뒤 하단 세포 조건에서 지정하세요.'),
+                'C 번호는 이 Plate의 세포 조건입니다. 정확한 조건은 아래 범례와 well 상세에서 확인하세요.'),
             if (_cellConditions.isEmpty) const Text('지정된 세포 조건이 없습니다.'),
             for (var i = 0; i < _cellConditions.length; i++)
               Text(
@@ -343,7 +344,7 @@ class _PlateGridState extends State<PlateGrid> {
               : widget.onRowSelected(row - 1),
           borderRadius: BorderRadius.circular(8),
           child: ColoredBox(
-              color: const Color(0xFFFFF7D6),
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               child: Center(
                   child: Text(label,
                       style: TextStyle(
@@ -428,7 +429,7 @@ class _WellCell extends StatelessWidget {
         '${group == null ? '' : ', 그룹 ${group!.name}'}'
         '${well.concentrationValue == null ? '' : ', 농도 ${well.concentrationValue} ${well.concentrationUnit ?? ''}'}'
         '${hasResult ? ', 결과 ${well.resultValue} ${well.resultUnit ?? ''}' : ''}, $status';
-    final background = cells
+    final rawBackground = cells
         ? Theme.of(context).colorScheme.surfaceContainerLow
         : results
             ? well.excluded
@@ -439,10 +440,9 @@ class _WellCell extends StatelessWidget {
                         ? const Color(0xFFFFEDD5)
                         : const Color(0xFFF2F2F7)
             : group?.color ?? const Color(0xFFF2F2F7);
-    final foreground =
-        ThemeData.estimateBrightnessForColor(background) == Brightness.dark
-            ? Colors.white
-            : const Color(0xFF1F2937);
+    final background =
+        Color.alphaBlend(rawBackground, Theme.of(context).colorScheme.surface);
+    final foreground = readableForeground(background);
     final value = cells
         ? (well.cellCondition?.density == null
             ? cellCode
@@ -459,20 +459,22 @@ class _WellCell extends StatelessWidget {
                 ? (group?.shortLabel ?? '')
                 : _shortNumber(well.concentrationValue!);
     final coordinate =
-        '${well.label}${cells ? ' · $cellCode' : ''}${!cells && !results && group?.shortLabel.isNotEmpty == true ? ' · ${group!.shortLabel}' : ''}${well.excluded ? ' ×' : ''}';
-    final content = cells
-        ? cellCode
-        : results
-            ? (well.excluded
-                ? '×'
-                : hasResult
-                    ? '●'
-                    : assigned
-                        ? '—'
-                        : '·')
-            : group?.shortLabel.isNotEmpty == true
-                ? group!.shortLabel
-                : well.label;
+        '${selected ? '✓ ' : ''}${well.label}${cells ? ' · $cellCode' : ''}${!cells && !results && group?.shortLabel.isNotEmpty == true ? ' · ${group!.shortLabel}' : ''}${well.excluded ? ' ×' : ''}';
+    final content = selected
+        ? '✓'
+        : cells
+            ? cellCode
+            : results
+                ? (well.excluded
+                    ? '×'
+                    : hasResult
+                        ? '●'
+                        : assigned
+                            ? '—'
+                            : '·')
+                : group?.shortLabel.isNotEmpty == true
+                    ? group!.shortLabel
+                    : well.label;
     return Semantics(
       label: details,
       hint: '탭하여 선택, 길게 눌러 범위 선택',
@@ -494,7 +496,7 @@ class _WellCell extends StatelessWidget {
                   color: background,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                      color: selected ? Colors.black : Colors.transparent,
+                      color: selected ? foreground : Colors.transparent,
                       width: selected ? 3 : 1)),
               child: DefaultTextStyle(
                   maxLines: 1,

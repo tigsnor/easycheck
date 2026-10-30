@@ -1783,7 +1783,7 @@ class _TaskTimerButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (task.isCompleted) {
-      return const Icon(Icons.check_circle, color: Colors.green);
+      return const Icon(Icons.check_circle, color: Color(0xFF17643B));
     }
     return TextButton(
       key: ValueKey('experiment-task-timer-${task.id}'),
