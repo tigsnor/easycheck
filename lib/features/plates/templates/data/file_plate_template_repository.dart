@@ -12,7 +12,7 @@ class FilePlateTemplateRepository implements PlateTemplateRepository {
     this.fileStore = const SafeJsonFileStore(),
   });
 
-  static const schemaVersion = 1;
+  static const schemaVersion = 2;
 
   final String? rootDirectory;
   final SafeJsonFileStore fileStore;
@@ -69,7 +69,11 @@ class FilePlateTemplateRepository implements PlateTemplateRepository {
       throw const FormatException('Template file must contain an object.');
     }
     final object = Map<String, Object?>.from(decoded);
-    if (object['schemaVersion'] != schemaVersion || object['data'] is! List) {
+    final version = object['schemaVersion'];
+    if (version is! int ||
+        version < 1 ||
+        version > schemaVersion ||
+        object['data'] is! List) {
       throw const FormatException('Unsupported template file schema.');
     }
     return (object['data'] as List).map((record) {

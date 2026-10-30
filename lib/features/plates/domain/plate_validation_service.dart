@@ -157,7 +157,7 @@ class PlateValidationService {
         continue;
       }
       final key =
-          '${well.groupId}|$concentration|${well.concentrationUnit ?? ''}';
+          '${well.groupId}|$concentration|${well.concentrationUnit ?? ''}|${well.cellCondition?.key ?? ''}';
       counts.putIfAbsent(key, () => []).add(well);
     }
 
@@ -186,7 +186,8 @@ class PlateValidationService {
   }
 
   bool _isActive(Well well) {
-    return well.groupId != null ||
+    return well.cellCondition != null ||
+        well.groupId != null ||
         well.role != WellRole.empty ||
         well.concentrationValue != null ||
         well.resultValue != null;

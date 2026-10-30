@@ -407,6 +407,9 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                   decoration: const InputDecoration(
                     labelText: '세포수',
                     hintText: '예: hek293: 1×10^6/ml',
+                    helperText:
+                        '노트 전체 참고용입니다. well별 세포 종류·농도는 Plate의 세포 조건에서 지정하세요.',
+                    helperMaxLines: 3,
                   ),
                 ),
               ],

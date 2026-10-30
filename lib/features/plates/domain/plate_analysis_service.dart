@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'cell_condition.dart';
+
 import 'plate.dart';
 import 'plate_analysis_reference.dart';
 import 'well.dart';
@@ -76,6 +78,7 @@ class PlateAnalysisSeries {
     required this.coefficientOfVariation,
     required this.normalizedPercent,
     this.groupId,
+    this.cellCondition,
     this.reference,
   });
 
@@ -89,6 +92,7 @@ class PlateAnalysisSeries {
   final double rawMean;
   final double? blankCorrectedMean;
   final String? groupId;
+  final CellCondition? cellCondition;
   final PlateAnalysisReference? reference;
   final double? standardDeviation;
   final double? coefficientOfVariation;
@@ -107,8 +111,9 @@ class PlateAnalysisService {
         .toList(growable: false);
     final included =
         measured.where((well) => !well.excluded).toList(growable: false);
-    final blankMeanByUnit = _blankMeans(included);
-    final controlByUnit = _controls(included, blankMeanByUnit);
+    final legacyWells = included.where((w) => w.cellCondition == null).toList();
+    final blankMeanByUnit = _blankMeans(legacyWells);
+    final controlByUnit = _controls(legacyWells, blankMeanByUnit);
     final groupsById = {for (final group in plate.groups) group.id: group};
     final buckets = <_SeriesKey, List<Well>>{};
     final excludedBuckets = <_SeriesKey, List<Well>>{};
@@ -130,7 +135,8 @@ class PlateAnalysisService {
       }
       final rawValues = values.map((well) => well.resultValue!).toList();
       final rawMean = _mean(rawValues);
-      final reference = _reference(plate, key.groupId, key.resultUnit);
+      final reference =
+          _reference(plate, key.groupId, key.resultUnit, key.cellCondition);
       final correctedMean =
           reference.blankValid ? rawMean - (reference.blankMean ?? 0) : null;
       final standardDeviation = _sampleStandardDeviation(rawValues, rawMean);
@@ -145,6 +151,7 @@ class PlateAnalysisService {
         PlateAnalysisSeries(
           label: key.label,
           groupId: key.groupId,
+          cellCondition: key.cellCondition,
           reference: reference,
           role: key.role,
           concentrationValue: key.concentrationValue,
@@ -218,6 +225,7 @@ class PlateAnalysisService {
     final group = groupsById[well.groupId];
     return _SeriesKey(
       groupId: group?.id,
+      cellCondition: well.cellCondition,
       label: group?.name ?? well.role.analysisLabel,
       role: well.role,
       concentrationValue: well.concentrationValue,
@@ -231,14 +239,21 @@ class PlateAnalysisService {
     if (label != 0) {
       return label;
     }
+    final cells =
+        (a.cellCondition?.key ?? '').compareTo(b.cellCondition?.key ?? '');
+    if (cells != 0) return cells;
     final concentrationA = a.concentrationValue ?? double.negativeInfinity;
     final concentrationB = b.concentrationValue ?? double.negativeInfinity;
     return concentrationB.compareTo(concentrationA);
   }
 
-  PlateAnalysisReference _reference(Plate plate, String? groupId, String unit) {
+  PlateAnalysisReference _reference(
+      Plate plate, String? groupId, String unit, CellCondition? cellCondition) {
     final selection = plate.analysisReferences
-        .where((s) => s.groupId == groupId && s.resultUnit == unit)
+        .where((s) =>
+            s.groupId == groupId &&
+            s.resultUnit == unit &&
+            s.cellCondition == cellCondition)
         .firstOrNull;
     final eligible = plate.wells
         .where((w) =>
@@ -246,11 +261,15 @@ class PlateAnalysisService {
             w.resultValue != null &&
             analysisResultUnit(w) == unit)
         .toList();
-    final automaticBlanks =
-        eligible.where((w) => w.role == WellRole.blank).toList();
+    final automaticBlanks = eligible
+        .where(
+            (w) => w.role == WellRole.blank && w.cellCondition == cellCondition)
+        .toList();
     var automaticControls = <Well>[];
     for (final role in analysisControlRoles) {
-      automaticControls = eligible.where((w) => w.role == role).toList();
+      automaticControls = eligible
+          .where((w) => w.role == role && w.cellCondition == cellCondition)
+          .toList();
       if (automaticControls.isNotEmpty) break;
     }
     final blankLabels = selection?.blankWellLabels ??
@@ -263,13 +282,15 @@ class PlateAnalysisService {
       final invalid = labels.where((label) {
         final w = byLabel[label];
         return w == null ||
+            (w.cellCondition != cellCondition &&
+                !(blank && w.cellCondition == null)) ||
             (blank
                 ? w.role != WellRole.blank
                 : !analysisControlRoles.contains(w.role));
       }).toList();
       if (invalid.isNotEmpty) {
         warnings.add(
-            '${blank ? 'Blank' : 'Control'} 기준 확인 필요: ${invalid.join(', ')} (미입력·제외·단위/역할 변경 또는 없는 좌표)');
+            '${blank ? 'Blank' : 'Control'} 기준 확인 필요: ${invalid.join(', ')} (미입력·제외·단위/역할/세포 조건 변경 또는 없는 좌표)');
         return false;
       }
       return true;
@@ -321,6 +342,7 @@ class PlateAnalysisService {
 class _SeriesKey {
   const _SeriesKey({
     required this.groupId,
+    required this.cellCondition,
     required this.label,
     required this.role,
     required this.concentrationValue,
@@ -329,6 +351,7 @@ class _SeriesKey {
   });
 
   final String? groupId;
+  final CellCondition? cellCondition;
   final String label;
   final WellRole role;
   final double? concentrationValue;
@@ -339,6 +362,7 @@ class _SeriesKey {
   bool operator ==(Object other) {
     return other is _SeriesKey &&
         other.groupId == groupId &&
+        other.cellCondition == cellCondition &&
         other.label == label &&
         other.role == role &&
         other.concentrationValue == concentrationValue &&
@@ -349,6 +373,7 @@ class _SeriesKey {
   @override
   int get hashCode => Object.hash(
         groupId,
+        cellCondition,
         label,
         role,
         concentrationValue,

@@ -1,18 +1,21 @@
+import 'cell_condition.dart';
 import '../../../shared/data/json_validation.dart';
 import 'well.dart';
 import 'well_role.dart';
 
-/// A manual reference applies to all concentrations/roles of one group and unit.
+/// A manual reference applies to all concentrations/roles of one group, unit and cell condition.
 /// Absence of a selection means automatic references; empty lists mean none.
 class PlateAnalysisReferenceSelection {
   const PlateAnalysisReferenceSelection({
     required this.groupId,
+    this.cellCondition,
     required this.resultUnit,
     required this.blankWellLabels,
     required this.controlWellLabels,
   });
 
   final String? groupId;
+  final CellCondition? cellCondition;
   final String resultUnit;
   final List<String> blankWellLabels;
   final List<String> controlWellLabels;
@@ -40,6 +43,9 @@ class PlateAnalysisReferenceSelection {
     return PlateAnalysisReferenceSelection(
       groupId: groupId as String?,
       resultUnit: unit,
+      cellCondition: json['cellCondition'] == null
+          ? null
+          : CellCondition.fromJson(json['cellCondition']),
       blankWellLabels: labels('blankWellLabels'),
       controlWellLabels: labels('controlWellLabels'),
     );
@@ -47,6 +53,7 @@ class PlateAnalysisReferenceSelection {
 
   Map<String, Object?> toJson() => {
         'groupId': groupId,
+        'cellCondition': cellCondition?.toJson(),
         'resultUnit': resultUnit,
         'blankWellLabels': blankWellLabels,
         'controlWellLabels': controlWellLabels,
@@ -56,9 +63,10 @@ class PlateAnalysisReferenceSelection {
     final values = jsonObjectList(json, 'analysisReferences')
         .map(PlateAnalysisReferenceSelection.fromJson)
         .toList();
-    final targets = <(String?, String)>{};
+    final targets = <(String?, String, CellCondition?)>{};
     for (final value in values) {
-      if (!targets.add((value.groupId, value.resultUnit))) {
+      if (!targets
+          .add((value.groupId, value.resultUnit, value.cellCondition))) {
         throw const FormatException('Duplicate analysis reference target.');
       }
     }

@@ -118,7 +118,7 @@ void main() {
     ], attachmentFiles: {
       attachmentBlob().digest: attachmentBlob()
     }));
-    expect(value.schemaVersion, 6);
+    expect(value.schemaVersion, 7);
     expect(value.attachmentCount, 2);
     expect(value.attachmentFiles, hasLength(1));
     expect(value.attachmentFiles.values.single.bytes, attachmentBlob().bytes);

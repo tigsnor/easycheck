@@ -41,7 +41,7 @@ class PlateExportService {
       ..writeln()
       ..writeln('Wells')
       ..writeln(
-        'well\trow\tcolumn\tgroup\trole\tconcentration\tunit\treplicate\tvolume\tvolume_unit\tresult\tresult_unit\texcluded\tnote',
+        'well\trow\tcolumn\tgroup\trole\tconcentration\tunit\treplicate\tvolume\tvolume_unit\tresult\tresult_unit\texcluded\tnote\tcell_type\tcell_density\tcell_density_unit',
       );
 
     for (final well in plate.wells) {
@@ -73,6 +73,11 @@ class PlateExportService {
       well.resultUnit ?? '',
       well.excluded.toString(),
       well.note,
+      well.cellCondition?.name ?? '',
+      well.cellCondition?.density == null
+          ? ''
+          : _formatNumber(well.cellCondition!.density!),
+      well.cellCondition?.unit ?? '',
     ].map(_escape).join('\t');
   }
 

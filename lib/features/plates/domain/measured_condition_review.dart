@@ -63,6 +63,12 @@ class MeasuredConditionReview {
                     ? '$to (다른 그룹)'
                     : to));
           }
+          if (old.cellCondition != next.cellCondition) {
+            fields.add(ConditionFieldChange(
+                '세포 조건',
+                old.cellCondition?.label ?? '미지정',
+                next.cellCondition?.label ?? '미지정'));
+          }
           if (old.role != next.role) {
             fields.add(
                 ConditionFieldChange('역할', _role(old.role), _role(next.role)));

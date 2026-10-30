@@ -1,3 +1,4 @@
+import 'cell_condition.dart';
 import '../../../shared/models/well_position.dart';
 import 'well.dart';
 import 'well_group.dart';
@@ -23,6 +24,9 @@ void validatePlateLayout({
   }
   final positions = <WellPosition>{};
   for (final well in wells) {
+    if (well.cellCondition != null) {
+      CellCondition.fromJson(well.cellCondition!.toJson());
+    }
     final position = well.position;
     if (position.rowIndex < 0 ||
         position.rowIndex >= rowCount ||

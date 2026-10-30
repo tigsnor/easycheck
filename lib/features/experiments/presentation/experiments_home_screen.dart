@@ -1700,7 +1700,7 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
               ),
               const SizedBox(height: 6),
               Text(
-                '예: hek293: 1×10^6/ml',
+                '예: hek293: 1×10^6/ml\n노트 전체 참고용입니다. 여러 세포 종류·농도는 생성 후 Plate의 세포 조건에서 지정하세요.',
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: Colors.black54),

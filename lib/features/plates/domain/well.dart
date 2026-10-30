@@ -1,3 +1,4 @@
+import 'cell_condition.dart';
 import '../../../shared/models/well_position.dart';
 import 'well_role.dart';
 
@@ -7,6 +8,7 @@ class Well {
   const Well({
     required this.position,
     this.groupId,
+    this.cellCondition,
     this.role = WellRole.empty,
     this.concentrationValue,
     this.concentrationUnit,
@@ -26,6 +28,9 @@ class Well {
         columnIndex: json['columnIndex'] as int,
       ),
       groupId: json['groupId'] as String?,
+      cellCondition: json['cellCondition'] == null
+          ? null
+          : CellCondition.fromJson(json['cellCondition']),
       role: WellRoleJson.fromName(json['role'] as String?),
       concentrationValue: (json['concentrationValue'] as num?)?.toDouble(),
       concentrationUnit: json['concentrationUnit'] as String?,
@@ -41,6 +46,7 @@ class Well {
 
   final WellPosition position;
   final String? groupId;
+  final CellCondition? cellCondition;
   final WellRole role;
   final double? concentrationValue;
   final String? concentrationUnit;
@@ -59,6 +65,7 @@ class Well {
       'rowIndex': position.rowIndex,
       'columnIndex': position.columnIndex,
       'groupId': groupId,
+      'cellCondition': cellCondition?.toJson(),
       'role': role.name,
       'concentrationValue': concentrationValue,
       'concentrationUnit': concentrationUnit,
@@ -74,6 +81,7 @@ class Well {
 
   Well copyWith({
     Object? groupId = _unset,
+    Object? cellCondition = _unset,
     WellRole? role,
     Object? concentrationValue = _unset,
     Object? concentrationUnit = _unset,
@@ -88,6 +96,9 @@ class Well {
     return Well(
       position: position,
       groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
+      cellCondition: identical(cellCondition, _unset)
+          ? this.cellCondition
+          : cellCondition as CellCondition?,
       role: role ?? this.role,
       concentrationValue: identical(concentrationValue, _unset)
           ? this.concentrationValue

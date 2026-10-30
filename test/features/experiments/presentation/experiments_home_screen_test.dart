@@ -779,6 +779,7 @@ void main() {
     await tester.tap(find.text('첫 실험 만들기'));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, '실험 제목'), 'Repeat');
+    await tester.pumpAndSettle();
     await tester.ensureVisible(
       find.byKey(const ValueKey('new-experiment-template-field')),
     );
@@ -837,6 +838,7 @@ void main() {
     await tester.tap(find.text('첫 실험 만들기'));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, '실험 제목'), 'Fail');
+    await tester.pumpAndSettle();
     await tester.ensureVisible(
       find.byKey(const ValueKey('new-experiment-template-field')),
     );
@@ -880,6 +882,7 @@ void main() {
         find.widgetWithText(TextField, '실험 제목'),
         'Default',
       );
+      await tester.pumpAndSettle();
       await tester.ensureVisible(
         find.byKey(const ValueKey('new-experiment-template-field')),
       );
