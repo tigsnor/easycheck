@@ -597,6 +597,104 @@ void main() {
     expect(find.text('실험 1 · Plate 0'), findsOneWidget);
   });
 
+  for (final scenario in [
+    (
+      name: 'keyboard open',
+      size: const Size(390, 844),
+      inset: 300.0,
+      scale: 1.0
+    ),
+    (
+      name: 'small screen and large text',
+      size: const Size(320, 640),
+      inset: 240.0,
+      scale: 1.6
+    ),
+    (
+      name: 'keyboard closed',
+      size: const Size(390, 844),
+      inset: 0.0,
+      scale: 1.0
+    ),
+  ]) {
+    testWidgets('new experiment title error is visible with ${scenario.name}',
+        (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = scenario.size;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetViewInsets);
+      final repository = FakeExperimentRepository([]);
+      final plates = FakePlateRepository();
+      await tester.pumpWidget(MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(scenario.scale)),
+          child: child!,
+        ),
+        home: ExperimentsHomeScreen(
+          repository: repository,
+          plateRepository: plates,
+          plateTemplateRepository: FakePlateTemplateRepository(),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('첫 실험 만들기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('첫 실험 만들기'));
+      await tester.pumpAndSettle();
+      tester.view.viewInsets = FakeViewPadding(bottom: scenario.inset);
+      await tester.pumpAndSettle();
+      final title = find.widgetWithText(TextField, '실험 제목');
+      final error = find.text('실험 제목을 입력해주세요.');
+      expect(error, findsNothing);
+      await tester.enterText(find.widgetWithText(TextField, '프로젝트'), '농도 비교');
+      await tester.enterText(find.widgetWithText(TextField, '메모'), '유지할 메모');
+
+      Future<void> submit() async {
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('생성'));
+        await tester.pumpAndSettle();
+        expect(tester.getBottomRight(find.text('생성')).dy,
+            lessThan(scenario.size.height - scenario.inset));
+        await tester.tap(find.text('생성'));
+        await tester.pumpAndSettle();
+      }
+
+      await submit();
+      expect(repository.experiments, isEmpty);
+      expect(plates.plate, isNull);
+      expect(error, findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(tester.widget<TextField>(title).focusNode!.hasFocus, isTrue);
+      expect(tester.getTopLeft(title).dy, greaterThanOrEqualTo(0));
+      expect(tester.getBottomRight(error).dy,
+          lessThan(scenario.size.height - scenario.inset));
+      expect(title.hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      // Whitespace and repeated submission remain invalid without losing drafts.
+      await tester.enterText(title, '   ');
+      await submit();
+      expect(error, findsOneWidget);
+      expect(repository.experiments, isEmpty);
+      await tester.enterText(title, '  세포 농도 비교  ');
+      await tester.pumpAndSettle();
+      expect(error, findsNothing);
+      await tester.enterText(title, '');
+      await tester.pumpAndSettle();
+      expect(error, findsOneWidget);
+      await tester.enterText(title, '  세포 농도 비교  ');
+      await submit();
+      expect(repository.experiments.single.title, '세포 농도 비교');
+      expect(repository.experiments.single.projectName, '농도 비교');
+      expect(repository.experiments.single.notes, '유지할 메모');
+      expect(find.text('새 실험 노트'), findsNothing);
+      expect(error, findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('creates a new experiment through the bottom sheet', (
     tester,
   ) async {
