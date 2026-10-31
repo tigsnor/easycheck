@@ -217,7 +217,7 @@ void main() {
     const backup = EasyCheckBackupService();
     final decoded = backup.decode(backup.encode(
         experiments: [experiment()], plates: [loaded], templates: [template]));
-    expect(decoded.schemaVersion, 7);
+    expect(decoded.schemaVersion, 8);
     expect(decoded.plates.single.toJson(), p.toJson());
     expect(decoded.templates.single.toJson(), template.toJson());
     expect(decoded.experiments.single.cellCountLabel, 'old free text');

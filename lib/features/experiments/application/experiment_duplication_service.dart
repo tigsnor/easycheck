@@ -59,6 +59,7 @@ class ExperimentDuplicationService {
       tasks: source.tasks
           .map((task) => task.copyWith(
               isCompleted: false,
+              executionHistory: [],
               startedAt: null,
               completedAt: null,
               reminderEnabled: false))

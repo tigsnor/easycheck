@@ -33,7 +33,7 @@ class EasyCheckBackupService {
 
   static const backupFormat = 'platenote-backup';
   static const legacyBackupFormat = 'easycheck-backup';
-  static const currentSchemaVersion = 7;
+  static const currentSchemaVersion = 8;
 
   String encode({
     required List<Experiment> experiments,

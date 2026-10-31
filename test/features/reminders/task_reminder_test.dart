@@ -68,7 +68,7 @@ void main() {
     const backupService = EasyCheckBackupService();
     final backup = backupService
         .decode(backupService.encode(experiments: [loaded], plates: []));
-    expect(backup.schemaVersion, 7);
+    expect(backup.schemaVersion, 8);
     await FileBackupRecoveryService(rootDirectory: restoredDir.path)
         .recover(backup);
     final restored =

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:easycheck/app/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:easycheck/features/experiments/domain/experiment.dart';
@@ -42,6 +43,7 @@ void main() {
   Future<void> open(WidgetTester tester, {bool narrow = false}) async {
     await reminders.refresh();
     await tester.pumpWidget(MaterialApp(
+        theme: buildEasyCheckTheme(),
         builder: narrow
             ? (context, child) => MediaQuery(
                 data: MediaQuery.of(context)
@@ -351,6 +353,206 @@ void main() {
     expect(stored.tasks.first.isCompleted, isTrue);
     await key(tester, 'focused-task-b');
     expect(stored.tasks.last.startedAt, isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  Future<void> resetTask(
+      WidgetTester tester, String control, String reason) async {
+    await key(tester, control);
+    await tester.enterText(find.widgetWithText(TextField, '변경 사유'), reason);
+    tester.testTextInput.hide();
+    await key(tester, 'confirm-task-reset');
+  }
+
+  testWidgets(
+      'cancel start preserves history and notes even if OS cancellation fails',
+      (tester) async {
+    reminders = TaskReminderCoordinator(
+        loadExperiments: () async => [stored], service: os);
+    final start = DateTime.now();
+    stored = stored.copyWith(tasks: [
+      stored.tasks.first.copyWith(startedAt: start),
+      stored.tasks.last
+    ]);
+    await open(tester);
+    await notes(tester, 'Keep draft');
+    os.failCancel = true;
+    await resetTask(tester, 'focused-cancel-start-a', '잘못 누름');
+    final task = stored.tasks.first;
+    expect(task.startedAt, isNull);
+    expect(task.executionHistory.single.startedAt, start.toUtc());
+    expect(task.executionHistory.single.reason, '잘못 누름');
+    expect(stored.notes, 'Saved notes');
+    expect(stored.status, ExperimentStatus.inProgress);
+    expect(os.entries, hasLength(1));
+    expect(find.textContaining('알림 예약·취소 확인 실패'), findsWidgets);
+    os.failCancel = false;
+    await reminders.refresh();
+    await tester.pumpAndSettle();
+    expect(os.entries, isEmpty);
+    await key(tester, 'focused-history-a');
+    expect(find.textContaining('사유: 잘못 누름'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await key(tester, 'focused-task-a');
+    expect(stored.tasks.first.startedAt, isNotNull);
+    expect(stored.tasks.first.executionHistory, hasLength(1));
+    expect(os.entries, hasLength(1));
+    await reveal(tester, find.widgetWithText(TextField, '실행·관찰 메모'));
+    expect(find.text('Keep draft'), findsOneWidget);
+  });
+
+  testWidgets(
+      'failed restart retries exact timestamp and history once; discard leaves old execution',
+      (tester) async {
+    reminders = TaskReminderCoordinator(
+        loadExperiments: () async => [stored], service: os);
+    final start = DateTime.now().subtract(const Duration(minutes: 2));
+    stored = stored.copyWith(tasks: [
+      stored.tasks.first.copyWith(startedAt: start),
+      stored.tasks.last
+    ]);
+    await open(tester);
+    final oldPayload = os.entries.values.single;
+    await configure(tester, 'focused-task-time-a', '60');
+    fail = true;
+    await resetTask(tester, 'focused-restart-a', '새 시료 재실행');
+    final first = attempts.single.tasks.first;
+    expect(stored.tasks.first.startedAt, start);
+    expect(os.entries.values.single, oldPayload);
+    expect(stored.tasks.first.executionHistory, isEmpty);
+    await reveal(tester, find.byKey(const ValueKey('focused-restart-a')));
+    expect(
+        tester
+            .widget<TextButton>(find.byKey(const ValueKey('focused-restart-a')))
+            .onPressed,
+        isNull);
+    await key(tester, 'discard-task-record');
+    await tap(tester, find.widgetWithText(FilledButton, '단계 변경 취소'));
+    expect(stored.tasks.first.executionHistory, isEmpty);
+    await resetTask(tester, 'focused-restart-a', '새 시료 재실행');
+    final retry = attempts.last.tasks.first;
+    expect(retry.executionHistory, hasLength(1));
+    expect(first.executionHistory.single.startedAt, start.toUtc());
+    await tester.pump(const Duration(seconds: 10));
+    fail = false;
+    await key(tester, 'retry-task-record');
+    expect(saved, hasLength(1));
+    expect(stored.tasks.first.toJson(), retry.toJson());
+    expect(stored.tasks.first.plannedMinutes, 60);
+    expect(stored.tasks.first.executionHistory.single.plannedMinutes, 30);
+    expect(stored.tasks.first.startedAt, isNot(start));
+    expect(os.entries.values.single, isNot(oldPayload));
+  });
+
+  testWidgets(
+      'completed step restart and completion reopening both preserve the old completion',
+      (tester) async {
+    reminders = TaskReminderCoordinator(
+        loadExperiments: () async => [stored], service: os);
+    final start = DateTime.now().subtract(const Duration(minutes: 5));
+    final end = start.add(const Duration(minutes: 1));
+    stored = stored.copyWith(tasks: [
+      stored.tasks.first
+          .copyWith(startedAt: start, isCompleted: true, completedAt: end),
+      stored.tasks.last
+    ]);
+    await open(tester);
+    await tap(tester, find.byKey(const PageStorageKey('all-experiment-tasks')));
+    await resetTask(tester, 'task-restart-a', '추가 반복');
+    expect(stored.tasks.first.isCompleted, false);
+    expect(stored.tasks.first.executionHistory.single.completedAt, end.toUtc());
+    final newStart = stored.tasks.first.startedAt;
+    await key(tester, 'focused-task-a');
+    final newEnd = stored.tasks.first.completedAt;
+    await tap(tester, find.byKey(const ValueKey('experiment-task-a')));
+    await key(tester, 'confirm-reopen-task');
+    expect(stored.tasks.first.startedAt, newStart);
+    expect(stored.tasks.first.executionHistory, hasLength(2));
+    expect(
+        stored.tasks.first.executionHistory.last.completedAt, newEnd!.toUtc());
+    expect(stored.tasks.first.executionHistory.last.action,
+        TaskExecutionAction.reopen);
+    await tester.pumpWidget(const SizedBox());
+    await open(tester);
+    await key(tester, 'focused-history-a');
+    expect(find.text('완료 해제'), findsOneWidget);
+    expect(find.text('다시 시작'), findsOneWidget);
+  });
+
+  testWidgets(
+      'read-only notes allow history inspection but reject resetting; correction keeps history',
+      (tester) async {
+    reminders = TaskReminderCoordinator(
+        loadExperiments: () async => [stored], service: os);
+    final task = stored.tasks.first
+        .copyWith(startedAt: DateTime.now())
+        .resetExecution(TaskExecutionAction.restart, '반복', DateTime.now());
+    for (final status in [
+      ExperimentStatus.completed,
+      ExperimentStatus.archived
+    ]) {
+      stored =
+          stored.copyWith(tasks: [task, stored.tasks.last], status: status);
+      await tester.pumpWidget(const SizedBox());
+      await open(tester);
+      await section(tester, 'execution');
+      await reveal(tester, find.byKey(const ValueKey('focused-restart-a')));
+      expect(
+          tester
+              .widget<TextButton>(
+                  find.byKey(const ValueKey('focused-restart-a')))
+              .onPressed,
+          isNull);
+      await key(tester, 'focused-history-a');
+      expect(find.textContaining('사유: 반복'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+    }
+    stored = stored
+        .copyWith(status: ExperimentStatus.completed)
+        .beginCorrection('기록 확인', DateTime.now());
+    await tester.pumpWidget(const SizedBox());
+    await open(tester);
+    await section(tester, 'execution');
+    await resetTask(tester, 'focused-cancel-start-a', '오시작 정정');
+    expect(stored.status, ExperimentStatus.correcting);
+    expect(stored.tasks.first.executionHistory, hasLength(2));
+    expect(stored.revisions.last.before!.tasks.first.executionHistory,
+        hasLength(1));
+    expect(os.entries, isEmpty);
+  });
+
+  testWidgets(
+      '320px large text and keyboard keep reason error visible and guard abandoned reason',
+      (tester) async {
+    reminders = TaskReminderCoordinator(
+        loadExperiments: () async => [stored], service: os);
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+    stored = stored.copyWith(tasks: [
+      stored.tasks.first.copyWith(startedAt: DateTime.now()),
+      stored.tasks.last
+    ]);
+    await open(tester, narrow: true);
+    await key(tester, 'focused-cancel-start-a');
+    tester.view.viewInsets = const FakeViewPadding(bottom: 240);
+    await key(tester, 'confirm-task-reset');
+    final error = find.text('사유를 입력해주세요.');
+    expect(error, findsOneWidget);
+    expect(tester.getBottomRight(error).dy, lessThan(560));
+    expect(saved, isEmpty);
+    await tester.enterText(find.widgetWithText(TextField, '변경 사유'), '오시작');
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('입력한 사유를 버릴까요?'), findsOneWidget);
+    await tap(tester, find.text('계속 입력'));
+    expect(find.text('오시작'), findsOneWidget);
+    await key(tester, 'confirm-task-reset');
+    expect(stored.tasks.first.executionHistory.single.reason, '오시작');
     expect(tester.takeException(), isNull);
   });
 }
