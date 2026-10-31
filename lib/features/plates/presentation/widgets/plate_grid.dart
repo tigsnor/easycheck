@@ -438,8 +438,8 @@ class _WellCell extends StatelessWidget {
                     ? const Color(0xFFDBEAFE)
                     : assigned
                         ? const Color(0xFFFFEDD5)
-                        : const Color(0xFFF2F2F7)
-            : group?.color ?? const Color(0xFFF2F2F7);
+                        : Theme.of(context).colorScheme.surfaceContainer
+            : group?.color ?? Theme.of(context).colorScheme.surfaceContainer;
     final background =
         Color.alphaBlend(rawBackground, Theme.of(context).colorScheme.surface);
     final foreground = readableForeground(background);

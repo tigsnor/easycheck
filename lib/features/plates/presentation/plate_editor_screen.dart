@@ -1885,7 +1885,7 @@ class _BulkResultImportPreviewCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: hasIssues
             ? Theme.of(context).colorScheme.errorContainer
-            : const Color(0xFFF2F2F7),
+            : Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -1980,7 +1980,7 @@ class _PlateExportSheet extends StatelessWidget {
             constraints: const BoxConstraints(maxHeight: 280),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFFF2F2F7),
+              color: Theme.of(context).colorScheme.surfaceContainer,
               borderRadius: BorderRadius.circular(18),
             ),
             child: SingleChildScrollView(
@@ -2386,7 +2386,7 @@ class _AnalysisConcentrationChart extends StatelessWidget {
           'analysis-chart-${first.groupId}-${first.role.name}-${first.concentrationUnit}-${first.resultUnit}${first.cellCondition == null ? '' : '-${first.cellCondition!.key}'}'),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F8FA),
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -2611,7 +2611,7 @@ class _AnalysisMetric extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: const Color(0xFFF2F2F7),
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text('$label · $value'),
@@ -3823,7 +3823,7 @@ class _PipettingPlanPreview extends StatelessWidget {
     );
     return Card(
       key: const ValueKey('pipetting-plan-preview'),
-      color: const Color(0xFFF8F8FA),
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -3925,7 +3925,7 @@ class _SerialTransferPlanPreview extends StatelessWidget {
     );
     return Card(
       key: const ValueKey('serial-transfer-plan-preview'),
-      color: const Color(0xFFF8F8FA),
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
