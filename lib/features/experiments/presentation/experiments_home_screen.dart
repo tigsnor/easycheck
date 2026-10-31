@@ -1075,7 +1075,7 @@ class _BackupRestoreSheetState extends State<_BackupRestoreSheet> {
               constraints: const BoxConstraints(maxHeight: 130),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFF2F2F7),
+                color: Theme.of(context).colorScheme.surfaceContainer,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: SingleChildScrollView(
