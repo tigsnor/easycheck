@@ -1,4 +1,7 @@
 import '../../attachments/domain/experiment_attachment.dart';
+import 'task_execution_record.dart';
+
+export 'task_execution_record.dart';
 
 enum ExperimentStatus {
   draft,
@@ -22,6 +25,7 @@ class ExperimentTask {
     this.completedAt,
     this.plannedMinutes,
     this.reminderEnabled = false,
+    this.executionHistory = const [],
   });
 
   factory ExperimentTask.fromJson(Map<String, Object?> json) {
@@ -34,7 +38,13 @@ class ExperimentTask {
     if (reminder && minutes == null) {
       throw const FormatException('종료 알림에는 예정 시간이 필요합니다.');
     }
+    final history = json['executionHistory'];
+    if (history != null && history is! List) {
+      throw const FormatException('단계 실행 이력은 목록이어야 합니다.');
+    }
     return ExperimentTask(
+      executionHistory: List.unmodifiable(
+          (history as List? ?? const []).map(TaskExecutionRecord.fromJson)),
       id: json['id'] as String,
       title: json['title'] as String,
       plannedMinutes: minutes as int?,
@@ -56,6 +66,7 @@ class ExperimentTask {
   final DateTime? completedAt;
   final int? plannedMinutes;
   final bool reminderEnabled;
+  final List<TaskExecutionRecord> executionHistory;
 
   DateTime? get dueAt => startedAt == null || plannedMinutes == null
       ? null
@@ -69,7 +80,42 @@ class ExperimentTask {
         'reminderEnabled': reminderEnabled,
         'startedAt': startedAt?.toUtc().toIso8601String(),
         'completedAt': completedAt?.toUtc().toIso8601String(),
+        'executionHistory': executionHistory.map((r) => r.toJson()).toList(),
       };
+
+  ExperimentTask resetExecution(
+      TaskExecutionAction action, String reason, DateTime now) {
+    if (reason.trim().isEmpty ||
+        (action == TaskExecutionAction.cancelStart &&
+            (startedAt == null || isCompleted)) ||
+        (action == TaskExecutionAction.restart &&
+            startedAt == null &&
+            !isCompleted) ||
+        (action == TaskExecutionAction.reopen && !isCompleted)) {
+      throw StateError('변경 가능한 실행 상태와 사유가 필요합니다.');
+    }
+    final record = TaskExecutionRecord(
+      action: action,
+      recordedAt: now.toUtc(),
+      reason: reason.trim(),
+      title: title,
+      wasCompleted: isCompleted,
+      startedAt: startedAt?.toUtc(),
+      completedAt: completedAt?.toUtc(),
+      plannedMinutes: plannedMinutes,
+      reminderEnabled: reminderEnabled,
+    );
+    return copyWith(
+      isCompleted: false,
+      completedAt: null,
+      startedAt: switch (action) {
+        TaskExecutionAction.cancelStart => null,
+        TaskExecutionAction.restart => now.toUtc(),
+        TaskExecutionAction.reopen => startedAt,
+      },
+      executionHistory: List.unmodifiable([...executionHistory, record]),
+    );
+  }
 
   ExperimentTask copyWith({
     bool? isCompleted,
@@ -77,6 +123,7 @@ class ExperimentTask {
     Object? completedAt = _unset,
     Object? plannedMinutes = _unset,
     bool? reminderEnabled,
+    List<TaskExecutionRecord>? executionHistory,
   }) {
     return ExperimentTask(
       id: id,
@@ -86,6 +133,7 @@ class ExperimentTask {
           ? this.plannedMinutes
           : plannedMinutes as int?,
       reminderEnabled: reminderEnabled ?? this.reminderEnabled,
+      executionHistory: executionHistory ?? this.executionHistory,
       startedAt: identical(startedAt, _unset)
           ? this.startedAt
           : startedAt as DateTime?,

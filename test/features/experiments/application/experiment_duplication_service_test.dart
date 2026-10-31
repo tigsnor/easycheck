@@ -41,11 +41,13 @@ void main() {
       notes: 'Previous observation',
       tasks: [
         ExperimentTask(
-            id: 'task',
-            title: 'Incubate',
-            isCompleted: true,
-            startedAt: oldTime,
-            completedAt: oldTime)
+                id: 'task',
+                title: 'Incubate',
+                isCompleted: true,
+                startedAt: oldTime,
+                completedAt: oldTime)
+            .resetExecution(TaskExecutionAction.restart, 'repeat', oldTime)
+            .copyWith(isCompleted: true, completedAt: oldTime)
       ],
       resources: const [
         ExperimentResource(
@@ -137,6 +139,8 @@ void main() {
     expect(copy.tasks.single.isCompleted, isFalse);
     expect(copy.tasks.single.startedAt, isNull);
     expect(copy.tasks.single.completedAt, isNull);
+    expect(copy.tasks.single.executionHistory, isEmpty);
+    expect(source.tasks.single.executionHistory, hasLength(1));
     expect(restartedPlate!.id, 'plate-copy');
     expect(restartedPlate.name, 'Layout');
     expect(restartedPlate.groups.single.id, 'group');

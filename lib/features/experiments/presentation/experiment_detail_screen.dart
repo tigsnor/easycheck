@@ -1,3 +1,4 @@
+import 'widgets/task_execution_dialog.dart';
 import '../../reminders/application/task_reminder_coordinator.dart';
 import '../../reminders/presentation/reminder_status_card.dart';
 import '../../reminders/presentation/task_timer_settings.dart';
@@ -448,6 +449,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                       widget.reminderTarget!.message(_persistedExperiment)))),
         _ExperimentChecklistCard(
           focusTaskId: widget.reminderTarget?.taskId,
+          historyEnabled: !_isSaving,
           tasks: _tasks,
           enabled: _editingEnabled &&
               !_isSaving &&
@@ -701,6 +703,16 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
             ExperimentTask.fromJson(Map<String, Object?>.from(item as Map)))
         .toList();
     final index = savedTasks.indexWhere((item) => item.id == task.id);
+    if (index >= 0 &&
+        task.executionHistory.length ==
+            savedTasks[index].executionHistory.length + 1) {
+      // Archive the persisted execution, not unsaved timer settings that will
+      // take effect only with this action. Retries reuse this exact snapshot.
+      final change = task.executionHistory.last;
+      final archived = savedTasks[index]
+          .resetExecution(change.action, change.reason, change.recordedAt);
+      task = task.copyWith(executionHistory: archived.executionHistory);
+    }
     if (index < 0) {
       final savedIds = savedTasks.map((item) => item.id).toSet();
       final insertAt = _tasks
@@ -782,8 +794,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
         context: context,
         builder: (context) => AlertDialog(
                 title: const Text('실패한 단계 변경을 취소할까요?'),
-                content:
-                    const Text('이번 시작·완료 조작 직전으로 돌아갑니다. 다른 미저장 입력은 유지합니다.'),
+                content: const Text('이번 단계 조작 직전으로 돌아갑니다. 다른 미저장 입력은 유지합니다.'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(context),
@@ -1199,9 +1210,11 @@ class _ExperimentChecklistCard extends StatefulWidget {
     required this.enabled,
     required this.onRecord,
     required this.recordStatus,
+    required this.historyEnabled,
     this.focusTaskId,
   });
 
+  final bool historyEnabled;
   final String? focusTaskId;
   final Future<void> Function(ExperimentTask task) onRecord;
   final Widget Function(ExperimentTask task) recordStatus;
@@ -1514,6 +1527,7 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                             _runningLabel(tasks[index])!,
                           _deadlineLabel(tasks[index]),
                           widget.recordStatus(tasks[index]),
+                          _executionActions(index, 'task'),
                           TextButton(
                               key: ValueKey('task-time-${tasks[index].id}'),
                               onPressed: widget.enabled
@@ -1601,6 +1615,7 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                     Text(_completedLabel(widget.tasks[index])),
                   _deadlineLabel(widget.tasks[index]),
                   widget.recordStatus(widget.tasks[index]),
+                  _executionActions(index, 'focused'),
                   TextButton(
                       key: ValueKey(
                           'focused-task-time-${widget.tasks[index].id}'),
@@ -1629,6 +1644,49 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
           child: Text(
               '시작·완료는 이 단계의 시간·알림 설정과 함께 바로 저장합니다. 다른 단계 설정·추가한 단계·메모는 상단 저장이 필요합니다. 완료 체크를 해제할 때도 확인 후 저장합니다.')),
     ];
+  }
+
+  Widget _executionActions(int index, String prefix) {
+    final task = widget.tasks[index];
+    return Wrap(spacing: 8, children: [
+      if (task.startedAt != null && !task.isCompleted)
+        TextButton(
+            key: ValueKey('$prefix-cancel-start-${task.id}'),
+            onPressed: widget.enabled
+                ? () => _resetExecution(index, TaskExecutionAction.cancelStart)
+                : null,
+            child: const Text('시작 취소')),
+      if (task.startedAt != null || task.isCompleted)
+        TextButton(
+            key: ValueKey('$prefix-restart-${task.id}'),
+            onPressed: widget.enabled
+                ? () => _resetExecution(index, TaskExecutionAction.restart)
+                : null,
+            child: const Text('다시 시작')),
+      if (task.executionHistory.isNotEmpty)
+        TextButton(
+            key: ValueKey('$prefix-history-${task.id}'),
+            onPressed: !widget.historyEnabled
+                ? null
+                : () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                        builder: (_) => TaskExecutionHistoryScreen(
+                            task: task,
+                            recordStatus: widget.recordStatus(task)))),
+            child: Text('실행 이력 ${task.executionHistory.length}건')),
+    ]);
+  }
+
+  Future<void> _resetExecution(int index, TaskExecutionAction action) async {
+    if (!widget.enabled) return;
+    final task = widget.tasks[index];
+    final reason = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => TaskExecutionDialog(task: task, action: action));
+    if (!mounted || !widget.enabled || reason == null) return;
+    await widget.onRecord(task.resetExecution(action, reason, DateTime.now()));
   }
 
   Future<void> _configureTimer(int index) async {
@@ -1719,7 +1777,7 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
           builder: (context) => AlertDialog(
                   title: const Text('완료를 해제하고 저장할까요?'),
                   content: const Text(
-                      '기존 시작 시각은 유지합니다. 미래 예정 시각과 알림 설정이 있으면 다시 예약될 수 있습니다.'),
+                      '기존 완료 기록은 이력에 남기고 시작 시각은 유지합니다. 새로 실험하려면 다시 시작을 사용하세요. 미래 예정 시각과 알림 설정이 있으면 다시 예약될 수 있습니다.'),
                   actions: [
                     TextButton(
                         onPressed: () => Navigator.pop(context),
@@ -1731,9 +1789,10 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                   ]));
       if (confirmed != true || !mounted || !widget.enabled) return;
     }
-    await widget.onRecord(task.copyWith(
-        isCompleted: completed,
-        completedAt: completed ? DateTime.now() : null));
+    await widget.onRecord(completed
+        ? task.copyWith(isCompleted: true, completedAt: DateTime.now())
+        : task.resetExecution(
+            TaskExecutionAction.reopen, '완료 체크 해제', DateTime.now()));
   }
 
   Widget? _runningLabel(ExperimentTask task) {
