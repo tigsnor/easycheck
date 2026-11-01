@@ -69,6 +69,12 @@ class MeasuredConditionReview {
                 old.cellCondition?.label ?? '미지정',
                 next.cellCondition?.label ?? '미지정'));
           }
+          if (old.assayCondition != next.assayCondition) {
+            fields.add(ConditionFieldChange(
+                '배지·용매 조건',
+                old.assayCondition?.label ?? '미지정',
+                next.assayCondition?.label ?? '미지정'));
+          }
           if (old.role != next.role) {
             fields.add(
                 ConditionFieldChange('역할', _role(old.role), _role(next.role)));

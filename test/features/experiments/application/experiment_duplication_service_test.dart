@@ -1,3 +1,4 @@
+import '../../../support/assay_condition_fixture.dart';
 import '../../../support/cell_condition_fixture.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -78,6 +79,7 @@ void main() {
       base.wells.first.copyWith(
           groupId: 'group',
           cellCondition: hekLow,
+          assayCondition: dmsoLow,
           role: WellRole.treatment,
           concentrationValue: 10,
           concentrationUnit: 'µM',
@@ -158,6 +160,7 @@ void main() {
     expect(restartedPlate.columnCount, sourcePlate.columnCount);
     expect(restartedPlate.wells.first.concentrationValue, 10);
     expect(restartedPlate.wells.first.cellCondition, hekLow);
+    expect(restartedPlate.wells.first.assayCondition, dmsoLow);
     expect(restartedPlate.wells.first.role, WellRole.treatment);
     expect(restartedPlate.wells.first.volumeValue, 100);
     expect(restartedPlate.wells.first.replicateIndex, 1);

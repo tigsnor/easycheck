@@ -41,7 +41,7 @@ class PlateExportService {
       ..writeln()
       ..writeln('Wells')
       ..writeln(
-        'well\trow\tcolumn\tgroup\trole\tconcentration\tunit\treplicate\tvolume\tvolume_unit\tresult\tresult_unit\texcluded\tnote\tcell_type\tcell_density\tcell_density_unit',
+        'well\trow\tcolumn\tgroup\trole\tconcentration\tunit\treplicate\tvolume\tvolume_unit\tresult\tresult_unit\texcluded\tnote\tcell_type\tcell_density\tcell_density_unit\tmedium\tvehicle\tvehicle_percent_vv',
       );
 
     for (final well in plate.wells) {
@@ -78,6 +78,11 @@ class PlateExportService {
           ? ''
           : _formatNumber(well.cellCondition!.density!),
       well.cellCondition?.unit ?? '',
+      well.assayCondition?.medium ?? '',
+      well.assayCondition == null ? '' : well.assayCondition!.vehicle ?? '없음',
+      well.assayCondition == null
+          ? ''
+          : _formatNumber(well.assayCondition!.vehiclePercent),
     ].map(_escape).join('\t');
   }
 
