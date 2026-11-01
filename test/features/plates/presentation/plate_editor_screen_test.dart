@@ -466,9 +466,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Plate 작업 보기'), findsOneWidget);
-    expect(tester.getSize(find.byKey(const ValueKey('well-A1'))).width,
-        closeTo(48, 0.1));
+    expect(find.text('Plate 전체 보기'), findsOneWidget);
+    final fitWidth =
+        tester.getSize(find.byKey(const ValueKey('well-A1'))).width;
     final zoomOutAtFit = tester.widget<IconButton>(
       find.byKey(const ValueKey('plate-zoom-out-button')),
     );
@@ -480,17 +480,19 @@ void main() {
     expect(find.textContaining('well을 길게 누른 채 드래그하면 범위 선택'), findsOneWidget);
     expect(
       tester.getSize(find.byKey(const ValueKey('well-A1'))).width,
-      closeTo(56, 0.1),
+      closeTo(48, 0.1),
     );
 
     await tester.tap(find.byKey(const ValueKey('plate-zoom-in-button')));
     await tester.pumpAndSettle();
     expect(tester.getSize(find.byKey(const ValueKey('well-A1'))).width,
-        closeTo(64, 0.1));
+        closeTo(56, 0.1));
 
     await tester.tap(find.byKey(const ValueKey('plate-fit-button')));
     await tester.pumpAndSettle();
     expect(find.text('Plate 전체 보기'), findsOneWidget);
+    expect(tester.getSize(find.byKey(const ValueKey('well-A1'))).width,
+        closeTo(fitWidth, 0.1));
   });
 
   testWidgets('keeps row selection while changing plate zoom', (tester) async {
@@ -537,6 +539,24 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
+    expect(find.text('Plate 전체 보기'), findsOneWidget);
+    final viewport =
+        tester.getRect(find.byKey(const ValueKey('plate-horizontal-scroll')));
+    final actionBar =
+        tester.getRect(find.byKey(const ValueKey('plate-context-action-bar')));
+    for (final row in 'ABCDEFGH'.split('')) {
+      for (var column = 1; column <= 12; column++) {
+        final rect = tester.getRect(find.byKey(ValueKey('well-$row$column')));
+        expect(rect.left, greaterThanOrEqualTo(viewport.left - 0.1));
+        expect(rect.right, lessThanOrEqualTo(viewport.right + 0.1));
+        expect(rect.bottom, lessThanOrEqualTo(actionBar.top));
+      }
+    }
+    for (final mode in ['results', 'cells', 'layout']) {
+      await tester.tap(find.byKey(ValueKey('plate-$mode-view')));
+      await tester.pumpAndSettle();
+      expect(find.text('Plate 전체 보기'), findsOneWidget);
+    }
     expect(find.byKey(const ValueKey('plate-more-menu')), findsOneWidget);
     expect(find.byTooltip('선택 영역 그룹 지정'), findsNothing);
     expect(find.byTooltip('희석 계산 적용'), findsNothing);

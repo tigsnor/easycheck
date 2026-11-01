@@ -39,6 +39,9 @@ void main() {
       final controller = PlateEditorController();
       addTearDown(controller.dispose);
 
+      expect(controller.requestedCellSize, isNull);
+      expect(controller.canZoomOut, isFalse);
+      controller.zoomIn();
       expect(controller.requestedCellSize, 48);
       expect(controller.canZoomOut, isFalse);
       controller.zoomIn();

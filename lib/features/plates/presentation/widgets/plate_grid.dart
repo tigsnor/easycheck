@@ -213,7 +213,6 @@ class _PlateGridState extends State<PlateGrid> {
                   _showResults = true;
                   _showCells = false;
                 });
-                if (fit) widget.onZoomIn?.call();
               },
             ),
             ChoiceChip(
