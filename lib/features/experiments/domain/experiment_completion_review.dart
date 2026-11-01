@@ -51,6 +51,7 @@ class ExperimentCompletionReviewService {
       return ExperimentCompletionReview(issues);
     }
     final active = plate.wells.where((well) =>
+        well.assayCondition != null ||
         well.cellCondition != null ||
         well.groupId != null ||
         well.role != WellRole.empty ||
@@ -106,10 +107,10 @@ class ExperimentCompletionReviewService {
     for (final series in const PlateAnalysisService().analyze(plate).series) {
       for (final warning in series.reference?.warnings ?? <String>[]) {
         final key =
-            '${series.groupId}|${series.resultUnit}|${series.cellCondition?.key}|$warning';
+            '${series.groupId}|${series.resultUnit}|${series.cellCondition?.key}|${series.assayCondition?.key}|$warning';
         if (seen.add(key)) {
           issues.add(CompletionReviewIssue(
-              '분석 기준 확인: ${series.label}${series.cellCondition == null ? '' : ' · ${series.cellCondition!.label}'}',
+              '분석 기준 확인: ${series.label}${series.cellCondition == null ? '' : ' · ${series.cellCondition!.label}'}${series.assayCondition == null ? '' : ' · ${series.assayCondition!.label}'}',
               warning,
               wellLabels: {
                 ...series.includedWellLabels,

@@ -1,3 +1,5 @@
+import '../domain/assay_condition.dart';
+import 'widgets/assay_condition_sheet.dart';
 import 'dart:convert';
 
 import '../domain/cell_condition.dart';
@@ -289,6 +291,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                 onEdit: _editSelectedWell,
                 onAssignGroup: _assignGroupToSelection,
                 onAssignCells: _assignCellConditions,
+                onAssignAssay: _assignAssayConditions,
                 onStartRange: _editorController.toggleDragSelection,
                 onApplyDilution: _openDilutionBuilder,
                 onClearSelection: _clearSelection,
@@ -647,7 +650,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       builder: (context) => AlertDialog(
         title: Text('“${selected.name}”을 적용할까요?'),
         content: const Text(
-          '현재 Plate의 그룹, 처리 농도, 세포 조건, 역할, 부피와 메모가 템플릿 내용으로 교체됩니다. 측정 결과와 분석 제외 상태는 템플릿에 포함되지 않습니다.',
+          '현재 Plate의 그룹, 처리 농도, 세포·배지·용매 조건, 역할, 부피와 메모가 템플릿 내용으로 교체됩니다. 측정 결과와 분석 제외 상태는 템플릿에 포함되지 않습니다.',
         ),
         actions: [
           TextButton(
@@ -781,11 +784,15 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       builder: (sheetContext) => StatefulBuilder(builder: (context, refresh) {
         final plate = _plate!;
         final report = _plateAnalysisService.analyze(plate);
-        final targets =
-            <(String?, String, CellCondition?), PlateAnalysisSeries>{};
+        final targets = <(String?, String, CellCondition?, AssayCondition?),
+            PlateAnalysisSeries>{};
         for (final series in report.series) {
-          targets[(series.groupId, series.resultUnit, series.cellCondition)] =
-              series;
+          targets[(
+            series.groupId,
+            series.resultUnit,
+            series.cellCondition,
+            series.assayCondition
+          )] = series;
         }
         return SafeArea(
             child: ListView(
@@ -793,14 +800,16 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
           children: [
             Text('분석', style: Theme.of(context).textTheme.titleLarge),
+            const Text(
+                '세포·배지·용매 조건과 결과 단위가 같은 well끼리 분석합니다. 배지·용매 미지정은 조건 일치를 보장하지 않습니다.'),
             if (!widget.readOnly && _failedPlate == null)
               for (final target in targets.values)
                 OutlinedButton.icon(
                   key: ValueKey(
-                      'edit-reference-${target.groupId}-${target.resultUnit}${target.cellCondition == null ? '' : '-${target.cellCondition!.key}'}'),
+                      'edit-reference-${target.groupId}-${target.resultUnit}${target.cellCondition == null ? '' : '-${target.cellCondition!.key}'}${target.assayCondition == null ? '' : '-assay-${target.assayCondition!.key}'}'),
                   icon: const Icon(Icons.tune),
                   label: Text(
-                      '${target.groupId == null ? '그룹 없음' : target.label} · ${target.resultUnit}${target.cellCondition == null ? '' : ' · ${target.cellCondition!.label}'} 기준 설정'),
+                      '${target.groupId == null ? '그룹 없음' : target.label} · ${target.resultUnit}${target.cellCondition == null ? '' : ' · ${target.cellCondition!.label}'}${target.assayCondition == null ? '' : ' · ${target.assayCondition!.label}'} 기준 설정'),
                   onPressed: () async {
                     await showModalBottomSheet<void>(
                       context: context,
@@ -811,6 +820,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                         plate: plate,
                         groupId: target.groupId,
                         cellCondition: target.cellCondition,
+                        assayCondition: target.assayCondition,
                         groupLabel:
                             target.groupId == null ? '그룹 없음' : target.label,
                         resultUnit: target.resultUnit,
@@ -821,13 +831,15 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                                   if (item.groupId != target.groupId ||
                                       item.resultUnit != target.resultUnit ||
                                       item.cellCondition !=
-                                          target.cellCondition)
+                                          target.cellCondition ||
+                                      item.assayCondition !=
+                                          target.assayCondition)
                                     item,
                                 if (selection != null) selection,
                               ],
                             ),
                             changeSummary:
-                                '분석 기준 변경: ${target.label} · ${target.resultUnit} · ${target.cellCondition?.label ?? '세포 조건 미지정'}',
+                                '분석 기준 변경: ${target.label} · ${target.resultUnit} · ${target.cellCondition?.label ?? '세포 조건 미지정'} · ${target.assayCondition?.label ?? '배지·용매 미지정'}',
                             retainFailedDraft: false,
                             showSuccessMessage: false),
                       ),
@@ -1116,6 +1128,45 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         ]),
         changeSummary:
             '세포 조건 지정: ${positions.map((p) => p.label).join(', ')} · ${draft.condition?.label ?? '해제'}');
+  }
+
+  Future<void> _assignAssayConditions() async {
+    final plate = _plate;
+    if (plate == null ||
+        widget.readOnly ||
+        _isSaving ||
+        _failedPlate != null ||
+        _selectedPositions.isEmpty) {
+      return;
+    }
+    final positions = {..._selectedPositions};
+    final draft = await showModalBottomSheet<AssayConditionDraft>(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      builder: (_) => AssayConditionSheet(
+        wells:
+            plate.wells.where((w) => positions.contains(w.position)).toList(),
+        available:
+            plate.wells.map((w) => w.assayCondition).nonNulls.toSet().toList(),
+      ),
+    );
+    if (draft == null || !mounted) return;
+    if (plate.wells
+        .where((w) => positions.contains(w.position))
+        .every((w) => w.assayCondition == draft.condition)) {
+      return;
+    }
+    await _savePlate(
+        plate.copyWith(wells: [
+          for (final well in plate.wells)
+            positions.contains(well.position)
+                ? well.copyWith(assayCondition: draft.condition)
+                : well,
+        ]),
+        changeSummary:
+            '배지·용매 조건 지정: ${positions.map((p) => p.label).join(', ')} · ${draft.condition?.label ?? '해제'}');
   }
 
   Future<void> _editSelectedWell() async {
@@ -2252,7 +2303,7 @@ class _PlateAnalysisCard extends StatelessWidget {
               const Text('측정 결과를 입력하면 실험군·농도별 평균과 반복 오차를 계산합니다.')
             else ...[
               Text(
-                '분석 제외 well은 계산에서 빼고, 같은 실험군·역할·처리 농도·세포 종류/농도/단위·결과 단위를 반복 측정으로 묶습니다. 기준은 그룹·결과 단위·세포 조건별로 지정할 수 있으며, 자동 모드에서는 Vehicle → Untreated → Negative control 순으로 선택합니다.',
+                '분석 제외 well은 계산에서 빼고, 같은 실험군·역할·처리 농도·세포 종류/농도/단위·배지·용매/비율·결과 단위를 반복 측정으로 묶습니다. 기준은 그룹·결과 단위·세포·배지·용매 조건별로 지정할 수 있으며, 자동 모드에서는 Vehicle → Untreated → Negative control 순으로 선택합니다.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 12),
@@ -2307,6 +2358,7 @@ class _AnalysisConcentrationCharts extends StatelessWidget {
         series.concentrationUnit ?? '',
         series.resultUnit,
         series.cellCondition?.key ?? '',
+        series.assayCondition?.key ?? '',
       ].join('\u0000');
       groups.putIfAbsent(key, () => []).add(series);
     }
@@ -2383,7 +2435,7 @@ class _AnalysisConcentrationChart extends StatelessWidget {
 
     return Container(
       key: ValueKey(
-          'analysis-chart-${first.groupId}-${first.role.name}-${first.concentrationUnit}-${first.resultUnit}${first.cellCondition == null ? '' : '-${first.cellCondition!.key}'}'),
+          'analysis-chart-${first.groupId}-${first.role.name}-${first.concentrationUnit}-${first.resultUnit}${first.cellCondition == null ? '' : '-${first.cellCondition!.key}'}${first.assayCondition == null ? '' : '-assay-${first.assayCondition!.key}'}'),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerLow,
@@ -2393,7 +2445,7 @@ class _AnalysisConcentrationChart extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '${first.label} · ${first.resultUnit}${first.cellCondition == null ? '' : '\n${first.cellCondition!.label}'}',
+            '${first.label} · ${first.resultUnit}${first.cellCondition == null ? '' : '\n${first.cellCondition!.label}'}${first.assayCondition == null ? '' : '\n${first.assayCondition!.label}'}',
             style: Theme.of(
               context,
             ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
@@ -2529,7 +2581,7 @@ class _AnalysisSeriesRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '${series.label} · $concentration${series.cellCondition == null ? '' : '\n${series.cellCondition!.label}'}',
+          '${series.label} · $concentration${series.cellCondition == null ? '' : '\n${series.cellCondition!.label}'}${series.assayCondition == null ? '' : '\n${series.assayCondition!.label}'}',
           style: Theme.of(
             context,
           ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
@@ -2752,6 +2804,7 @@ class _PlateContextActionBar extends StatelessWidget {
     required this.onEdit,
     required this.onAssignGroup,
     required this.onAssignCells,
+    required this.onAssignAssay,
     required this.onStartRange,
     required this.onApplyDilution,
     required this.onClearSelection,
@@ -2769,6 +2822,7 @@ class _PlateContextActionBar extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onAssignGroup;
   final VoidCallback onAssignCells;
+  final VoidCallback onAssignAssay;
   final VoidCallback onStartRange;
   final VoidCallback onApplyDilution;
   final VoidCallback onClearSelection;
@@ -2836,6 +2890,12 @@ class _PlateContextActionBar extends StatelessWidget {
                             label: '세포 조건',
                             onPressed: isSaving ? null : onAssignCells,
                           ),
+                          _ContextActionButton(
+                              key: const ValueKey(
+                                  'assign-assay-condition-action'),
+                              icon: Icons.science_outlined,
+                              label: '배지·용매',
+                              onPressed: isSaving ? null : onAssignAssay),
                           if (hasSingleSelection)
                             _ContextActionButton(
                               key: const ValueKey('sequential-results-action'),
@@ -3269,6 +3329,7 @@ class _WellDetailCard extends StatelessWidget {
             ),
             if (selected != null) ...[
               Text('세포 조건 · ${selected.cellCondition?.label ?? '미지정'}'),
+              Text('배지·용매 · ${selected.assayCondition?.label ?? '미지정'}'),
               const SizedBox(height: 10),
               Text(
                 selected.resultValue == null

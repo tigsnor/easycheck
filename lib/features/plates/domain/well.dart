@@ -1,3 +1,4 @@
+import 'assay_condition.dart';
 import 'cell_condition.dart';
 import '../../../shared/models/well_position.dart';
 import 'well_role.dart';
@@ -9,6 +10,7 @@ class Well {
     required this.position,
     this.groupId,
     this.cellCondition,
+    this.assayCondition,
     this.role = WellRole.empty,
     this.concentrationValue,
     this.concentrationUnit,
@@ -31,6 +33,9 @@ class Well {
       cellCondition: json['cellCondition'] == null
           ? null
           : CellCondition.fromJson(json['cellCondition']),
+      assayCondition: json['assayCondition'] == null
+          ? null
+          : AssayCondition.fromJson(json['assayCondition']),
       role: WellRoleJson.fromName(json['role'] as String?),
       concentrationValue: (json['concentrationValue'] as num?)?.toDouble(),
       concentrationUnit: json['concentrationUnit'] as String?,
@@ -47,6 +52,7 @@ class Well {
   final WellPosition position;
   final String? groupId;
   final CellCondition? cellCondition;
+  final AssayCondition? assayCondition;
   final WellRole role;
   final double? concentrationValue;
   final String? concentrationUnit;
@@ -66,6 +72,7 @@ class Well {
       'columnIndex': position.columnIndex,
       'groupId': groupId,
       'cellCondition': cellCondition?.toJson(),
+      'assayCondition': assayCondition?.toJson(),
       'role': role.name,
       'concentrationValue': concentrationValue,
       'concentrationUnit': concentrationUnit,
@@ -82,6 +89,7 @@ class Well {
   Well copyWith({
     Object? groupId = _unset,
     Object? cellCondition = _unset,
+    Object? assayCondition = _unset,
     WellRole? role,
     Object? concentrationValue = _unset,
     Object? concentrationUnit = _unset,
@@ -99,6 +107,9 @@ class Well {
       cellCondition: identical(cellCondition, _unset)
           ? this.cellCondition
           : cellCondition as CellCondition?,
+      assayCondition: identical(assayCondition, _unset)
+          ? this.assayCondition
+          : assayCondition as AssayCondition?,
       role: role ?? this.role,
       concentrationValue: identical(concentrationValue, _unset)
           ? this.concentrationValue

@@ -122,7 +122,7 @@ void main() {
     ]);
     expect(treated(changed, hekLow).normalizedPercent, isNull);
     expect(treated(changed, hekLow).reference!.warnings.join(),
-        contains('세포 조건 변경'));
+        contains('세포/배지·용매 조건 변경'));
     expect(
         () => Plate.fromJson(p.copyWith(
             analysisReferences: [lowReference, lowReference]).toJson()),
@@ -217,7 +217,7 @@ void main() {
     const backup = EasyCheckBackupService();
     final decoded = backup.decode(backup.encode(
         experiments: [experiment()], plates: [loaded], templates: [template]));
-    expect(decoded.schemaVersion, 9);
+    expect(decoded.schemaVersion, 10);
     expect(decoded.plates.single.toJson(), p.toJson());
     expect(decoded.templates.single.toJson(), template.toJson());
     expect(decoded.experiments.single.cellCountLabel, 'old free text');

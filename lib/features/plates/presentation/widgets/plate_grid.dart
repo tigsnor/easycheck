@@ -162,6 +162,7 @@ class _PlateGridState extends State<PlateGrid> {
   }
 
   bool _isAssigned(Well well) =>
+      well.assayCondition != null ||
       well.cellCondition != null ||
       well.groupId != null ||
       well.role != WellRole.empty ||
@@ -425,6 +426,7 @@ class _WellCell extends StatelessWidget {
                 : '빈 well';
     final details = '${well.label} well'
         '${well.cellCondition == null ? '' : ', 세포 조건 ${well.cellCondition!.label}'}'
+        '${well.assayCondition == null ? '' : ', 배지·용매 ${well.assayCondition!.label}'}'
         '${group == null ? '' : ', 그룹 ${group!.name}'}'
         '${well.concentrationValue == null ? '' : ', 농도 ${well.concentrationValue} ${well.concentrationUnit ?? ''}'}'
         '${hasResult ? ', 결과 ${well.resultValue} ${well.resultUnit ?? ''}' : ''}, $status';

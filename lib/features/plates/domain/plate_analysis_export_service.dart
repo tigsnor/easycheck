@@ -14,7 +14,7 @@ class PlateAnalysisExportService {
       ..writeln('Excluded wells\t${report.excludedWellCount}')
       ..writeln()
       ..writeln(
-          'Automatic references for wells without cell conditions (see applied references for each series)')
+          'Automatic references for wells without cell or medium/vehicle conditions (see applied references for each series)')
       ..writeln(
         'result_unit\tblank_mean\tcontrol_role\tcontrol_raw_mean\tcontrol_corrected_mean\tcontrol_well_count',
       );
@@ -42,7 +42,7 @@ class PlateAnalysisExportService {
       ..writeln()
       ..writeln('Applied references by series')
       ..writeln(
-          'group_id\tgroup\trole\tconcentration\tconcentration_unit\tresult_unit\tmode\tblank_wells\tcontrol_wells\tblank_mean\tcontrol_raw_mean\tcontrol_corrected_mean\twarnings\tcell_type\tcell_density\tcell_density_unit');
+          'group_id\tgroup\trole\tconcentration\tconcentration_unit\tresult_unit\tmode\tblank_wells\tcontrol_wells\tblank_mean\tcontrol_raw_mean\tcontrol_corrected_mean\twarnings\tcell_type\tcell_density\tcell_density_unit\tmedium\tvehicle\tvehicle_percent_vv');
     for (final series in report.series) {
       final ref = series.reference;
       if (ref == null) continue;
@@ -63,6 +63,11 @@ class PlateAnalysisExportService {
         series.cellCondition?.name ?? '',
         _numberOrEmpty(series.cellCondition?.density),
         series.cellCondition?.unit ?? '',
+        series.assayCondition?.medium ?? '',
+        series.assayCondition == null
+            ? ''
+            : series.assayCondition!.vehicle ?? '없음',
+        _numberOrEmpty(series.assayCondition?.vehiclePercent),
       ].map(_escape).join('\t'));
     }
 
@@ -70,7 +75,7 @@ class PlateAnalysisExportService {
       ..writeln()
       ..writeln('Series')
       ..writeln(
-        'group_id\tgroup\trole\tconcentration\tconcentration_unit\tresult_unit\treplicates\tincluded_wells\texcluded_count\texcluded_wells\traw_mean\tblank_corrected_mean\tsample_sd\tcv_percent\tnormalized_percent\tcell_type\tcell_density\tcell_density_unit',
+        'group_id\tgroup\trole\tconcentration\tconcentration_unit\tresult_unit\treplicates\tincluded_wells\texcluded_count\texcluded_wells\traw_mean\tblank_corrected_mean\tsample_sd\tcv_percent\tnormalized_percent\tcell_type\tcell_density\tcell_density_unit\tmedium\tvehicle\tvehicle_percent_vv',
       );
     for (final series in report.series) {
       buffer.writeln(
@@ -93,6 +98,11 @@ class PlateAnalysisExportService {
           series.cellCondition?.name ?? '',
           _numberOrEmpty(series.cellCondition?.density),
           series.cellCondition?.unit ?? '',
+          series.assayCondition?.medium ?? '',
+          series.assayCondition == null
+              ? ''
+              : series.assayCondition!.vehicle ?? '없음',
+          _numberOrEmpty(series.assayCondition?.vehiclePercent),
         ].map((value) => _escape(value.toString())).join('\t'),
       );
     }

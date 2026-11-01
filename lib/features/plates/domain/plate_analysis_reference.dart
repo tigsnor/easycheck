@@ -1,14 +1,16 @@
+import 'assay_condition.dart';
 import 'cell_condition.dart';
 import '../../../shared/data/json_validation.dart';
 import 'well.dart';
 import 'well_role.dart';
 
-/// A manual reference applies to all concentrations/roles of one group, unit and cell condition.
+/// A manual reference applies to all concentrations/roles of one group, unit, cell condition and assay condition.
 /// Absence of a selection means automatic references; empty lists mean none.
 class PlateAnalysisReferenceSelection {
   const PlateAnalysisReferenceSelection({
     required this.groupId,
     this.cellCondition,
+    this.assayCondition,
     required this.resultUnit,
     required this.blankWellLabels,
     required this.controlWellLabels,
@@ -16,6 +18,7 @@ class PlateAnalysisReferenceSelection {
 
   final String? groupId;
   final CellCondition? cellCondition;
+  final AssayCondition? assayCondition;
   final String resultUnit;
   final List<String> blankWellLabels;
   final List<String> controlWellLabels;
@@ -46,6 +49,9 @@ class PlateAnalysisReferenceSelection {
       cellCondition: json['cellCondition'] == null
           ? null
           : CellCondition.fromJson(json['cellCondition']),
+      assayCondition: json['assayCondition'] == null
+          ? null
+          : AssayCondition.fromJson(json['assayCondition']),
       blankWellLabels: labels('blankWellLabels'),
       controlWellLabels: labels('controlWellLabels'),
     );
@@ -54,6 +60,7 @@ class PlateAnalysisReferenceSelection {
   Map<String, Object?> toJson() => {
         'groupId': groupId,
         'cellCondition': cellCondition?.toJson(),
+        'assayCondition': assayCondition?.toJson(),
         'resultUnit': resultUnit,
         'blankWellLabels': blankWellLabels,
         'controlWellLabels': controlWellLabels,
@@ -63,10 +70,14 @@ class PlateAnalysisReferenceSelection {
     final values = jsonObjectList(json, 'analysisReferences')
         .map(PlateAnalysisReferenceSelection.fromJson)
         .toList();
-    final targets = <(String?, String, CellCondition?)>{};
+    final targets = <(String?, String, CellCondition?, AssayCondition?)>{};
     for (final value in values) {
-      if (!targets
-          .add((value.groupId, value.resultUnit, value.cellCondition))) {
+      if (!targets.add((
+        value.groupId,
+        value.resultUnit,
+        value.cellCondition,
+        value.assayCondition
+      ))) {
         throw const FormatException('Duplicate analysis reference target.');
       }
     }

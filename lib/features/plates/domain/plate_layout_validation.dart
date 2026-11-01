@@ -1,3 +1,4 @@
+import 'assay_condition.dart';
 import 'cell_condition.dart';
 import '../../../shared/models/well_position.dart';
 import 'well.dart';
@@ -24,6 +25,9 @@ void validatePlateLayout({
   }
   final positions = <WellPosition>{};
   for (final well in wells) {
+    if (well.assayCondition != null) {
+      AssayCondition.fromJson(well.assayCondition!.toJson());
+    }
     if (well.cellCondition != null) {
       CellCondition.fromJson(well.cellCondition!.toJson());
     }

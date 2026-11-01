@@ -215,7 +215,7 @@ void main() {
     const codec = EasyCheckBackupService();
     final backup =
         codec.decode(codec.encode(experiments: [stored], plates: []));
-    expect(backup.schemaVersion, 9);
+    expect(backup.schemaVersion, 10);
     await FileBackupRecoveryService(rootDirectory: recovered.path)
         .recover(backup);
     expect(
