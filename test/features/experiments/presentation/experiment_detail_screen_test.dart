@@ -21,6 +21,9 @@ void main() {
             experiment: experiment,
             onChanged: (value) async => saved = value)));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(
+        find.byKey(const PageStorageKey('all-experiment-tasks')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const PageStorageKey('all-experiment-tasks')));
     await tester.pumpAndSettle();
     expect(find.text('완료 시각 미기록 · 시작 시각 미기록'), findsOneWidget);
@@ -232,6 +235,9 @@ void main() {
     await tester
         .tap(find.byKey(const ValueKey('experiment-section-execution')));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(
+        find.byKey(const PageStorageKey('all-experiment-tasks')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const PageStorageKey('all-experiment-tasks')));
     await tester.pumpAndSettle();
     expect(find.text('실험 실행 체크리스트'), findsOneWidget);
@@ -240,7 +246,9 @@ void main() {
     await tester
         .ensureVisible(find.byKey(const ValueKey('experiment-task-default-0')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('experiment-task-default-0')));
+    await tester.tap(find.descendant(
+        of: find.byKey(const ValueKey('experiment-task-default-0')),
+        matching: find.byType(Checkbox)));
     await tester.pump();
     expect(find.text('1/7 완료'), findsOneWidget);
 
@@ -290,6 +298,9 @@ void main() {
 
     await tester
         .tap(find.byKey(const ValueKey('experiment-section-execution')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+        find.byKey(const PageStorageKey('all-experiment-tasks')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const PageStorageKey('all-experiment-tasks')));
     await tester.pumpAndSettle();

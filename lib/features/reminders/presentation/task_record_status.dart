@@ -60,6 +60,7 @@ class TaskRecordStatus extends StatelessWidget {
         experiment.status == ExperimentStatus.correcting) {
       return '이 노트 상태에서는 알림을 예약하지 않습니다';
     }
+    if (stored.isSkipped) return '생략 단계 · 알림 예약 없음';
     if (stored.isCompleted) return '완료 단계 · 알림 예약 없음';
     if (!stored.reminderEnabled) return '알림 꺼짐';
     if (stored.dueAt == null) return '시작·예정 시간 저장 후 예약';

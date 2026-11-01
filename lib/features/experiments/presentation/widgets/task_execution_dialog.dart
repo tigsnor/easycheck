@@ -80,9 +80,16 @@ class _TaskExecutionDialogState extends State<TaskExecutionDialog> {
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(widget.task.title),
             const SizedBox(height: 12),
-            Text(widget.action == TaskExecutionAction.cancelStart
-                ? '시작 전 상태로 돌아갑니다. 이전 시작 기록과 사유는 이력에 남고, 저장 후 이 단계의 알림 예약을 취소합니다.'
-                : '지금 시각으로 새로 시작합니다. 이전 시작·완료 기록과 사유는 이력에 남고, 저장 후 새 시작 시각을 기준으로 알림 예약을 갱신합니다.'),
+            Text(switch (widget.action) {
+              TaskExecutionAction.cancelStart =>
+                '시작 전 상태로 돌아갑니다. 이전 시작 기록과 사유는 이력에 남고, 저장 후 이 단계의 알림 예약을 취소합니다.',
+              TaskExecutionAction.skip =>
+                '이 단계를 완료와 구분해 생략합니다. 이전 실행 기록과 생략 사유를 보존하고, 저장 후 이 단계의 알림 예약을 취소합니다.',
+              TaskExecutionAction.unskip =>
+                '생략 사유는 이력에 보존하고 시작 전 상태로 돌아갑니다. 과거 시작 시각이나 알림을 복원하지 않습니다.',
+              _ =>
+                '지금 시각으로 새로 시작합니다. 이전 시작·완료 기록과 사유는 이력에 남고, 저장 후 새 시작 시각을 기준으로 알림 예약을 갱신합니다.',
+            }),
             const SizedBox(height: 12),
             const Text(
                 '다른 단계·메모는 유지하고 실험 전체 상태를 시작 전으로 되돌리지 않습니다. 알림 예약·취소 결과는 저장 후 단계에서 확인하세요.'),
@@ -124,6 +131,15 @@ class TaskExecutionHistoryScreen extends StatelessWidget {
           .first
           .replaceFirst('T', ' ');
 
+  String _metadata(TaskExecutionMetadata m) => [
+        if (m.startRecordedAt != null)
+          '\n시작 시각 사후 입력: ${_time(m.startRecordedAt)} 기록',
+        if (m.completionRecordedAt != null)
+          '\n완료 시각 사후 입력: ${_time(m.completionRecordedAt)} 기록',
+        if (m.skippedAt != null)
+          '\n생략 기록: ${_time(m.skippedAt)}\n생략 사유: ${m.skipReason}',
+      ].join();
+
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(title: const Text('단계 실행 이력')),
@@ -136,7 +152,7 @@ class TaskExecutionHistoryScreen extends StatelessWidget {
               child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Text(
-                      '현재 상태: ${task.isCompleted ? '완료' : task.startedAt == null ? '시작 전' : '진행 중'}\n시작: ${_time(task.startedAt)}\n완료: ${_time(task.completedAt)}'))),
+                      '현재 상태: ${task.isSkipped ? '생략' : task.isCompleted ? '완료' : task.startedAt == null ? '시작 전' : '진행 중'}\n시작: ${_time(task.startedAt)}\n완료: ${_time(task.completedAt)}${_metadata(task.executionMetadata)}'))),
           for (final record in task.executionHistory.reversed)
             Card(
                 child: Padding(
@@ -147,7 +163,7 @@ class TaskExecutionHistoryScreen extends StatelessWidget {
                         Text(record.action.label,
                             style: Theme.of(context).textTheme.titleMedium),
                         Text(
-                            '변경 시각: ${_time(record.recordedAt)}\n사유: ${record.reason}\n변경 전 단계: ${record.title}\n변경 전 상태: ${record.wasCompleted ? '완료' : record.startedAt == null ? '시작 전' : '진행 중'}\n시작: ${_time(record.startedAt)}\n완료: ${_time(record.completedAt)}\n예정 시간: ${record.plannedMinutes == null ? '없음' : '${record.plannedMinutes}분'}\n알림 설정: ${record.reminderEnabled ? '켜짐' : '꺼짐'}'),
+                            '변경 시각: ${_time(record.recordedAt)}\n사유: ${record.reason}\n변경 전 단계: ${record.title}\n변경 전 상태: ${record.metadata.skippedAt != null ? '생략' : record.wasCompleted ? '완료' : record.startedAt == null ? '시작 전' : '진행 중'}\n시작: ${_time(record.startedAt)}\n완료: ${_time(record.completedAt)}\n예정 시간: ${record.plannedMinutes == null ? '없음' : '${record.plannedMinutes}분'}\n알림 설정: ${record.reminderEnabled ? '켜짐' : '꺼짐'}${_metadata(record.metadata)}'),
                       ],
                     ))),
         ]),

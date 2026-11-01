@@ -41,7 +41,7 @@ List<TaskReminder> buildTaskReminders(
     for (final task in experiment.tasks) {
       final due = task.dueAt;
       if (!task.reminderEnabled ||
-          task.isCompleted ||
+          task.isFinished ||
           due == null ||
           (!includePast && !due.isAfter(now))) {
         continue;

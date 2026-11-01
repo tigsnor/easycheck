@@ -1,3 +1,4 @@
+import 'widgets/task_actual_times_dialog.dart';
 import 'widgets/task_execution_dialog.dart';
 import '../../reminders/application/task_reminder_coordinator.dart';
 import '../../reminders/presentation/reminder_status_card.dart';
@@ -709,9 +710,12 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       // Archive the persisted execution, not unsaved timer settings that will
       // take effect only with this action. Retries reuse this exact snapshot.
       final change = task.executionHistory.last;
-      final archived = savedTasks[index]
-          .resetExecution(change.action, change.reason, change.recordedAt);
-      task = task.copyWith(executionHistory: archived.executionHistory);
+      task = task.copyWith(
+          executionHistory: List.unmodifiable([
+        ...savedTasks[index].executionHistory,
+        savedTasks[index]
+            .archiveExecution(change.action, change.reason, change.recordedAt),
+      ]));
     }
     if (index < 0) {
       final savedIds = savedTasks.map((item) => item.id).toSet();
@@ -725,7 +729,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     }
     final now = DateTime.now();
     final shouldProgress = task.startedAt != null &&
-        !task.isCompleted &&
+        !task.isFinished &&
         (_persistedExperiment.status == ExperimentStatus.draft ||
             _persistedExperiment.status == ExperimentStatus.planned);
     final updated = _persistedExperiment.copyWith(
@@ -1461,7 +1465,7 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
 
   void _syncTicker() {
     final hasRunningTask = widget.tasks.any(
-      (task) => task.startedAt != null && !task.isCompleted,
+      (task) => task.startedAt != null && !task.isFinished,
     );
     if (hasRunningTask && _ticker == null) {
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -1477,6 +1481,7 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
   Widget build(BuildContext context) {
     final tasks = widget.tasks;
     final completedCount = tasks.where((task) => task.isCompleted).length;
+    final skippedCount = tasks.where((task) => task.isSkipped).length;
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(10, 14, 10, 10),
@@ -1495,7 +1500,9 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                           ),
                     ),
                   ),
-                  Text('$completedCount/${tasks.length} 완료'),
+                  Flexible(
+                      child: Text(
+                          '$completedCount/${tasks.length} 완료${skippedCount == 0 ? '' : ' · $skippedCount 생략'}')),
                 ],
               ),
             ),
@@ -1526,6 +1533,7 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                           else if (tasks[index].startedAt != null)
                             _runningLabel(tasks[index])!,
                           _deadlineLabel(tasks[index]),
+                          _executionMetadataLabel(tasks[index]),
                           widget.recordStatus(tasks[index]),
                           _executionActions(index, 'task'),
                           TextButton(
@@ -1541,7 +1549,7 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                           widget.enabled ? () => _toggleTimer(index) : null,
                     ),
                     value: tasks[index].isCompleted,
-                    onChanged: widget.enabled
+                    onChanged: widget.enabled && !tasks[index].isSkipped
                         ? (value) => _setCompleted(index, value ?? false)
                         : null,
                   ),
@@ -1564,9 +1572,9 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
   List<Widget> _focusedTasks() {
     final running = [
       for (var i = 0; i < widget.tasks.length; i++)
-        if (widget.tasks[i].startedAt != null && !widget.tasks[i].isCompleted) i
+        if (widget.tasks[i].startedAt != null && !widget.tasks[i].isFinished) i
     ];
-    final next = widget.tasks.indexWhere((task) => !task.isCompleted);
+    final next = widget.tasks.indexWhere((task) => !task.isFinished);
     final target =
         widget.tasks.indexWhere((task) => task.id == widget.focusTaskId);
     final regular = running.isEmpty ? (next < 0 ? <int>[] : [next]) : running;
@@ -1580,7 +1588,9 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
             padding: const EdgeInsets.all(8),
             child: Text(widget.tasks.isEmpty
                 ? '등록된 단계가 없습니다.'
-                : '모든 단계가 완료되었습니다. 결과를 확인하세요.'))
+                : widget.tasks.any((task) => task.isSkipped)
+                    ? '모든 단계의 실행 또는 생략 기록이 있습니다. 결과를 확인하세요.'
+                    : '모든 단계가 완료되었습니다. 결과를 확인하세요.'))
       ];
     }
     return [
@@ -1614,6 +1624,7 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                   if (widget.tasks[index].isCompleted)
                     Text(_completedLabel(widget.tasks[index])),
                   _deadlineLabel(widget.tasks[index]),
+                  _executionMetadataLabel(widget.tasks[index]),
                   widget.recordStatus(widget.tasks[index]),
                   _executionActions(index, 'focused'),
                   TextButton(
@@ -1622,10 +1633,10 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                       onPressed:
                           widget.enabled ? () => _configureTimer(index) : null,
                       child: const Text('예정 시간 설정')),
-                  if (!widget.tasks[index].isCompleted &&
+                  if (!widget.tasks[index].isFinished &&
                       widget.tasks[index].startedAt != null)
                     _runningLabel(widget.tasks[index])!,
-                  if (!widget.tasks[index].isCompleted) ...[
+                  if (!widget.tasks[index].isFinished) ...[
                     const SizedBox(height: 8),
                     FilledButton.icon(
                         key: ValueKey('focused-task-${widget.tasks[index].id}'),
@@ -1649,7 +1660,26 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
   Widget _executionActions(int index, String prefix) {
     final task = widget.tasks[index];
     return Wrap(spacing: 8, children: [
-      if (task.startedAt != null && !task.isCompleted)
+      if (!task.isSkipped)
+        TextButton(
+            key: ValueKey('$prefix-actual-times-${task.id}'),
+            onPressed: widget.enabled ? () => _recordActualTimes(index) : null,
+            child: const Text('실제 시각 입력')),
+      if (!task.isFinished)
+        TextButton(
+            key: ValueKey('$prefix-skip-${task.id}'),
+            onPressed: widget.enabled
+                ? () => _resetExecution(index, TaskExecutionAction.skip)
+                : null,
+            child: const Text('단계 생략')),
+      if (task.isSkipped)
+        TextButton(
+            key: ValueKey('$prefix-unskip-${task.id}'),
+            onPressed: widget.enabled
+                ? () => _resetExecution(index, TaskExecutionAction.unskip)
+                : null,
+            child: const Text('생략 해제')),
+      if (task.startedAt != null && !task.isFinished)
         TextButton(
             key: ValueKey('$prefix-cancel-start-${task.id}'),
             onPressed: widget.enabled
@@ -1676,6 +1706,29 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                             recordStatus: widget.recordStatus(task)))),
             child: Text('실행 이력 ${task.executionHistory.length}건')),
     ]);
+  }
+
+  Widget _executionMetadataLabel(ExperimentTask task) {
+    final m = task.executionMetadata;
+    final lines = [
+      if (task.isSkipped)
+        '생략 · ${m.skipReason}\n${_dateTimeLabel(m.skippedAt!)} 기록',
+      if (m.startRecordedAt != null)
+        '시작 시각 사후 입력 · ${_dateTimeLabel(m.startRecordedAt!)} 기록',
+      if (m.completionRecordedAt != null)
+        '완료 시각 사후 입력 · ${_dateTimeLabel(m.completionRecordedAt!)} 기록',
+    ];
+    return lines.isEmpty ? const SizedBox.shrink() : Text(lines.join('\n'));
+  }
+
+  Future<void> _recordActualTimes(int index) async {
+    if (!widget.enabled) return;
+    final updated = await showDialog<ExperimentTask>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => TaskActualTimesDialog(task: widget.tasks[index]));
+    if (!mounted || !widget.enabled || updated == null) return;
+    await widget.onRecord(updated);
   }
 
   Future<void> _resetExecution(int index, TaskExecutionAction action) async {
@@ -1709,7 +1762,7 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
         : '${_dateTimeLabel(due.toLocal())} 예정 · ${remaining!.isNegative ? '${_durationLabel(-remaining)} 초과' : '${_durationLabel(remaining)} 남음'}';
     return Text('$text · ${task.reminderEnabled ? '알림 설정' : '알림 꺼짐'}',
         style: TextStyle(
-            color: !task.isCompleted && (remaining?.isNegative ?? false)
+            color: !task.isFinished && (remaining?.isNegative ?? false)
                 ? Theme.of(context).colorScheme.error
                 : null));
   }
@@ -1761,16 +1814,21 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
   void _toggleTimer(int index) {
     if (!widget.enabled) return;
     final task = widget.tasks[index];
-    if (task.isCompleted) return;
+    if (task.isFinished) return;
     final now = DateTime.now();
     widget.onRecord(task.startedAt == null
         ? task.copyWith(startedAt: now)
-        : task.copyWith(isCompleted: true, completedAt: now));
+        : task.copyWith(
+            isCompleted: true,
+            completedAt: now,
+            executionMetadata: TaskExecutionMetadata(
+                startRecordedAt: task.executionMetadata.startRecordedAt)));
   }
 
   Future<void> _setCompleted(int index, bool completed) async {
     if (!widget.enabled) return;
     final task = widget.tasks[index];
+    if (task.isSkipped) return;
     if (!completed) {
       final confirmed = await showDialog<bool>(
           context: context,
@@ -1790,7 +1848,11 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
       if (confirmed != true || !mounted || !widget.enabled) return;
     }
     await widget.onRecord(completed
-        ? task.copyWith(isCompleted: true, completedAt: DateTime.now())
+        ? task.copyWith(
+            isCompleted: true,
+            completedAt: DateTime.now(),
+            executionMetadata: TaskExecutionMetadata(
+                startRecordedAt: task.executionMetadata.startRecordedAt))
         : task.resetExecution(
             TaskExecutionAction.reopen, '완료 체크 해제', DateTime.now()));
   }
@@ -1841,6 +1903,9 @@ class _TaskTimerButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (task.isSkipped) {
+      return const Icon(Icons.skip_next, semanticLabel: '생략된 단계');
+    }
     if (task.isCompleted) {
       return const Icon(Icons.check_circle, color: Color(0xFF17643B));
     }

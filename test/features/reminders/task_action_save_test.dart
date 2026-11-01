@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:easycheck/app/theme.dart';
+import 'package:easycheck/features/experiments/presentation/widgets/task_actual_times_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:easycheck/features/experiments/domain/experiment.dart';
@@ -465,7 +466,12 @@ void main() {
     final newStart = stored.tasks.first.startedAt;
     await key(tester, 'focused-task-a');
     final newEnd = stored.tasks.first.completedAt;
-    await tap(tester, find.byKey(const ValueKey('experiment-task-a')));
+    await reveal(tester, find.byKey(const ValueKey('experiment-task-a')));
+    await tap(
+        tester,
+        find.descendant(
+            of: find.byKey(const ValueKey('experiment-task-a')),
+            matching: find.byType(Checkbox)));
     await key(tester, 'confirm-reopen-task');
     expect(stored.tasks.first.startedAt, newStart);
     expect(stored.tasks.first.executionHistory, hasLength(2));
@@ -554,5 +560,225 @@ void main() {
     await key(tester, 'confirm-task-reset');
     expect(stored.tasks.first.executionHistory.single.reason, '오시작');
     expect(tester.takeException(), isNull);
+  });
+
+  Future<void> enterActual(WidgetTester tester,
+      {DateTime? start, DateTime? end, String reason = '작업 메모 확인'}) async {
+    await key(tester, 'focused-actual-times-a');
+    await tester.enterText(find.byKey(const ValueKey('task-actual-start')),
+        actualTimeInput(start));
+    await tester.enterText(find.byKey(const ValueKey('task-actual-completion')),
+        actualTimeInput(end));
+    await tester.enterText(
+        find.byKey(const ValueKey('task-actual-reason')), reason);
+    tester.testTextInput.hide();
+    await key(tester, 'save-task-actual-times');
+  }
+
+  testWidgets(
+      'retrospective completion retries exact actual times and provenance without saving unrelated drafts',
+      (tester) async {
+    reminders = TaskReminderCoordinator(
+        loadExperiments: () async => [stored], service: os);
+    final start = DateTime.now().subtract(const Duration(minutes: 10));
+    stored = stored.copyWith(tasks: [
+      stored.tasks.first.copyWith(startedAt: start),
+      stored.tasks.last
+    ]);
+    await open(tester);
+    await notes(tester, 'Draft observation');
+    await configure(tester, 'focused-task-time-a', '60');
+    final end = DateTime.now().subtract(const Duration(minutes: 1));
+    fail = true;
+    await enterActual(tester, start: start, end: end);
+    final attempt = attempts.single.tasks.first;
+    expect(stored.tasks.first.isCompleted, false);
+    expect(os.entries, hasLength(1));
+    await tester.pump(const Duration(seconds: 5));
+    fail = false;
+    await key(tester, 'retry-task-record');
+    expect(saved, hasLength(1));
+    expect(stored.tasks.first.toJson(), attempt.toJson());
+    expect(stored.tasks.first.startedAt!.isAtSameMomentAs(start), true);
+    expect(stored.tasks.first.executionMetadata.startRecordedAt, isNull);
+    expect(
+        stored.tasks.first.executionMetadata.completionRecordedAt, isNotNull);
+    expect(stored.tasks.first.executionHistory.single.plannedMinutes, 30);
+    expect(stored.tasks.first.plannedMinutes, 60);
+    expect(stored.notes, 'Saved notes');
+    expect(os.entries, isEmpty);
+    await tap(tester, find.byKey(const PageStorageKey('all-experiment-tasks')));
+    await key(tester, 'task-history-a');
+    expect(find.textContaining('완료 시각 사후 입력:'), findsWidgets);
+    expect(find.textContaining('사유: 작업 메모 확인'), findsOneWidget);
+  });
+
+  testWidgets(
+      'a retrospective start followed by live completion only labels the start as retrospective',
+      (tester) async {
+    reminders = TaskReminderCoordinator(
+        loadExperiments: () async => [stored], service: os);
+    await open(tester);
+    await enterActual(tester,
+        start: DateTime.now().subtract(const Duration(minutes: 1)));
+    final recorded = stored.tasks.first.executionMetadata.startRecordedAt;
+    expect(recorded, isNotNull);
+    expect(os.entries, hasLength(1));
+    await key(tester, 'focused-task-a');
+    expect(stored.tasks.first.isCompleted, true);
+    expect(stored.tasks.first.executionMetadata.startRecordedAt, recorded);
+    expect(stored.tasks.first.executionMetadata.completionRecordedAt, isNull);
+    expect(os.entries, isEmpty);
+  });
+
+  testWidgets(
+      'skip failure can be discarded then saved; unskip preserves reason and never restores old alarms',
+      (tester) async {
+    reminders = TaskReminderCoordinator(
+        loadExperiments: () async => [stored], service: os);
+    stored = stored.copyWith(tasks: [
+      stored.tasks.first.copyWith(startedAt: DateTime.now()),
+      stored.tasks.last
+    ]);
+    await open(tester);
+    fail = true;
+    await resetTask(tester, 'focused-skip-a', '시료 부족');
+    expect(stored.tasks.first.isSkipped, false);
+    expect(os.entries, hasLength(1));
+    await key(tester, 'discard-task-record');
+    await tap(tester, find.widgetWithText(FilledButton, '단계 변경 취소'));
+    fail = false;
+    await resetTask(tester, 'focused-skip-a', '시료 부족');
+    expect(stored.tasks.first.isSkipped, true);
+    expect(stored.tasks.first.isCompleted, false);
+    expect(stored.tasks.first.executionHistory, hasLength(1));
+    expect(os.entries, isEmpty);
+    expect(find.byKey(const ValueKey('focused-task-b')), findsOneWidget);
+    await tap(tester, find.byKey(const PageStorageKey('all-experiment-tasks')));
+    await reveal(tester, find.byKey(const ValueKey('experiment-task-a')));
+    final checkbox = find.descendant(
+        of: find.byKey(const ValueKey('experiment-task-a')),
+        matching: find.byType(Checkbox));
+    expect(tester.widget<Checkbox>(checkbox).onChanged, isNull);
+    await resetTask(tester, 'task-unskip-a', '시료 확보');
+    expect(stored.tasks.first.isFinished, false);
+    expect(stored.tasks.first.startedAt, isNull);
+    expect(
+        stored.tasks.first.executionHistory.last.metadata.skipReason, '시료 부족');
+    expect(os.entries, isEmpty);
+  });
+
+  testWidgets(
+      'retrospective and skip controls respect completed/archive locks and correction auditing',
+      (tester) async {
+    reminders = TaskReminderCoordinator(
+        loadExperiments: () async => [stored], service: os);
+    for (final status in [
+      ExperimentStatus.completed,
+      ExperimentStatus.archived
+    ]) {
+      stored = stored.copyWith(status: status);
+      await tester.pumpWidget(const SizedBox());
+      await open(tester);
+      await section(tester, 'execution');
+      for (final control in ['focused-actual-times-a', 'focused-skip-a']) {
+        await reveal(tester, find.byKey(ValueKey(control)));
+        expect(
+            tester.widget<TextButton>(find.byKey(ValueKey(control))).onPressed,
+            isNull);
+      }
+    }
+    stored = stored
+        .copyWith(status: ExperimentStatus.completed)
+        .beginCorrection('기록 누락 확인', DateTime.now());
+    await tester.pumpWidget(const SizedBox());
+    await open(tester);
+    await section(tester, 'execution');
+    await enterActual(tester,
+        end: DateTime.now().subtract(const Duration(minutes: 2)));
+    expect(stored.status, ExperimentStatus.correcting);
+    expect(stored.tasks.first.isCompleted, true);
+    expect(stored.tasks.first.startedAt, isNull);
+    expect(stored.revisions.last.before!.tasks.first.completedAt, isNull);
+    expect(os.entries, isEmpty);
+  });
+
+  testWidgets(
+      '320px large text with keyboard validates dates and keeps errors and discard guard visible',
+      (tester) async {
+    reminders = TaskReminderCoordinator(
+        loadExperiments: () async => [stored], service: os);
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+    await open(tester, narrow: true);
+    await key(tester, 'focused-actual-times-a');
+    tester.view.viewInsets = const FakeViewPadding(bottom: 240);
+    for (final invalid in ['2026-02-30 09:00', '2099-01-01 09:00']) {
+      await tester.enterText(
+          find.byKey(const ValueKey('task-actual-start')), invalid);
+      await key(tester, 'save-task-actual-times');
+      final error = find.byKey(const ValueKey('task-actual-error'));
+      expect(error, findsOneWidget);
+      expect(tester.getBottomRight(error).dy, lessThan(560));
+      expect(saved, isEmpty);
+    }
+    await tester.enterText(
+        find.byKey(const ValueKey('task-actual-start')), '2026-01-02 10:00');
+    await tester.enterText(find.byKey(const ValueKey('task-actual-completion')),
+        '2026-01-02 09:00');
+    await key(tester, 'save-task-actual-times');
+    expect(find.text('완료 시각은 시작 시각보다 빠를 수 없습니다.'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('task-actual-completion')),
+        '2026-01-02 11:00');
+    await key(tester, 'save-task-actual-times');
+    expect(find.text('사후 입력·수정 사유를 입력해주세요.'), findsOneWidget);
+    await tester.enterText(
+        find.byKey(const ValueKey('task-actual-reason')), '실험 메모 확인');
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('입력한 시각과 사유를 버릴까요?'), findsOneWidget);
+    await tap(tester, find.text('계속 입력'));
+    await key(tester, 'save-task-actual-times');
+    expect(stored.tasks.first.isCompleted, true);
+    expect(stored.tasks.first.executionHistory.single.reason, '실험 메모 확인');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'date/time picker fills a chosen time and unchanged precise times do not create a revision',
+      (tester) async {
+    reminders = TaskReminderCoordinator(
+        loadExperiments: () async => [stored], service: os);
+    await open(tester);
+    await key(tester, 'focused-actual-times-a');
+    await key(tester, 'pick-task-start');
+    await tap(tester, find.text('OK'));
+    await tap(tester, find.text('Cancel'));
+    expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('task-actual-start')))
+            .controller!
+            .text,
+        isEmpty);
+    await key(tester, 'pick-task-start');
+    await tap(tester, find.text('OK'));
+    await tap(tester, find.text('OK'));
+    expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('task-actual-start')))
+            .controller!
+            .text,
+        isNotEmpty);
+    await tester.enterText(
+        find.byKey(const ValueKey('task-actual-reason')), '선택 확인');
+    await key(tester, 'save-task-actual-times');
+    expect(saved, hasLength(1));
+    await key(tester, 'focused-actual-times-a');
+    await key(tester, 'save-task-actual-times');
+    expect(saved, hasLength(1));
+    expect(stored.tasks.first.executionHistory, hasLength(1));
   });
 }
