@@ -17,7 +17,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final controller = PlateEditorController();
     addTearDown(controller.dispose);
-    if (fit) controller.fitToScreen();
+    if (!fit) controller.zoomIn();
     final plate = Plate(id: 'p', experimentId: 'e', name: 'Plate');
     await tester.pumpWidget(MaterialApp(
         home: MediaQuery(

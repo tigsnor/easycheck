@@ -33,7 +33,8 @@ class PlateEditorController extends ChangeNotifier {
   }
 
   double? get requestedCellSize => _requestedCellSize;
-  double? _requestedCellSize = 48;
+  // Open with every well visible across the screen; zoom is an explicit choice.
+  double? _requestedCellSize;
 
   bool get canZoomOut => _requestedCellSize != null && _requestedCellSize! > 48;
   bool get canZoomIn => _requestedCellSize == null || _requestedCellSize! < 80;
