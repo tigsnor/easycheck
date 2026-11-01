@@ -53,6 +53,17 @@ void main() {
     expect(emptyDrug.finalVolume, 110);
     expect(emptyDrug.finalConcentration, closeTo(100 / 11, 1e-12));
     expect(emptyDrug.finalVehiclePercent, closeTo(1 / 11, 1e-12));
+    for (final value in [.1, .3, 2.123456789]) {
+      final same = plan(
+          initialVolume: 123,
+          volume: 17,
+          initialConcentration: value,
+          concentration: value,
+          initialPercent: value,
+          percent: value);
+      expect(same.finalConcentration, value);
+      expect(same.finalVehiclePercent, value);
+    }
   });
 
   test(

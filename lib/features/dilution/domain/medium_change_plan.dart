@@ -88,10 +88,13 @@ class MediumChangePlan {
   double get retainedVolume =>
       mode == MediumChangeMode.replaceAll ? 0 : initialVolume - removedVolume;
   double get finalVolume => retainedVolume + incomingVolume;
-  double _mix(double initial, double incoming) => retainedVolume == 0
-      ? incoming
-      : initial * (retainedVolume / finalVolume) +
-          incoming * (incomingVolume / finalVolume);
+  // Preserve unchanged conditions exactly rather than introducing floating-point
+  // noise that could split identical values into separate analysis groups.
+  double _mix(double initial, double incoming) =>
+      retainedVolume == 0 || initial == incoming
+          ? incoming
+          : initial * (retainedVolume / finalVolume) +
+              incoming * (incomingVolume / finalVolume);
   double get finalConcentration =>
       _mix(initialConcentration, incomingConcentration);
   double get finalVehiclePercent =>
