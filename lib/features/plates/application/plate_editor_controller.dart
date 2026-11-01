@@ -2,11 +2,25 @@ import 'package:flutter/foundation.dart';
 
 import '../../../shared/models/well_position.dart';
 
+enum PlateView { cells, medium, results }
+
 /// Owns transient Plate-editor interaction state independently from widgets.
 ///
 /// Persistence and domain mutations intentionally remain outside this class;
 /// this first state-management boundary covers selection and viewport state.
 class PlateEditorController extends ChangeNotifier {
+  PlateEditorController({PlateView initialView = PlateView.cells})
+      : _view = initialView;
+
+  PlateView get view => _view;
+  PlateView _view;
+
+  void setView(PlateView view) {
+    if (_view == view) return;
+    _view = view;
+    notifyListeners();
+  }
+
   WellPosition? get selectedPosition => _selectedPosition;
   WellPosition? _selectedPosition;
 

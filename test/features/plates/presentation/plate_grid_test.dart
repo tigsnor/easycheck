@@ -60,7 +60,7 @@ void main() {
     expect(
         find.descendant(
             of: find.byKey(const ValueKey('well-A1')),
-            matching: find.text('1000')),
+            matching: find.text('—')),
         findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('plate-results-view')));
     await tester.pumpAndSettle();
@@ -85,12 +85,12 @@ void main() {
     expect(find.bySemanticsLabel(RegExp('A3 well.*0.123456789 OD450.*분석 제외')),
         findsOneWidget);
     semantics.dispose();
-    await tester.tap(find.byKey(const ValueKey('plate-layout-view')));
+    await tester.tap(find.byKey(const ValueKey('plate-cells-view')));
     await tester.pumpAndSettle();
     expect(
         find.descendant(
             of: find.byKey(const ValueKey('well-A1')),
-            matching: find.text('1000')),
+            matching: find.text('—')),
         findsOneWidget);
   });
 

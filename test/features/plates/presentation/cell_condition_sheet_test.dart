@@ -64,6 +64,11 @@ void main() {
     await edit(tester, 'row-header-A');
     await enter(tester, 'HEK293', '5e3');
     expect(
+        tester
+            .widget<ChoiceChip>(find.byKey(const ValueKey('plate-cells-view')))
+            .selected,
+        isTrue);
+    expect(
         repo.plate!.wells.take(12).map((w) => w.cellCondition),
         everyElement(const CellCondition(
             name: 'HEK293', density: 5000, unit: 'cells/mL')));
@@ -84,6 +89,7 @@ void main() {
     expect(repo.plate!.wells.first.concentrationValue,
         original.wells.first.concentrationValue);
     await tap(tester, key('plate-cells-view'));
+    await tap(tester, key('plate-cells-legend'));
     expect(find.textContaining('C1 · HEK293 · 5000 cells/mL'), findsOneWidget);
     expect(find.textContaining('C3 · HeLa · 5000 cells/mL'), findsOneWidget);
   });
@@ -190,6 +196,7 @@ void main() {
       (tester) async {
     final repo = await open(tester, plate: cellPlate(), readOnly: true);
     await tap(tester, key('plate-cells-view'));
+    await tap(tester, key('plate-cells-legend'));
     expect(find.textContaining('HEK293 · 10000 cells/well'), findsWidgets);
     await tap(tester, key('well-A1'));
     expect(key('assign-cell-condition-action'), findsNothing);

@@ -68,6 +68,11 @@ void main() {
     final repo = await open(tester, plate: original);
     await edit(tester, 'row-header-A');
     await enter(tester, dmsoLow);
+    expect(
+        tester
+            .widget<ChoiceChip>(find.byKey(const ValueKey('plate-medium-view')))
+            .selected,
+        isTrue);
     await edit(tester, 'row-header-B');
     await enter(tester, dmsoHigh);
     await edit(tester, 'well-C1');
