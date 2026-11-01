@@ -26,6 +26,8 @@ import '../data/file_plate_repository.dart';
 import '../data/plate_repository.dart';
 import '../domain/plate.dart';
 import '../domain/measured_condition_review.dart';
+import '../domain/plate_medium_change_service.dart';
+import 'widgets/medium_change_sheet.dart';
 import '../domain/plate_analysis_export_service.dart';
 import '../domain/plate_analysis_service.dart';
 import '../domain/plate_dilution_service.dart';
@@ -295,6 +297,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                 onAssignGroup: _assignGroupToSelection,
                 onAssignCells: _assignCellConditions,
                 onAssignAssay: _assignAssayConditions,
+                onMediumChange: _calculateMediumChange,
                 onStartRange: _editorController.toggleDragSelection,
                 onApplyDilution: _openDilutionBuilder,
                 onClearSelection: _clearSelection,
@@ -1174,6 +1177,43 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         ]),
         changeSummary:
             '배지·용매 조건 지정: ${positions.map((p) => p.label).join(', ')} · ${draft.condition?.label ?? '해제'}');
+    if (saved && mounted) _editorController.setView(PlateView.medium);
+  }
+
+  Future<void> _calculateMediumChange() async {
+    final plate = _plate;
+    if (plate == null ||
+        widget.readOnly ||
+        _isSaving ||
+        _failedPlate != null ||
+        _selectedPositions.isEmpty) {
+      return;
+    }
+    final positions = {..._selectedPositions};
+    final draft = await showModalBottomSheet<MediumChangeDraft>(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      builder: (_) => MediumChangeSheet(
+          wells: plate.wells
+              .where((w) => positions.contains(w.position))
+              .toList()),
+    );
+    if (draft == null || !mounted) return;
+    final updated = const PlateMediumChangeService().apply(
+      plate: plate,
+      positions: positions,
+      plan: draft.plan,
+      finalMedium: draft.finalMedium,
+    );
+    if (jsonEncode(updated.toJson()) == jsonEncode(plate.toJson())) {
+      _editorController.setView(PlateView.medium);
+      return;
+    }
+    final saved = await _savePlate(updated,
+        changeSummary:
+            '추가·교체 계산 조건 기록: ${positions.map((p) => p.label).join(', ')}\n${draft.plan.description}\n최종 배지 ${draft.finalMedium}');
     if (saved && mounted) _editorController.setView(PlateView.medium);
   }
 
@@ -2814,6 +2854,7 @@ class _PlateContextActionBar extends StatelessWidget {
     required this.onAssignGroup,
     required this.onAssignCells,
     required this.onAssignAssay,
+    required this.onMediumChange,
     required this.onStartRange,
     required this.onApplyDilution,
     required this.onClearSelection,
@@ -2832,6 +2873,7 @@ class _PlateContextActionBar extends StatelessWidget {
   final VoidCallback onAssignGroup;
   final VoidCallback onAssignCells;
   final VoidCallback onAssignAssay;
+  final VoidCallback onMediumChange;
   final VoidCallback onStartRange;
   final VoidCallback onApplyDilution;
   final VoidCallback onClearSelection;
@@ -2905,6 +2947,12 @@ class _PlateContextActionBar extends StatelessWidget {
                               icon: Icons.science_outlined,
                               label: '배지·용매',
                               onPressed: isSaving ? null : onAssignAssay),
+                          _ContextActionButton(
+                            key: const ValueKey('medium-change-action'),
+                            icon: Icons.calculate_outlined,
+                            label: '추가·교체 계산',
+                            onPressed: isSaving ? null : onMediumChange,
+                          ),
                           if (hasSingleSelection)
                             _ContextActionButton(
                               key: const ValueKey('sequential-results-action'),
