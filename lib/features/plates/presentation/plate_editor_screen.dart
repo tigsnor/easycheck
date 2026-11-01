@@ -116,7 +116,10 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   @override
   void initState() {
     super.initState();
-    _editorController = PlateEditorController()..addListener(_onEditorChanged);
+    _editorController = PlateEditorController(
+        initialView:
+            widget.initialResultsView ? PlateView.results : PlateView.cells)
+      ..addListener(_onEditorChanged);
     _loadPlate();
   }
 
@@ -335,7 +338,8 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                             ),
                             const SizedBox(height: 18),
                             PlateGrid(
-                              initialResultsView: widget.initialResultsView,
+                              view: _editorController.view,
+                              onViewChanged: _editorController.setView,
                               plate: plate,
                               selectedPositions: _selectedPositions,
                               requestedCellSize: _plateCellSize,
@@ -1117,9 +1121,10 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     if (plate.wells
         .where((w) => positions.contains(w.position))
         .every((w) => w.cellCondition == draft.condition)) {
+      _editorController.setView(PlateView.cells);
       return;
     }
-    await _savePlate(
+    final saved = await _savePlate(
         plate.copyWith(wells: [
           for (final well in plate.wells)
             positions.contains(well.position)
@@ -1128,6 +1133,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         ]),
         changeSummary:
             '세포 조건 지정: ${positions.map((p) => p.label).join(', ')} · ${draft.condition?.label ?? '해제'}');
+    if (saved && mounted) _editorController.setView(PlateView.cells);
   }
 
   Future<void> _assignAssayConditions() async {
@@ -1156,9 +1162,10 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     if (plate.wells
         .where((w) => positions.contains(w.position))
         .every((w) => w.assayCondition == draft.condition)) {
+      _editorController.setView(PlateView.medium);
       return;
     }
-    await _savePlate(
+    final saved = await _savePlate(
         plate.copyWith(wells: [
           for (final well in plate.wells)
             positions.contains(well.position)
@@ -1167,6 +1174,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         ]),
         changeSummary:
             '배지·용매 조건 지정: ${positions.map((p) => p.label).join(', ')} · ${draft.condition?.label ?? '해제'}');
+    if (saved && mounted) _editorController.setView(PlateView.medium);
   }
 
   Future<void> _editSelectedWell() async {
@@ -2133,6 +2141,7 @@ class _PlateSummaryCard extends StatelessWidget {
               ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
+            const Text('실험군 색상은 세포·배지 탭의 조건 색상과 별도입니다.'),
             if (summaries.isEmpty)
               const Text('아직 지정된 실험군이 없습니다. 그룹 지정 또는 희석 계산을 먼저 적용하세요.')
             else
@@ -3652,6 +3661,8 @@ class _DilutionBuilderSheetState extends State<_DilutionBuilderSheet> {
               InlineErrorPanel(message: _errorMessage!),
             ],
             const SizedBox(height: 12),
+            const Text('실험군 요약 색상'),
+            const Text('세포·배지 탭의 색상은 입력한 조건별로 자동 지정됩니다.'),
             Wrap(
               spacing: 8,
               children: [
@@ -4166,6 +4177,8 @@ class _GroupEditorSheetState extends State<_GroupEditorSheet> {
               decoration: const InputDecoration(labelText: '농도 단위'),
             ),
             const SizedBox(height: 12),
+            const Text('실험군 요약 색상'),
+            const Text('세포·배지 탭의 색상은 입력한 조건별로 자동 지정됩니다.'),
             Wrap(
               spacing: 8,
               children: [

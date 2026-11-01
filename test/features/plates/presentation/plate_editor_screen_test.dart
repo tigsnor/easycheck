@@ -552,7 +552,7 @@ void main() {
         expect(rect.bottom, lessThanOrEqualTo(actionBar.top));
       }
     }
-    for (final mode in ['results', 'cells', 'layout']) {
+    for (final mode in ['results', 'cells', 'medium']) {
       await tester.tap(find.byKey(ValueKey('plate-$mode-view')));
       await tester.pumpAndSettle();
       expect(find.text('Plate 전체 보기'), findsOneWidget);
