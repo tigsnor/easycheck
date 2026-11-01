@@ -26,6 +26,7 @@ class ExperimentTask {
     this.plannedMinutes,
     this.reminderEnabled = false,
     this.executionHistory = const [],
+    this.executionMetadata = const TaskExecutionMetadata(),
   });
 
   factory ExperimentTask.fromJson(Map<String, Object?> json) {
@@ -42,7 +43,9 @@ class ExperimentTask {
     if (history != null && history is! List) {
       throw const FormatException('단계 실행 이력은 목록이어야 합니다.');
     }
-    return ExperimentTask(
+    final task = ExperimentTask(
+      executionMetadata:
+          TaskExecutionMetadata.fromJson(json['executionMetadata']),
       executionHistory: List.unmodifiable(
           (history as List? ?? const []).map(TaskExecutionRecord.fromJson)),
       id: json['id'] as String,
@@ -57,6 +60,11 @@ class ExperimentTask {
           ? null
           : DateTime.parse(json['completedAt'] as String).toUtc(),
     );
+    task.executionMetadata.validate(
+        start: task.startedAt,
+        completion: task.completedAt,
+        completed: task.isCompleted);
+    return task;
   }
 
   final String id;
@@ -67,10 +75,14 @@ class ExperimentTask {
   final int? plannedMinutes;
   final bool reminderEnabled;
   final List<TaskExecutionRecord> executionHistory;
+  final TaskExecutionMetadata executionMetadata;
+  bool get isSkipped => executionMetadata.skippedAt != null;
+  bool get isFinished => isCompleted || isSkipped;
 
-  DateTime? get dueAt => startedAt == null || plannedMinutes == null
-      ? null
-      : startedAt!.toUtc().add(Duration(minutes: plannedMinutes!));
+  DateTime? get dueAt =>
+      isSkipped || startedAt == null || plannedMinutes == null
+          ? null
+          : startedAt!.toUtc().add(Duration(minutes: plannedMinutes!));
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -81,40 +93,97 @@ class ExperimentTask {
         'startedAt': startedAt?.toUtc().toIso8601String(),
         'completedAt': completedAt?.toUtc().toIso8601String(),
         'executionHistory': executionHistory.map((r) => r.toJson()).toList(),
+        'executionMetadata': executionMetadata.toJson(),
       };
+
+  TaskExecutionRecord archiveExecution(
+          TaskExecutionAction action, String reason, DateTime now) =>
+      TaskExecutionRecord(
+          action: action,
+          recordedAt: now.toUtc(),
+          reason: reason.trim(),
+          title: title,
+          wasCompleted: isCompleted,
+          startedAt: startedAt?.toUtc(),
+          completedAt: completedAt?.toUtc(),
+          plannedMinutes: plannedMinutes,
+          reminderEnabled: reminderEnabled,
+          metadata: executionMetadata);
 
   ExperimentTask resetExecution(
       TaskExecutionAction action, String reason, DateTime now) {
-    if (reason.trim().isEmpty ||
-        (action == TaskExecutionAction.cancelStart &&
-            (startedAt == null || isCompleted)) ||
-        (action == TaskExecutionAction.restart &&
-            startedAt == null &&
-            !isCompleted) ||
-        (action == TaskExecutionAction.reopen && !isCompleted)) {
+    final allowed = switch (action) {
+      TaskExecutionAction.cancelStart => startedAt != null && !isFinished,
+      TaskExecutionAction.restart =>
+        !isSkipped && (startedAt != null || isCompleted),
+      TaskExecutionAction.reopen => isCompleted,
+      TaskExecutionAction.skip => !isFinished,
+      TaskExecutionAction.unskip => isSkipped,
+      TaskExecutionAction.recordTimes => false,
+    };
+    if (!allowed || reason.trim().isEmpty) {
       throw StateError('변경 가능한 실행 상태와 사유가 필요합니다.');
     }
-    final record = TaskExecutionRecord(
-      action: action,
-      recordedAt: now.toUtc(),
-      reason: reason.trim(),
-      title: title,
-      wasCompleted: isCompleted,
-      startedAt: startedAt?.toUtc(),
-      completedAt: completedAt?.toUtc(),
-      plannedMinutes: plannedMinutes,
-      reminderEnabled: reminderEnabled,
-    );
     return copyWith(
-      isCompleted: false,
-      completedAt: null,
-      startedAt: switch (action) {
-        TaskExecutionAction.cancelStart => null,
-        TaskExecutionAction.restart => now.toUtc(),
-        TaskExecutionAction.reopen => startedAt,
-      },
-      executionHistory: List.unmodifiable([...executionHistory, record]),
-    );
+        isCompleted: false,
+        completedAt: null,
+        startedAt: switch (action) {
+          TaskExecutionAction.restart => now.toUtc(),
+          TaskExecutionAction.reopen => startedAt,
+          _ => null,
+        },
+        executionMetadata: switch (action) {
+          TaskExecutionAction.reopen => TaskExecutionMetadata(
+              startRecordedAt: executionMetadata.startRecordedAt),
+          TaskExecutionAction.skip => TaskExecutionMetadata(
+              skippedAt: now.toUtc(), skipReason: reason.trim()),
+          _ => const TaskExecutionMetadata(),
+        },
+        executionHistory: List.unmodifiable(
+            [...executionHistory, archiveExecution(action, reason, now)]));
+  }
+
+  ExperimentTask recordActualTimes(
+      {required DateTime? start,
+      required DateTime? completion,
+      required String reason,
+      required DateTime now}) {
+    if (isSkipped) throw StateError('생략을 해제한 뒤 시각을 입력하세요.');
+    if (start == null && completion == null) {
+      throw const FormatException('실제 시작 또는 완료 시각을 입력해주세요.');
+    }
+    if ((startedAt != null && start == null) ||
+        (completedAt != null && completion == null)) {
+      throw const FormatException('기존 시각을 지우려면 시작 취소 또는 완료 해제를 사용하세요.');
+    }
+    if ((start?.isAfter(now) ?? false) || (completion?.isAfter(now) ?? false)) {
+      throw const FormatException('미래 시각은 실제 실행 시각으로 기록할 수 없습니다.');
+    }
+    if (start != null && completion != null && completion.isBefore(start)) {
+      throw const FormatException('완료 시각은 시작 시각보다 빠를 수 없습니다.');
+    }
+    bool same(DateTime? a, DateTime? b) =>
+        a == null ? b == null : b != null && a.isAtSameMomentAs(b);
+    final changedStart = !same(start, startedAt);
+    final changedCompletion = !same(completion, completedAt);
+    if (!changedStart && !changedCompletion) return this;
+    if (reason.trim().isEmpty) {
+      throw const FormatException('사후 입력·수정 사유를 입력해주세요.');
+    }
+    return copyWith(
+        startedAt: start?.toUtc(),
+        completedAt: completion?.toUtc(),
+        isCompleted: isCompleted || completion != null,
+        executionMetadata: TaskExecutionMetadata(
+            startRecordedAt:
+                changedStart ? now.toUtc() : executionMetadata.startRecordedAt,
+            completionRecordedAt: changedCompletion
+                ? now.toUtc()
+                : executionMetadata.completionRecordedAt),
+        executionHistory: List.unmodifiable([
+          ...executionHistory,
+          archiveExecution(TaskExecutionAction.recordTimes, reason, now)
+        ]));
   }
 
   ExperimentTask copyWith({
@@ -124,6 +193,7 @@ class ExperimentTask {
     Object? plannedMinutes = _unset,
     bool? reminderEnabled,
     List<TaskExecutionRecord>? executionHistory,
+    TaskExecutionMetadata? executionMetadata,
   }) {
     return ExperimentTask(
       id: id,
@@ -134,6 +204,7 @@ class ExperimentTask {
           : plannedMinutes as int?,
       reminderEnabled: reminderEnabled ?? this.reminderEnabled,
       executionHistory: executionHistory ?? this.executionHistory,
+      executionMetadata: executionMetadata ?? this.executionMetadata,
       startedAt: identical(startedAt, _unset)
           ? this.startedAt
           : startedAt as DateTime?,

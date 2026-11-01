@@ -61,7 +61,8 @@ void main() {
     expect(repeated.executionHistory.single.completedAt, isNull);
     expect(repeated.startedAt, reset);
     final unstarted = const ExperimentTask(id: 't', title: 'new');
-    for (final action in TaskExecutionAction.values) {
+    for (final action in TaskExecutionAction.values
+        .where((a) => a != TaskExecutionAction.skip)) {
       expect(() => unstarted.resetExecution(action, 'reason', reset),
           throwsStateError);
     }
@@ -129,11 +130,11 @@ void main() {
     expect(loaded.toJson(), experiment.toJson());
     final envelope =
         jsonDecode(await File('${root.path}/experiments.json').readAsString());
-    expect(envelope['schemaVersion'], 5);
+    expect(envelope['schemaVersion'], 6);
     const codec = EasyCheckBackupService();
     final encoded = codec.encode(experiments: [loaded], plates: []);
     final backup = codec.decode(encoded);
-    expect(backup.schemaVersion, 8);
+    expect(backup.schemaVersion, 9);
     await FileBackupRecoveryService(rootDirectory: recoveredRoot.path)
         .recover(backup);
     expect(

@@ -41,8 +41,10 @@ class ExperimentRevisionScreen extends StatelessWidget {
         '',
         '실행 단계',
         for (final task in before.tasks)
-          '${task.title} · ${task.isCompleted ? '완료' : '미완료'}\n'
+          '${task.title} · ${task.isSkipped ? '생략' : task.isCompleted ? '완료' : '미완료'}\n'
               '시작: ${date(task.startedAt)} / 완료: ${date(task.completedAt)}\n'
+              '시작 사후 기록: ${date(task.executionMetadata.startRecordedAt)} / 완료 사후 기록: ${date(task.executionMetadata.completionRecordedAt)}\n'
+              '생략 기록: ${date(task.executionMetadata.skippedAt)} / 사유: ${task.executionMetadata.skipReason ?? '없음'}\n'
               '예정: ${task.plannedMinutes == null ? '미지정' : '${task.plannedMinutes}분'} / 알림 설정: ${task.reminderEnabled ? '켜짐' : '꺼짐'}',
         '',
         '시약·장비',

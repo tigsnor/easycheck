@@ -31,10 +31,19 @@ class ExperimentCompletionReviewService {
 
   ExperimentCompletionReview review(Experiment experiment, Plate? plate) {
     final issues = <CompletionReviewIssue>[];
-    final unfinished = experiment.tasks.where((task) => !task.isCompleted);
+    final unfinished = experiment.tasks.where((task) => !task.isFinished);
     if (unfinished.isNotEmpty) {
       issues.add(CompletionReviewIssue('미완료 단계 ${unfinished.length}개',
           unfinished.map((task) => task.title).join(', ')));
+    }
+    final skipped = experiment.tasks.where((task) => task.isSkipped).toList();
+    if (skipped.isNotEmpty) {
+      issues.add(CompletionReviewIssue(
+          '생략 단계 ${skipped.length}개',
+          skipped
+              .map((task) =>
+                  '${task.title}: ${task.executionMetadata.skipReason}')
+              .join(' · ')));
     }
     if (plate == null) {
       issues.add(const CompletionReviewIssue(

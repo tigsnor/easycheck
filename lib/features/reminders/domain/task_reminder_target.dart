@@ -68,6 +68,7 @@ class TaskReminderTarget {
     if (experiment.status == ExperimentStatus.correcting) {
       return '정정 중인 노트의 이전 알림입니다. 현재 기록을 확인하세요.';
     }
+    if (task.isSkipped) return '생략된 단계의 이전 알림입니다. 현재 생략 기록과 사유를 확인하세요.';
     if (task.isCompleted) {
       return '이미 완료된 단계의 알림입니다. 저장된 완료 기록을 표시합니다.';
     }

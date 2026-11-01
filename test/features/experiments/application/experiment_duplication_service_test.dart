@@ -47,6 +47,11 @@ void main() {
                 startedAt: oldTime,
                 completedAt: oldTime)
             .resetExecution(TaskExecutionAction.restart, 'repeat', oldTime)
+            .recordActualTimes(
+                start: oldTime,
+                completion: oldTime,
+                reason: '사후 기록',
+                now: oldTime)
             .copyWith(isCompleted: true, completedAt: oldTime)
       ],
       resources: const [
@@ -140,7 +145,12 @@ void main() {
     expect(copy.tasks.single.startedAt, isNull);
     expect(copy.tasks.single.completedAt, isNull);
     expect(copy.tasks.single.executionHistory, isEmpty);
-    expect(source.tasks.single.executionHistory, hasLength(1));
+    expect(source.tasks.single.executionHistory, hasLength(2));
+    expect(copy.tasks.single.executionMetadata.startRecordedAt, isNull);
+    expect(copy.tasks.single.executionMetadata.completionRecordedAt, isNull);
+    expect(copy.tasks.single.isSkipped, false);
+    expect(
+        source.tasks.single.executionMetadata.completionRecordedAt, isNotNull);
     expect(restartedPlate!.id, 'plate-copy');
     expect(restartedPlate.name, 'Layout');
     expect(restartedPlate.groups.single.id, 'group');
