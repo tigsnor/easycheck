@@ -238,7 +238,7 @@ void main() {
     expect(
         jsonDecode(await File('${root.path}/plates/e.json').readAsString())[
             'schemaVersion'],
-        4);
+        5);
     expect(
         (await FilePlateRepository(rootDirectory: root.path).loadPlate('e'))!
             .toJson(),
@@ -260,7 +260,7 @@ void main() {
     final encoded = codec.encode(
         experiments: [experiment()], plates: [p], templates: [template]);
     final backup = codec.decode(encoded);
-    expect(backup.schemaVersion, 10);
+    expect(backup.schemaVersion, 11);
     await FileBackupRecoveryService(rootDirectory: restored.path)
         .recover(backup);
     expect(

@@ -12,7 +12,7 @@ class FilePlateRepository implements PlateRepository {
     this.fileStore = const SafeJsonFileStore(),
   });
 
-  static const schemaVersion = 4;
+  static const schemaVersion = 5;
 
   final String? rootDirectory;
   final SafeJsonFileStore fileStore;

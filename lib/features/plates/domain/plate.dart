@@ -1,4 +1,5 @@
 import 'plate_analysis_reference.dart';
+import 'plate_exclusion_event.dart';
 import '../../../shared/data/json_validation.dart';
 import 'plate_layout_validation.dart';
 import '../../../shared/models/well_position.dart';
@@ -169,6 +170,7 @@ class Plate {
     this.notes = '',
     this.importHistory = const [],
     this.revisions = const [],
+    this.exclusionEvents = const [],
     this.analysisReferences = const [],
   }) : wells = wells ?? _buildEmptyWells(rowCount, columnCount);
 
@@ -191,6 +193,7 @@ class Plate {
       importHistory: jsonObjectList(json['importHistory'], 'importHistory')
           .map(PlateResultImportRecord.fromJson)
           .toList(),
+      exclusionEvents: PlateExclusionEvent.parseList(json['exclusionEvents']),
       revisions: jsonObjectList(json['revisions'], 'revisions')
           .map(PlateRevision.fromJson)
           .toList(),
@@ -217,6 +220,7 @@ class Plate {
   final List<PlateResultImportRecord> importHistory;
   final List<PlateAnalysisReferenceSelection> analysisReferences;
   final List<PlateRevision> revisions;
+  final List<PlateExclusionEvent> exclusionEvents;
 
   Map<String, Object?> toJson() {
     return {
@@ -232,6 +236,8 @@ class Plate {
           analysisReferences.map((item) => item.toJson()).toList(),
       'importHistory': importHistory.map((record) => record.toJson()).toList(),
       'revisions': revisions.map((revision) => revision.toJson()).toList(),
+      'exclusionEvents':
+          exclusionEvents.map((event) => event.toJson()).toList(),
     };
   }
 
@@ -246,6 +252,7 @@ class Plate {
     String? notes,
     List<PlateResultImportRecord>? importHistory,
     List<PlateRevision>? revisions,
+    List<PlateExclusionEvent>? exclusionEvents,
     List<PlateAnalysisReferenceSelection>? analysisReferences,
   }) {
     return Plate(
@@ -259,6 +266,7 @@ class Plate {
       notes: notes ?? this.notes,
       importHistory: importHistory ?? this.importHistory,
       revisions: revisions ?? this.revisions,
+      exclusionEvents: exclusionEvents ?? this.exclusionEvents,
       analysisReferences: analysisReferences ?? this.analysisReferences,
     );
   }
