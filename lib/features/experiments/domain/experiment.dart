@@ -187,6 +187,7 @@ class ExperimentTask {
   }
 
   ExperimentTask copyWith({
+    String? title,
     bool? isCompleted,
     Object? startedAt = _unset,
     Object? completedAt = _unset,
@@ -197,7 +198,7 @@ class ExperimentTask {
   }) {
     return ExperimentTask(
       id: id,
-      title: title,
+      title: title ?? this.title,
       isCompleted: isCompleted ?? this.isCompleted,
       plannedMinutes: identical(plannedMinutes, _unset)
           ? this.plannedMinutes
