@@ -1225,7 +1225,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       return;
     }
 
-    final updated = await showModalBottomSheet<Well>(
+    final draft = await showModalBottomSheet<_WellRecordDraft>(
       context: context,
       isScrollControlled: true,
       isDismissible: false,
@@ -1233,10 +1233,11 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       builder: (context) => _WellRecordSheet(well: well),
     );
 
-    if (updated == null) {
+    if (draft == null) {
       return;
     }
 
+    final updated = draft.well;
     final updatedWells = plate.wells
         .map(
           (candidate) =>
@@ -1245,7 +1246,8 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         .toList();
     await _savePlate(
       plate.copyWith(wells: updatedWells),
-      changeSummary: 'well 수정: ${updated.position.label}',
+      changeSummary:
+          'well 수정: ${updated.position.label}${draft.exclusionReason == null ? '' : '\n분석 제외: ${well.excluded ? '제외' : '포함'} → ${updated.excluded ? '제외' : '포함'}\n사유: ${draft.exclusionReason}'}',
     );
   }
 
@@ -3040,6 +3042,12 @@ class _ContextActionButton extends StatelessWidget {
   }
 }
 
+class _WellRecordDraft {
+  const _WellRecordDraft(this.well, this.exclusionReason);
+  final Well well;
+  final String? exclusionReason;
+}
+
 class _WellRecordSheet extends StatefulWidget {
   const _WellRecordSheet({required this.well});
 
@@ -3056,6 +3064,10 @@ class _WellRecordSheetState extends State<_WellRecordSheet> {
   late final TextEditingController _resultUnitController;
   late final TextEditingController _noteController;
   late bool _excluded;
+  final _exclusionReason = TextEditingController();
+  final _exclusionFocus = FocusNode();
+  final _exclusionField = GlobalKey();
+  String? _exclusionError;
   String? _concentrationError;
   String? _resultError;
   bool _allowPop = false;
@@ -3068,6 +3080,7 @@ class _WellRecordSheetState extends State<_WellRecordSheet> {
         _resultController,
         _resultUnitController,
         _noteController,
+        _exclusionReason,
       ];
 
   bool get _dirty =>
@@ -3113,6 +3126,7 @@ class _WellRecordSheetState extends State<_WellRecordSheet> {
       controller.removeListener(_changed);
       controller.dispose();
     }
+    _exclusionFocus.dispose();
     super.dispose();
   }
 
@@ -3141,7 +3155,7 @@ class _WellRecordSheetState extends State<_WellRecordSheet> {
     await _pop();
   }
 
-  Future<void> _pop([Well? updated]) async {
+  Future<void> _pop([_WellRecordDraft? updated]) async {
     if (_closing) return;
     setState(() {
       _closing = true;
@@ -3172,6 +3186,22 @@ class _WellRecordSheetState extends State<_WellRecordSheet> {
           ? '유한한 숫자를 입력해주세요.'
           : null;
     });
+    setState(() => _exclusionError =
+        _excluded != well.excluded && _exclusionReason.text.trim().isEmpty
+            ? '분석 제외 또는 해제 사유를 입력해주세요.'
+            : null);
+    if (_exclusionError != null) {
+      _exclusionFocus.requestFocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final field = _exclusionField.currentContext;
+        if (field != null) {
+          Scrollable.ensureVisible(field,
+              alignment: .1, duration: const Duration(milliseconds: 200));
+        }
+      });
+      return;
+    }
     if (_concentrationError != null || _resultError != null) return;
     final concentrationUnit = _concentrationUnitController.text.trim();
     final resultUnit = _resultUnitController.text.trim();
@@ -3181,7 +3211,7 @@ class _WellRecordSheetState extends State<_WellRecordSheet> {
         ? WellRole.treatment
         : well.role;
 
-    await _pop(
+    await _pop(_WellRecordDraft(
       well.copyWith(
         concentrationValue: concentration,
         concentrationUnit:
@@ -3204,13 +3234,14 @@ class _WellRecordSheetState extends State<_WellRecordSheet> {
             : _noteController.text.trim(),
         excluded: _excluded,
       ),
-    );
+      _excluded != well.excluded ? _exclusionReason.text.trim() : null,
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    return PopScope<Well>(
+    return PopScope<_WellRecordDraft>(
       canPop: _allowPop || !_dirty,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) _close();
@@ -3328,10 +3359,32 @@ class _WellRecordSheetState extends State<_WellRecordSheet> {
                 key: const ValueKey('well-excluded-switch'),
                 contentPadding: EdgeInsets.zero,
                 title: const Text('분석에서 제외'),
-                subtitle: const Text('이상치나 실험 오류가 있는 well을 표시합니다.'),
+                subtitle: const Text('원본 측정값은 유지하고 분석 계산에서만 제외합니다.'),
                 value: _excluded,
-                onChanged: (value) => setState(() => _excluded = value),
+                onChanged: (value) => setState(() {
+                  _excluded = value;
+                  _exclusionError = null;
+                }),
               ),
+              if (_excluded != widget.well.excluded) ...[
+                Container(
+                    key: _exclusionField,
+                    child: TextField(
+                      key: const ValueKey('well-exclusion-reason-field'),
+                      controller: _exclusionReason,
+                      focusNode: _exclusionFocus,
+                      minLines: 2,
+                      maxLines: 4,
+                      decoration: InputDecoration(
+                        labelText: _excluded ? '분석 제외 사유' : '분석 제외 해제 사유',
+                        errorText: _exclusionError,
+                        errorMaxLines: 3,
+                        helperText:
+                            '좌표·사유·변경 시각은 기존 변경 이력에 저장됩니다. 이력은 최근 20건까지 보관합니다.',
+                        helperMaxLines: 4,
+                      ),
+                    )),
+              ],
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
