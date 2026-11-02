@@ -968,6 +968,9 @@ void main() {
       '기포 확인',
     );
     await tester.tap(find.byKey(const ValueKey('well-excluded-switch')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const ValueKey('well-exclusion-reason-field')), '기포 확인');
     await tester.ensureVisible(
       find.byKey(const ValueKey('save-well-record-button')),
     );
@@ -979,7 +982,8 @@ void main() {
     expect(savedWell.resultUnit, 'OD450');
     expect(savedWell.note, '기포 확인');
     expect(savedWell.excluded, isTrue);
-    expect(repository.plate!.revisions.last.summary, 'well 수정: A1');
+    expect(repository.plate!.revisions.last.summary,
+        'well 수정: A1\n분석 제외: 포함 → 제외\n사유: 기포 확인');
     await tester.tap(find.byKey(const ValueKey('show-selected-well-action')));
     await tester.pumpAndSettle();
     expect(find.text('결과 · 0.82 OD450'), findsOneWidget);

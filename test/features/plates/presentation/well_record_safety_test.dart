@@ -54,6 +54,72 @@ void main() {
     return repo;
   }
 
+  testWidgets(
+      'exclusion and reopening require reasons and retry preserves one history and raw zero',
+      (tester) async {
+    const original =
+        Well(position: position, resultValue: 0, resultUnit: 'OD450');
+    final repo = await open(tester, original);
+    await tap(tester, find.byKey(const ValueKey('well-excluded-switch')));
+    await save(tester);
+    expect(find.text('분석 제외 또는 해제 사유를 입력해주세요.'), findsOneWidget);
+    expect(repo.saveCount, 0);
+    await tester.enterText(field('exclusion-reason'), '기포 확인');
+    repo.failNextSave = true;
+    await save(tester);
+    expect(repo.plate!.wells.first.excluded, false);
+    await tap(tester, find.byKey(const ValueKey('retry-save-button')));
+    expect(repo.plate!.wells.first.resultValue, 0);
+    expect(repo.plate!.revisions, hasLength(1));
+    expect(
+        repo.plate!.revisions.single.summary, contains('포함 → 제외\n사유: 기포 확인'));
+    expect(repo.plate!.revisions.single.snapshot!.wells.first.excluded, false);
+    await edit(tester);
+    await tap(tester, find.byKey(const ValueKey('well-excluded-switch')));
+    await save(tester);
+    expect(find.text('분석 제외 또는 해제 사유를 입력해주세요.'), findsOneWidget);
+    await tester.enterText(field('exclusion-reason'), '원자료 검토 후 포함');
+    await save(tester);
+    final restored = Plate.fromJson(repo.plate!.toJson());
+    expect(restored.wells.first.toJson(), original.toJson());
+    expect(restored.revisions, hasLength(2));
+    expect(
+        restored.revisions.last.summary, contains('제외 → 포함\n사유: 원자료 검토 후 포함'));
+    expect(restored.revisions.last.snapshot!.wells.first.excluded, true);
+  });
+
+  testWidgets(
+      'returning exclusion to original state makes no write and legacy exclusions remain editable',
+      (tester) async {
+    final repo =
+        await open(tester, const Well(position: position, excluded: true));
+    await tap(tester, find.byKey(const ValueKey('well-excluded-switch')));
+    await tester.enterText(field('exclusion-reason'), '취소할 초안');
+    await tap(tester, find.byKey(const ValueKey('well-excluded-switch')));
+    await save(tester);
+    expect(repo.saveCount, 0);
+    await edit(tester);
+    await tester.enterText(field('note'), '기존 제외 기록 검토');
+    await save(tester);
+    expect(repo.plate!.wells.first.excluded, true);
+    expect(repo.plate!.wells.first.note, '기존 제외 기록 검토');
+  });
+
+  testWidgets(
+      'exclusion reason error remains above keyboard on a narrow large-text screen',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repo =
+        await open(tester, const Well(position: position), narrow: true);
+    await tap(tester, find.byKey(const ValueKey('well-excluded-switch')));
+    await save(tester);
+    final error = find.text('분석 제외 또는 해제 사유를 입력해주세요.');
+    expect(tester.getRect(error).bottom, lessThanOrEqualTo(450));
+    expect(repo.saveCount, 0);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final result in [0.0, -0.82, 1.234567891234e-8]) {
     testWidgets('note and exclusion edits preserve unitless result $result',
         (tester) async {
@@ -79,6 +145,9 @@ void main() {
       expect(repo.plate!.wells.first.toJson(), withNote.toJson());
       await edit(tester);
       await tap(tester, find.byKey(const ValueKey('well-excluded-switch')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.byKey(const ValueKey('well-exclusion-reason-field')), '기포 확인');
       await save(tester);
       expect(repo.plate!.wells.first.toJson(),
           withNote.copyWith(excluded: true).toJson());
@@ -94,6 +163,9 @@ void main() {
         note: ' note ');
     final repo = await open(tester, original);
     await tap(tester, find.byKey(const ValueKey('well-excluded-switch')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const ValueKey('well-exclusion-reason-field')), '기포 확인');
     await save(tester);
     expect(repo.plate!.wells.first.toJson(),
         original.copyWith(excluded: true).toJson());
