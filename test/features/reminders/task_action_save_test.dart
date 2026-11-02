@@ -69,11 +69,16 @@ void main() {
   Future<void> reveal(WidgetTester tester, Finder finder) async {
     await tester.pumpAndSettle();
     if (finder.evaluate().isEmpty) {
-      tester
-          .state<ScrollableState>(find.byType(Scrollable).first)
-          .position
-          .jumpTo(0);
-      await tester.pumpAndSettle();
+      // Lazy layout can correct the offset after previously offscreen cards
+      // are rebuilt. Return to the real start before searching downwards.
+      for (var i = 0; i < 3; i++) {
+        final position = tester
+            .state<ScrollableState>(find.byType(Scrollable).first)
+            .position;
+        position.jumpTo(position.minScrollExtent);
+        await tester.pumpAndSettle();
+        if (position.pixels == position.minScrollExtent) break;
+      }
       await tester.scrollUntilVisible(finder, 200,
           scrollable: find.byType(Scrollable).first);
     }

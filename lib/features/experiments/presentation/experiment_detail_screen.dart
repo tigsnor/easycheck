@@ -1,3 +1,5 @@
+import '../domain/protocol_editing.dart';
+import 'widgets/protocol_editor_screen.dart';
 import 'widgets/task_actual_times_dialog.dart';
 import 'widgets/task_execution_dialog.dart';
 import '../../reminders/application/task_reminder_coordinator.dart';
@@ -449,6 +451,9 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                   child: Text(
                       widget.reminderTarget!.message(_persistedExperiment)))),
         _ExperimentChecklistCard(
+          onManage: _canManageProtocol ? _manageProtocol : null,
+          canRecord: !_hasEditedSavedProtocol,
+          protocolDraftPending: _hasEditedSavedProtocol,
           focusTaskId: widget.reminderTarget?.taskId,
           historyEnabled: !_isSaving,
           tasks: _tasks,
@@ -693,8 +698,42 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     if (mounted) setState(() => _resultSummaryVersion++);
   }
 
+  bool get _hasEditedSavedProtocol {
+    final baseline = jsonDecode(_savedFingerprint) as Map<String, dynamic>;
+    final saved = (baseline['tasks'] as List)
+        .map(
+            (t) => ExperimentTask.fromJson(Map<String, Object?>.from(t as Map)))
+        .toList();
+    return ProtocolEditing.changesSavedDefinition(saved, _tasks);
+  }
+
+  bool get _canManageProtocol =>
+      _editingEnabled &&
+      !_isSaving &&
+      _pendingTask == null &&
+      _saveError == null &&
+      ProtocolEditing.canEdit(_persistedExperiment) &&
+      ProtocolEditing.canEdit(
+          _persistedExperiment.copyWith(status: _status, tasks: _tasks));
+
+  Future<void> _manageProtocol() async {
+    if (!_canManageProtocol) return;
+    final tasks = await Navigator.of(context).push<List<ExperimentTask>>(
+        MaterialPageRoute(
+            builder: (_) => ProtocolEditorScreen(
+                experiment: _persistedExperiment.copyWith(
+                    status: _status, tasks: _tasks))));
+    if (tasks == null || !mounted || !_canManageProtocol) return;
+    setState(() => _tasks = tasks);
+  }
+
   Future<void> _recordTask(ExperimentTask task) async {
     if (_isSaving || _isLocked || _pendingTask != null || _saveError != null) {
+      return;
+    }
+    if (_hasEditedSavedProtocol) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('단계 구성 변경을 먼저 저장한 뒤 실행해주세요.')));
       return;
     }
     final before = _tasks.firstWhere((item) => item.id == task.id);
@@ -1210,6 +1249,9 @@ class _ExperimentHistoryCard extends StatelessWidget {
 class _ExperimentChecklistCard extends StatefulWidget {
   const _ExperimentChecklistCard({
     required this.tasks,
+    required this.onManage,
+    required this.canRecord,
+    required this.protocolDraftPending,
     required this.onChanged,
     required this.enabled,
     required this.onRecord,
@@ -1218,6 +1260,8 @@ class _ExperimentChecklistCard extends StatefulWidget {
     this.focusTaskId,
   });
 
+  final VoidCallback? onManage;
+  final bool canRecord, protocolDraftPending;
   final bool historyEnabled;
   final String? focusTaskId;
   final Future<void> Function(ExperimentTask task) onRecord;
@@ -1444,6 +1488,7 @@ class _ResourceEditorDialogState extends State<_ResourceEditorDialog> {
 
 class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
   Timer? _ticker;
+  bool get _executionEnabled => widget.enabled && widget.canRecord;
 
   @override
   void initState() {
@@ -1507,6 +1552,15 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
               ),
             ),
             const SizedBox(height: 12),
+            TextButton.icon(
+                key: const ValueKey('edit-protocol-steps'),
+                onPressed: widget.onManage,
+                icon: const Icon(Icons.edit_note),
+                label: const Text('단계 구성 편집')),
+            if (widget.onManage == null)
+              const Text('구성 편집은 수행 기록이 없는 초안·계획 실험에서 가능합니다.'),
+            if (widget.protocolDraftPending)
+              const Text('단계 이름·순서·삭제 변경이 아직 저장되지 않았습니다. 상단에서 저장한 뒤 실행해주세요.'),
             ..._focusedTasks(),
             ExpansionTile(
               key: const PageStorageKey('all-experiment-tasks'),
@@ -1546,10 +1600,10 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                     secondary: _TaskTimerButton(
                       task: tasks[index],
                       onPressed:
-                          widget.enabled ? () => _toggleTimer(index) : null,
+                          _executionEnabled ? () => _toggleTimer(index) : null,
                     ),
                     value: tasks[index].isCompleted,
-                    onChanged: widget.enabled && !tasks[index].isSkipped
+                    onChanged: _executionEnabled && !tasks[index].isSkipped
                         ? (value) => _setCompleted(index, value ?? false)
                         : null,
                   ),
@@ -1640,8 +1694,9 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                     const SizedBox(height: 8),
                     FilledButton.icon(
                         key: ValueKey('focused-task-${widget.tasks[index].id}'),
-                        onPressed:
-                            widget.enabled ? () => _toggleTimer(index) : null,
+                        onPressed: _executionEnabled
+                            ? () => _toggleTimer(index)
+                            : null,
                         icon: Icon(widget.tasks[index].startedAt == null
                             ? Icons.play_arrow
                             : Icons.check),
@@ -1663,33 +1718,34 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
       if (!task.isSkipped)
         TextButton(
             key: ValueKey('$prefix-actual-times-${task.id}'),
-            onPressed: widget.enabled ? () => _recordActualTimes(index) : null,
+            onPressed:
+                _executionEnabled ? () => _recordActualTimes(index) : null,
             child: const Text('실제 시각 입력')),
       if (!task.isFinished)
         TextButton(
             key: ValueKey('$prefix-skip-${task.id}'),
-            onPressed: widget.enabled
+            onPressed: _executionEnabled
                 ? () => _resetExecution(index, TaskExecutionAction.skip)
                 : null,
             child: const Text('단계 생략')),
       if (task.isSkipped)
         TextButton(
             key: ValueKey('$prefix-unskip-${task.id}'),
-            onPressed: widget.enabled
+            onPressed: _executionEnabled
                 ? () => _resetExecution(index, TaskExecutionAction.unskip)
                 : null,
             child: const Text('생략 해제')),
       if (task.startedAt != null && !task.isFinished)
         TextButton(
             key: ValueKey('$prefix-cancel-start-${task.id}'),
-            onPressed: widget.enabled
+            onPressed: _executionEnabled
                 ? () => _resetExecution(index, TaskExecutionAction.cancelStart)
                 : null,
             child: const Text('시작 취소')),
       if (task.startedAt != null || task.isCompleted)
         TextButton(
             key: ValueKey('$prefix-restart-${task.id}'),
-            onPressed: widget.enabled
+            onPressed: _executionEnabled
                 ? () => _resetExecution(index, TaskExecutionAction.restart)
                 : null,
             child: const Text('다시 시작')),
@@ -1722,23 +1778,23 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
   }
 
   Future<void> _recordActualTimes(int index) async {
-    if (!widget.enabled) return;
+    if (!_executionEnabled) return;
     final updated = await showDialog<ExperimentTask>(
         context: context,
         barrierDismissible: false,
         builder: (_) => TaskActualTimesDialog(task: widget.tasks[index]));
-    if (!mounted || !widget.enabled || updated == null) return;
+    if (!mounted || !_executionEnabled || updated == null) return;
     await widget.onRecord(updated);
   }
 
   Future<void> _resetExecution(int index, TaskExecutionAction action) async {
-    if (!widget.enabled) return;
+    if (!_executionEnabled) return;
     final task = widget.tasks[index];
     final reason = await showDialog<String>(
         context: context,
         barrierDismissible: false,
         builder: (_) => TaskExecutionDialog(task: task, action: action));
-    if (!mounted || !widget.enabled || reason == null) return;
+    if (!mounted || !_executionEnabled || reason == null) return;
     await widget.onRecord(task.resetExecution(action, reason, DateTime.now()));
   }
 
@@ -1812,7 +1868,7 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
   }
 
   void _toggleTimer(int index) {
-    if (!widget.enabled) return;
+    if (!_executionEnabled) return;
     final task = widget.tasks[index];
     if (task.isFinished) return;
     final now = DateTime.now();
@@ -1826,7 +1882,7 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
   }
 
   Future<void> _setCompleted(int index, bool completed) async {
-    if (!widget.enabled) return;
+    if (!_executionEnabled) return;
     final task = widget.tasks[index];
     if (task.isSkipped) return;
     if (!completed) {
@@ -1845,7 +1901,7 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                         onPressed: () => Navigator.pop(context, true),
                         child: const Text('완료 해제하고 저장'))
                   ]));
-      if (confirmed != true || !mounted || !widget.enabled) return;
+      if (confirmed != true || !mounted || !_executionEnabled) return;
     }
     await widget.onRecord(completed
         ? task.copyWith(
