@@ -185,7 +185,7 @@ void main() {
     ], plates: [
       restored
     ]);
-    expect(backup.decode(encoded).schemaVersion, 10);
+    expect(backup.decode(encoded).schemaVersion, 11);
     expect(drugA(backup.decode(encoded).plates.single).normalizedPercent,
         closeTo(50, 1e-9));
     // Version 1 files remain readable and acquire references only on save.

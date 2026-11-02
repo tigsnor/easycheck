@@ -1,3 +1,4 @@
+import '../../../support/exclusion_event_fixture.dart';
 import '../../../support/assay_condition_fixture.dart';
 import '../../../support/cell_condition_fixture.dart';
 import 'dart:convert';
@@ -105,6 +106,7 @@ void main() {
           snapshot: PlateSnapshot.fromPlate(base))
     ]);
     await experiments.saveExperiment(source);
+    sourcePlate = sourcePlate.copyWith(exclusionEvents: [exclusionEvent(0)]);
     await plates.savePlate(sourcePlate);
     service = ExperimentDuplicationService(
         experimentRepository: experiments,
@@ -172,6 +174,8 @@ void main() {
     expect(restartedPlate.notes, isEmpty);
     expect(restartedPlate.importHistory, isEmpty);
     expect(restartedPlate.revisions, isEmpty);
+    expect(sourcePlate.exclusionEvents, hasLength(1));
+    expect(restartedPlate.exclusionEvents, isEmpty);
   });
 
   test('duplicates an experiment without a Plate without adding example data',

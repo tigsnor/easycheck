@@ -1,4 +1,6 @@
 import '../domain/assay_condition.dart';
+import '../domain/plate_exclusion_event.dart';
+import 'widgets/exclusion_review_screen.dart';
 import 'widgets/assay_condition_sheet.dart';
 import 'dart:convert';
 
@@ -47,6 +49,7 @@ enum _PlateMoreAction {
   importResults,
   export,
   history,
+  exclusions,
   saveTemplate,
   applyTemplate,
   manageTemplates,
@@ -202,6 +205,9 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                   case _PlateMoreAction.export:
                     _showPlateExport();
                     return;
+                  case _PlateMoreAction.exclusions:
+                    _showExclusionReview();
+                    return;
                   case _PlateMoreAction.history:
                     _showPlateHistory(plate!.revisions);
                     return;
@@ -244,6 +250,14 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                     title: Text('Plate 전체 내보내기'),
                     contentPadding: EdgeInsets.zero,
                   ),
+                ),
+                const PopupMenuItem(
+                  key: ValueKey('exclusion-review-menu'),
+                  value: _PlateMoreAction.exclusions,
+                  child: ListTile(
+                      leading: Icon(Icons.rule_outlined),
+                      title: Text('제외 이력·분석 비교'),
+                      contentPadding: EdgeInsets.zero),
                 ),
                 PopupMenuItem(
                   value: _PlateMoreAction.history,
@@ -685,6 +699,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       updated,
       successMessage: '“${selected.name}” 템플릿을 적용했습니다.',
       changeSummary: '템플릿 적용: ${selected.name}',
+      exclusionSource: ExclusionChangeSource.template,
     );
     if (saved && mounted) {
       _clearSelection();
@@ -879,6 +894,10 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
           child: _WellDetailCard(
             well: _selectedWell,
             group: _selectedGroup,
+            onExclusionReview: () {
+              Navigator.pop(sheetContext);
+              _showExclusionReview();
+            },
             onEdit: widget.readOnly
                 ? null
                 : () {
@@ -1246,6 +1265,8 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         .toList();
     await _savePlate(
       plate.copyWith(wells: updatedWells),
+      exclusionSource: ExclusionChangeSource.wellEdit,
+      exclusionReason: draft.exclusionReason,
       changeSummary:
           'well 수정: ${updated.position.label}${draft.exclusionReason == null ? '' : '\n분석 제외: ${well.excluded ? '제외' : '포함'} → ${updated.excluded ? '제외' : '포함'}\n사유: ${draft.exclusionReason}'}',
     );
@@ -1256,6 +1277,8 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     String successMessage = 'plate layout을 저장했습니다.',
     bool recordHistory = true,
     String changeSummary = 'Plate 수정',
+    ExclusionChangeSource exclusionSource = ExclusionChangeSource.other,
+    String? exclusionReason,
     bool retainFailedDraft = true,
     bool showSuccessMessage = true,
   }) async {
@@ -1293,12 +1316,28 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       }
     }
     final savedAt = DateTime.now().toUtc();
+    final events = isRetry
+        ? plate.exclusionEvents
+        : [
+            ...(previous?.exclusionEvents ?? plate.exclusionEvents),
+            if (previous != null)
+              ...PlateExclusionEvent.changes(
+                before: previous.wells,
+                after: plate.wells,
+                at: savedAt,
+                actionId:
+                    'exclusion-${savedAt.microsecondsSinceEpoch}-${previous.exclusionEvents.length}',
+                source: exclusionSource,
+                reason: exclusionReason ?? changeSummary,
+              ),
+          ];
+    final withEvents = plate.copyWith(exclusionEvents: events);
     final revisions = previous?.revisions ?? plate.revisions;
     final retainedRevisions = revisions.length >= 20
         ? revisions.skip(revisions.length - 19)
         : revisions;
     final plateToSave = recordHistory
-        ? plate.copyWith(
+        ? withEvents.copyWith(
             revisions: [
               ...retainedRevisions,
               PlateRevision(
@@ -1310,7 +1349,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
               ),
             ],
           )
-        : plate;
+        : withEvents;
     setState(() {
       _isSaving = true;
       _saveError = null;
@@ -1326,7 +1365,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         // The continuous-entry sheet owns its visible draft and retry action.
         if (!retainFailedDraft) return;
         _saveError = error;
-        _failedPlate = plate;
+        _failedPlate = withEvents;
         _failedSuccessMessage = successMessage;
         _failedChangeSummary = changeSummary;
         _failedRecordHistory = recordHistory;
@@ -1396,11 +1435,24 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         ],
       ),
       successMessage: '마지막 Plate 변경을 취소했습니다.',
+      exclusionSource: ExclusionChangeSource.undo,
+      exclusionReason: '마지막 Plate 변경 실행 취소',
       recordHistory: false,
     );
     if (!restored && mounted) {
       setState(() => _undoHistory.add(previous));
     }
+  }
+
+  Future<void> _showExclusionReview() async {
+    final plate = _plate;
+    if (plate == null) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => ExclusionReviewScreen(
+          plate: plate,
+          initialWellLabel:
+              _selectedPositions.length == 1 ? _selectedPosition?.label : null),
+    ));
   }
 
   Future<void> _showPlateHistory(List<PlateRevision> revisions) async {
@@ -1479,6 +1531,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       snapshot.restore(id: plate.id, experimentId: plate.experimentId),
       successMessage: '선택한 시점의 Plate 상태를 복원했습니다.',
       changeSummary: '이력 복원: ${revision.summary.split('\n').first}',
+      exclusionSource: ExclusionChangeSource.restore,
     );
     if (saved && mounted) _clearSelection();
   }
@@ -3380,7 +3433,7 @@ class _WellRecordSheetState extends State<_WellRecordSheet> {
                         errorText: _exclusionError,
                         errorMaxLines: 3,
                         helperText:
-                            '좌표·사유·변경 시각은 기존 변경 이력에 저장됩니다. 이력은 최근 20건까지 보관합니다.',
+                            '좌표·사유·변경 시각은 제외 이력에 저장됩니다. 제외·해제 이력은 전체 변경 이력의 20건 제한과 별도로 보관합니다.',
                         helperMaxLines: 4,
                       ),
                     )),
@@ -3408,11 +3461,13 @@ class _WellDetailCard extends StatelessWidget {
     required this.well,
     required this.group,
     required this.onEdit,
+    required this.onExclusionReview,
   });
 
   final Well? well;
   final WellGroup? group;
   final VoidCallback? onEdit;
+  final VoidCallback onExclusionReview;
 
   @override
   Widget build(BuildContext context) {
@@ -3438,6 +3493,11 @@ class _WellDetailCard extends StatelessWidget {
                       : '${group?.name ?? selected.role.label} · ${_formatConcentrationLabel(selected.concentrationValue!, selected.concentrationUnit)}',
             ),
             if (selected != null) ...[
+              TextButton.icon(
+                  key: const ValueKey('well-exclusion-review'),
+                  onPressed: onExclusionReview,
+                  icon: const Icon(Icons.rule_outlined),
+                  label: const Text('이 well 제외 이력·분석 비교')),
               Text('세포 조건 · ${selected.cellCondition?.label ?? '미지정'}'),
               Text('배지·용매 · ${selected.assayCondition?.label ?? '미지정'}'),
               const SizedBox(height: 10),

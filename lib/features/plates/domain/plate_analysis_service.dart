@@ -399,7 +399,7 @@ class _SeriesKey {
       );
 }
 
-extension on WellRole {
+extension WellRoleAnalysisLabel on WellRole {
   String get analysisLabel {
     return switch (this) {
       WellRole.empty => '그룹 없음',
