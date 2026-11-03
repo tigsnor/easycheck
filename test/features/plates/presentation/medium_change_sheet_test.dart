@@ -71,6 +71,47 @@ void main() {
     await tap(tester, 'apply-medium-change');
   }
 
+  for (final landscape in [false, true]) {
+    testWidgets(
+        'medium sheet keeps title and close inside device safe area, landscape=$landscape',
+        (tester) async {
+      final size = landscape ? const Size(852, 393) : const Size(393, 852);
+      final insets = landscape
+          ? const FakeViewPadding(left: 59, right: 59, bottom: 21)
+          : const FakeViewPadding(top: 59, bottom: 34);
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = size;
+      tester.view.padding = insets;
+      tester.view.viewPadding = insets;
+      addTearDown(tester.view.reset);
+      final repo = await open(tester);
+      final close = key('close-medium-change');
+      final title = find.text('배지 추가·교체 계산');
+      for (final finder in [close, title]) {
+        final rect = tester.getRect(finder);
+        expect(rect.top, greaterThanOrEqualTo(insets.top));
+        expect(rect.left, greaterThanOrEqualTo(insets.left));
+        expect(rect.right, lessThanOrEqualTo(size.width - insets.right));
+      }
+      // Opening a keyboard must not remove the route's top/lateral protection.
+      tester.view.viewInsets = FakeViewPadding(bottom: landscape ? 160 : 300);
+      tester.view.padding = FakeViewPadding(
+          top: insets.top, left: insets.left, right: insets.right);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(close);
+      await tester.pumpAndSettle();
+      final rect = tester.getRect(close);
+      expect(rect.top, greaterThanOrEqualTo(insets.top));
+      expect(rect.bottom,
+          lessThanOrEqualTo(size.height - (landscape ? 160 : 300)));
+      await tester.tap(close);
+      await tester.pumpAndSettle();
+      expect(find.byType(MediumChangeSheet), findsNothing);
+      expect(repo.saveCount, 0);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets(
       'previews partial replacement, invalidates stale results and explicitly records final conditions',
       (tester) async {

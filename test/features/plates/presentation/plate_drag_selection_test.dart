@@ -47,6 +47,33 @@ void main() {
     return controller;
   }
 
+  testWidgets(
+      'fit view explains two modes and switching mode preserves selection',
+      (tester) async {
+    final controller = await showGrid(tester, fit: true);
+    final scroll = find.byKey(const ValueKey('plate-scroll-mode'));
+    final select = find.byKey(const ValueKey('plate-drag-selection'));
+    final hint = find.byKey(const ValueKey('plate-interaction-hint'));
+    expect(tester.widget<ChoiceChip>(scroll).selected, true);
+    expect(tester.widget<Text>(hint).data, contains('길게 누른'));
+    controller.selectRectangle(
+        WellPosition.fromLabel('A1'), WellPosition.fromLabel('B2'));
+    await tester.pumpAndSettle();
+    final selection = {...controller.selectedPositions};
+    await tester.tap(select);
+    await tester.pumpAndSettle();
+    expect(tester.widget<ChoiceChip>(select).selected, true);
+    expect(tester.widget<Text>(hint).data, contains('바로 드래그'));
+    await tester.tap(select);
+    await tester.pumpAndSettle();
+    expect(controller.dragSelectionEnabled, true);
+    await tester.tap(scroll);
+    await tester.pumpAndSettle();
+    expect(controller.dragSelectionEnabled, false);
+    expect(controller.selectedPositions, selection);
+    expect(tester.widget<Text>(hint).data, contains('길게 누른'));
+  });
+
   for (final direct in [false, true]) {
     testWidgets(
         'drag updates and shrinks a rectangle from a fixed anchor, direct=$direct',

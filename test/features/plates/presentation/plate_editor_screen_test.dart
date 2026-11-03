@@ -189,7 +189,7 @@ void main() {
     await gesture
         .moveTo(tester.getCenter(find.byKey(const ValueKey('well-C3'))));
     await tester.pump();
-    expect(find.text('드래그 선택 · 9개 · A1–C3'), findsOneWidget);
+    expect(find.text('9개 well 선택됨 · A1–C3'), findsOneWidget);
     await gesture.up();
     await tester.pumpAndSettle();
     expect(repository.saveCount, 0);
@@ -206,11 +206,13 @@ void main() {
             .map((w) => w.label)
             .toSet(),
         {'A1', 'A2', 'A3', 'B1', 'B2', 'B3', 'C1', 'C2', 'C3'});
-    await tester.tap(find.byKey(const ValueKey('start-range-action')));
+    expect(find.byKey(const ValueKey('start-range-action')), findsNothing);
+    await tester.ensureVisible(find.byKey(const ValueKey('plate-scroll-mode')));
+    await tester.tap(find.byKey(const ValueKey('plate-scroll-mode')));
     await tester.pumpAndSettle();
     expect(
         tester
-            .widget<FilterChip>(
+            .widget<ChoiceChip>(
                 find.byKey(const ValueKey('plate-drag-selection')))
             .selected,
         isFalse);
