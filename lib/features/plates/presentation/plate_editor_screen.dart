@@ -305,14 +305,12 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
             : _PlateContextActionBar(
                 selectedPositions: _selectedPositions,
                 hasSingleSelection: _selectedPositions.length == 1,
-                isRangeActive: _editorController.dragSelectionEnabled,
                 isSaving: _isSaving || _failedPlate != null,
                 onEdit: _editSelectedWell,
                 onAssignGroup: _assignGroupToSelection,
                 onAssignCells: _assignCellConditions,
                 onAssignAssay: _assignAssayConditions,
                 onMediumChange: _calculateMediumChange,
-                onStartRange: _editorController.toggleDragSelection,
                 onApplyDilution: _openDilutionBuilder,
                 onClearSelection: _clearSelection,
                 onBulkResultImport: _openBulkResultImport,
@@ -760,6 +758,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       builder: (_) => _PlateExportSheet(
         exportText: exportText,
@@ -775,6 +774,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       builder: (context) => SafeArea(
         child: ListView(
@@ -802,6 +802,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       builder: (sheetContext) => StatefulBuilder(builder: (context, refresh) {
         final plate = _plate!;
@@ -836,6 +837,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                     await showModalBottomSheet<void>(
                       context: context,
                       isScrollControlled: true,
+                      useSafeArea: true,
                       isDismissible: false,
                       enableDrag: false,
                       builder: (_) => AnalysisReferenceSheet(
@@ -887,6 +889,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
         child: SingleChildScrollView(
@@ -955,6 +958,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     final draft = await showModalBottomSheet<_BulkResultImportDraft>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       builder: (_) => _BulkResultImportSheet(
         plate: plate,
@@ -1001,6 +1005,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     final draft = await showModalBottomSheet<_DilutionDraft>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       builder: (_) => _DilutionBuilderSheet(
         selectedCount: _selectedPositions.length,
@@ -1042,6 +1047,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     final result = await showModalBottomSheet<_GroupDraft>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       builder: (_) => _GroupEditorSheet(
         selectedCount: _selectedPositions.length,
@@ -1088,6 +1094,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       isDismissible: false,
       enableDrag: false,
       builder: (_) => SequentialResultSheet(
@@ -1130,6 +1137,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     final draft = await showModalBottomSheet<CellConditionDraft>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       isDismissible: false,
       enableDrag: false,
       builder: (_) => CellConditionSheet(
@@ -1171,6 +1179,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     final draft = await showModalBottomSheet<AssayConditionDraft>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       isDismissible: false,
       enableDrag: false,
       builder: (_) => AssayConditionSheet(
@@ -1212,6 +1221,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     final draft = await showModalBottomSheet<MediumChangeDraft>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       isDismissible: false,
       enableDrag: false,
       builder: (_) => MediumChangeSheet(
@@ -1247,6 +1257,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     final draft = await showModalBottomSheet<_WellRecordDraft>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       isDismissible: false,
       enableDrag: false,
       builder: (context) => _WellRecordSheet(well: well),
@@ -1459,6 +1470,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       builder: (context) => SafeArea(
         child: ListView(
@@ -2903,14 +2915,12 @@ class _PlateContextActionBar extends StatelessWidget {
   const _PlateContextActionBar({
     required this.selectedPositions,
     required this.hasSingleSelection,
-    required this.isRangeActive,
     required this.isSaving,
     required this.onEdit,
     required this.onAssignGroup,
     required this.onAssignCells,
     required this.onAssignAssay,
     required this.onMediumChange,
-    required this.onStartRange,
     required this.onApplyDilution,
     required this.onClearSelection,
     required this.onBulkResultImport,
@@ -2922,14 +2932,12 @@ class _PlateContextActionBar extends StatelessWidget {
 
   int get selectedCount => selectedPositions.length;
   final bool hasSingleSelection;
-  final bool isRangeActive;
   final bool isSaving;
   final VoidCallback onEdit;
   final VoidCallback onAssignGroup;
   final VoidCallback onAssignCells;
   final VoidCallback onAssignAssay;
   final VoidCallback onMediumChange;
-  final VoidCallback onStartRange;
   final VoidCallback onApplyDilution;
   final VoidCallback onClearSelection;
   final VoidCallback onBulkResultImport;
@@ -2961,9 +2969,7 @@ class _PlateContextActionBar extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Text(
                   hasSelection
-                      ? isRangeActive
-                          ? '드래그 선택 · $selectedCount개 · $selectionLabel'
-                          : '$selectedCount개 well 선택됨 · $selectionLabel'
+                      ? '$selectedCount개 well 선택됨 · $selectionLabel'
                       : 'Plate 작업',
                   style: Theme.of(
                     context,
@@ -3020,12 +3026,6 @@ class _PlateContextActionBar extends StatelessWidget {
                             icon: Icons.palette_outlined,
                             label: '그룹 지정',
                             onPressed: isSaving ? null : onAssignGroup,
-                          ),
-                          _ContextActionButton(
-                            key: const ValueKey('start-range-action'),
-                            icon: Icons.select_all_outlined,
-                            label: isRangeActive ? '스크롤로 전환' : '드래그 선택',
-                            onPressed: isSaving ? null : onStartRange,
                           ),
                           _ContextActionButton(
                             key: const ValueKey('apply-dilution-action'),

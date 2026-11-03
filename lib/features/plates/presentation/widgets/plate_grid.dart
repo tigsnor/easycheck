@@ -199,12 +199,6 @@ class _PlateGridState extends State<PlateGrid> {
         padding: const EdgeInsets.all(14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Wrap(spacing: 8, children: [
-            FilterChip(
-              key: const ValueKey('plate-drag-selection'),
-              label: const Text('드래그 선택'),
-              selected: widget.dragSelectionEnabled,
-              onSelected: (_) => widget.onToggleDragSelection(),
-            ),
             ChoiceChip(
               key: const ValueKey('plate-cells-view'),
               label: const Text('세포'),
@@ -260,14 +254,35 @@ class _PlateGridState extends State<PlateGrid> {
                 onPressed: widget.onZoomIn,
                 icon: const Icon(Icons.add_circle_outline)),
           ]),
+          Wrap(spacing: 8, children: [
+            ChoiceChip(
+              key: const ValueKey('plate-scroll-mode'),
+              label: const Text('스크롤'),
+              selected: !widget.dragSelectionEnabled,
+              onSelected: (_) {
+                if (widget.dragSelectionEnabled) {
+                  widget.onToggleDragSelection();
+                }
+              },
+            ),
+            ChoiceChip(
+              key: const ValueKey('plate-drag-selection'),
+              label: const Text('범위 선택'),
+              selected: widget.dragSelectionEnabled,
+              onSelected: (_) {
+                if (!widget.dragSelectionEnabled) {
+                  widget.onToggleDragSelection();
+                }
+              },
+            ),
+          ]),
           Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(
-                fit
-                    ? '전체 배치를 확인하는 보기입니다. 정확한 선택은 확대 후 진행하세요.'
-                    : widget.dragSelectionEnabled
-                        ? 'well에서 바로 드래그해 범위를 선택하세요. 가장자리에서 자동으로 스크롤됩니다.'
-                        : '밀어서 스크롤 · well을 길게 누른 채 드래그하면 범위 선택',
+                widget.dragSelectionEnabled
+                    ? '범위 선택: well에서 바로 드래그하세요. 가장자리에서 자동 스크롤됩니다.'
+                    : '스크롤: 밀어서 화면 이동 · well을 길게 누른 채 드래그하면 범위 선택',
+                key: const ValueKey('plate-interaction-hint'),
                 style: Theme.of(context).textTheme.bodySmall,
               )),
           LayoutBuilder(builder: (context, constraints) {
@@ -313,6 +328,9 @@ class _PlateGridState extends State<PlateGrid> {
                           ),
                         ))));
           }),
+          if (fit)
+            Text('전체 배치를 확인하는 보기입니다. 정확한 선택은 확대 후 진행하세요.',
+                style: Theme.of(context).textTheme.bodySmall),
           if (!_showResults) _conditionLegend(),
         ]),
       ),
