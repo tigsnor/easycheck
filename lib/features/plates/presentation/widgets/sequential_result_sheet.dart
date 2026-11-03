@@ -11,9 +11,15 @@ class SequentialResultSheet extends StatefulWidget {
     required this.start,
     required this.onSave,
     required this.onPositionChanged,
+    this.selectedPositions = const {},
+    this.recentUnits = const [],
+    this.onUnitSaved,
     super.key,
   });
 
+  final Set<WellPosition> selectedPositions;
+  final List<String> recentUnits;
+  final ValueChanged<String>? onUnitSaved;
   final Plate plate;
   final WellPosition start;
   final Future<bool> Function(Well) onSave;
@@ -27,6 +33,15 @@ class _SequentialResultSheetState extends State<SequentialResultSheet> {
   final _value = TextEditingController();
   final _unit = TextEditingController();
   final _focus = FocusNode();
+  final _valueKey = GlobalKey();
+  late final Set<WellPosition> _selection;
+  final _visited = <WellPosition>{};
+  final _skipped = <WellPosition>{};
+  late final List<String> _recentUnits;
+  late String _lastUnit;
+  late bool _selectionOnly;
+  String? _skippedLabel;
+
   final Map<WellPosition, Well> _savedWells = {};
   late Well _well;
   late String _initialValue;
@@ -42,28 +57,132 @@ class _SequentialResultSheetState extends State<SequentialResultSheet> {
   bool get _dirty =>
       _failed || _value.text != _initialValue || _unit.text != _initialUnit;
 
+  List<WellPosition> _ordered(Iterable<WellPosition> positions) =>
+      positions.toList()
+        ..sort((a, b) {
+          final first = _byColumn
+              ? a.columnIndex.compareTo(b.columnIndex)
+              : a.rowIndex.compareTo(b.rowIndex);
+          return first != 0
+              ? first
+              : _byColumn
+                  ? a.rowIndex.compareTo(b.rowIndex)
+                  : a.columnIndex.compareTo(b.columnIndex);
+        });
+
   WellPosition? get _next {
-    final rows = widget.plate.rowCount;
-    final columns = widget.plate.columnCount;
-    final p = _well.position;
-    final index = _byColumn
-        ? p.columnIndex * rows + p.rowIndex
-        : p.rowIndex * columns + p.columnIndex;
-    if (index + 1 == rows * columns) return null;
-    return _byColumn
-        ? WellPosition(
-            rowIndex: (index + 1) % rows, columnIndex: (index + 1) ~/ rows)
-        : WellPosition(
-            rowIndex: (index + 1) ~/ columns,
-            columnIndex: (index + 1) % columns);
+    final ordered = _ordered(_selectionOnly
+        ? _selection
+        : widget.plate.wells.map((w) => w.position));
+    final candidates = _selectionOnly
+        ? ordered
+        : ordered.skip(ordered.indexOf(_well.position) + 1);
+    return candidates
+        .where((p) =>
+            p != _well.position && (!_selectionOnly || !_visited.contains(p)))
+        .firstOrNull;
   }
 
   @override
   void initState() {
     super.initState();
-    _load(widget.start);
+    final valid = widget.plate.wells.map((w) => w.position).toSet();
+    _selection =
+        Set.unmodifiable(widget.selectedPositions.where(valid.contains));
+    _selectionOnly = _selection.length > 1;
+    _recentUnits =
+        widget.recentUnits.where((u) => u.trim().isNotEmpty).toSet().toList();
+    _lastUnit = _recentUnits.firstOrNull ?? 'OD450';
+    final start = _selectionOnly ? _ordered(_selection).first : widget.start;
+    _load(start, fallbackUnit: _lastUnit);
     _value.addListener(_changed);
     _unit.addListener(_changed);
+    if (start != widget.start) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onPositionChanged(start);
+      });
+    }
+  }
+
+  Future<bool> _discardForMove(String title, String action) async {
+    _confirming = true;
+    final discard = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+                title: Text(title),
+                content: const Text(
+                    '현재 입력만 버립니다. 기존 측정값·분석 제외 상태와 앞서 저장한 well은 유지됩니다.'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('계속 입력')),
+                  TextButton(
+                      key: const ValueKey('confirm-sequential-discard-move'),
+                      onPressed: () => Navigator.pop(context, true),
+                      child: Text(action)),
+                ]));
+    _confirming = false;
+    return mounted && discard == true;
+  }
+
+  Future<void> _selectScope(bool selectionOnly) async {
+    if (_saving || _confirming || selectionOnly == _selectionOnly) return;
+    WellPosition? target = _well.position;
+    if (selectionOnly && !_selection.contains(target)) {
+      target =
+          _ordered(_selection).where((p) => !_visited.contains(p)).firstOrNull;
+    }
+    if (target == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('선택한 well은 이번 입력에서 모두 처리했습니다.')));
+      return;
+    }
+    if (target != _well.position &&
+        _dirty &&
+        !await _discardForMove('입력을 버리고 선택한 범위로 이동할까요?', '입력 버리고 이동')) {
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _selectionOnly = selectionOnly;
+      if (target != _well.position) _load(target!, fallbackUnit: _lastUnit);
+    });
+    widget.onPositionChanged(target);
+  }
+
+  Future<void> _skip() async {
+    if (_saving || _confirming) return;
+    if (_dirty &&
+        !await _discardForMove('현재 well의 입력을 버리고 건너뛸까요?', '입력 버리고 건너뛰기')) {
+      return;
+    }
+    if (!mounted) return;
+    final next = _next;
+    final previous = _well;
+    _visited.add(previous.position);
+    _skipped.add(previous.position);
+    if (next == null) {
+      await _pop();
+      return;
+    }
+    setState(() {
+      _savedLabel = null;
+      _skippedLabel = previous.label;
+      _load(next, fallbackUnit: _lastUnit);
+    });
+    widget.onPositionChanged(next);
+    _focus.requestFocus();
+  }
+
+  void _insertNumberText(String text) {
+    if (_saving || _confirming) return;
+    final selection = _value.selection;
+    final start = selection.isValid ? selection.start : _value.text.length;
+    final end = selection.isValid ? selection.end : start;
+    _value.value = TextEditingValue(
+        text: _value.text.replaceRange(start, end, text),
+        selection: TextSelection.collapsed(offset: start + text.length));
+    _focus.requestFocus();
   }
 
   void _changed() => setState(() {});
@@ -121,10 +240,16 @@ class _SequentialResultSheetState extends State<SequentialResultSheet> {
   }
 
   Future<void> _save({required bool advance}) async {
-    if (_saving) return;
+    if (_saving || _confirming) return;
     final value = double.tryParse(_value.text.trim());
     if (value == null || !value.isFinite) {
       setState(() => _error = '유한한 숫자를 입력해주세요. 0도 결과값으로 저장됩니다.');
+      _focus.requestFocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Scrollable.ensureVisible(_valueKey.currentContext!, alignment: .1);
+        }
+      });
       return;
     }
     final unit = _unit.text.trim();
@@ -152,12 +277,20 @@ class _SequentialResultSheetState extends State<SequentialResultSheet> {
     }
     _saving = false;
     _savedWells[updated.position] = updated;
+    _visited.add(updated.position);
+    _lastUnit = unit;
+    if (unit.isNotEmpty) {
+      _recentUnits.remove(unit);
+      _recentUnits.insert(0, unit);
+      widget.onUnitSaved?.call(unit);
+    }
     if (!advance || next == null) {
       await _pop();
       return;
     }
     setState(() {
       _savedLabel = updated.label;
+      _skippedLabel = null;
       _load(next, fallbackUnit: unit);
     });
     widget.onPositionChanged(next);
@@ -196,8 +329,27 @@ class _SequentialResultSheetState extends State<SequentialResultSheet> {
                     onPressed: _saving ? null : _close,
                     icon: const Icon(Icons.close)),
               ]),
-              const Text(
-                  '현재 well부터 Plate 끝까지 순서대로 입력합니다. 빈 well과 분석 제외 well도 포함됩니다.'),
+              Text(_selectionOnly
+                  ? '선택한 ${_selection.length}개 well만 입력합니다. 선택하지 않은 well은 이동·저장 대상에 포함되지 않습니다.'
+                  : '현재 well부터 Plate 끝까지 순서대로 입력합니다. 빈 well과 분석 제외 well도 포함됩니다.'),
+              if (_selection.isNotEmpty)
+                Wrap(spacing: 8, children: [
+                  ChoiceChip(
+                      key: const ValueKey('sequential-scope-all'),
+                      label: const Text('현재부터 끝까지'),
+                      selected: !_selectionOnly,
+                      onSelected: _saving ? null : (_) => _selectScope(false)),
+                  ChoiceChip(
+                      key: const ValueKey('sequential-scope-selection'),
+                      label: Text('선택한 ${_selection.length}개만'),
+                      selected: _selectionOnly,
+                      onSelected: _saving ? null : (_) => _selectScope(true)),
+                ]),
+              if (_selectionOnly)
+                Text(_ordered(_selection).map((p) => p.label).join(', '),
+                    maxLines: 2, overflow: TextOverflow.ellipsis),
+              Text('이번 입력: 저장 ${_savedWells.length}개 · 건너뜀 ${_skipped.length}개',
+                  key: const ValueKey('sequential-progress')),
               const SizedBox(height: 12),
               DropdownButtonFormField<bool>(
                 key: const ValueKey('sequential-direction'),
@@ -220,6 +372,7 @@ class _SequentialResultSheetState extends State<SequentialResultSheet> {
                   key: const ValueKey('sequential-next')),
               if (_savedLabel != null)
                 Semantics(liveRegion: true, child: Text('$_savedLabel 저장 완료')),
+              if (_skippedLabel != null) Text('$_skippedLabel 저장 없이 건너뜀'),
               if (_well.resultValue != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -229,18 +382,29 @@ class _SequentialResultSheetState extends State<SequentialResultSheet> {
               if (_well.excluded)
                 const Text('분석 제외 well입니다. 결과를 저장해도 제외 상태는 유지됩니다.'),
               const SizedBox(height: 16),
-              TextField(
-                key: const ValueKey('sequential-value'),
-                controller: _value,
-                focusNode: _focus,
-                enabled: !_saving,
-                keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true, signed: true),
-                decoration: InputDecoration(
-                    labelText: '${_well.label} 결과값',
-                    errorText: _error,
-                    errorMaxLines: 3),
-              ),
+              Container(
+                  key: _valueKey,
+                  child: TextField(
+                    key: const ValueKey('sequential-value'),
+                    controller: _value,
+                    focusNode: _focus,
+                    enabled: !_saving,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true, signed: true),
+                    decoration: InputDecoration(
+                        labelText: '${_well.label} 결과값',
+                        errorText: _error,
+                        errorMaxLines: 3),
+                  )),
+              Wrap(spacing: 8, children: [
+                for (final entry
+                    in {'minus': '-', 'decimal': '.', 'exponent': 'e'}.entries)
+                  TextButton(
+                      key: ValueKey('sequential-insert-${entry.key}'),
+                      onPressed:
+                          _saving ? null : () => _insertNumberText(entry.value),
+                      child: Text(entry.value == 'e' ? '지수 e' : entry.value)),
+              ]),
               const SizedBox(height: 12),
               TextField(
                 key: const ValueKey('sequential-unit'),
@@ -251,6 +415,22 @@ class _SequentialResultSheetState extends State<SequentialResultSheet> {
                     helperMaxLines: 3,
                     helperText: '미입력 well로 이동할 때 이 단위를 이어 씁니다.'),
               ),
+              if ([
+                ..._recentUnits,
+                ...widget.plate.wells.map((w) => w.resultUnit).nonNulls
+              ].any((u) => u.trim().isNotEmpty)) ...[
+                const Text('단위 다시 쓰기 · 선택하면 현재 입력칸에만 적용합니다.'),
+                Wrap(spacing: 6, children: [
+                  for (final unit in {
+                    ..._recentUnits,
+                    ...widget.plate.wells.map((w) => w.resultUnit).nonNulls
+                  }.where((u) => u.trim().isNotEmpty).take(8))
+                    ActionChip(
+                        key: ValueKey('sequential-unit-$unit'),
+                        label: Text(unit),
+                        onPressed: _saving ? null : () => _unit.text = unit),
+                ]),
+              ],
               if (_failed)
                 const Padding(
                   padding: EdgeInsets.only(top: 12),
@@ -268,6 +448,10 @@ class _SequentialResultSheetState extends State<SequentialResultSheet> {
                         ? '저장 후 마치기'
                         : '저장 후 다음 well'),
               ),
+              TextButton(
+                  key: const ValueKey('sequential-skip'),
+                  onPressed: _saving ? null : _skip,
+                  child: Text(next == null ? '저장 없이 마치기' : '저장 없이 건너뛰기')),
               TextButton(
                 key: const ValueKey('sequential-save-close'),
                 onPressed: _saving ? null : () => _save(advance: false),

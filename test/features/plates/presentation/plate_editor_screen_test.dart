@@ -218,6 +218,82 @@ void main() {
         isFalse);
   });
 
+  testWidgets(
+      'selected entry keeps its targets and reuses saved units on reopen',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = FakePlateRepository()
+      ..plate = Plate(id: 'p', experimentId: 'e', name: 'Plate');
+    await tester.pumpWidget(MaterialApp(
+        home: PlateEditorScreen(experimentId: 'e', repository: repository)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('plate-drag-selection')));
+    await tester.pumpAndSettle();
+    final gesture = await tester
+        .startGesture(tester.getCenter(find.byKey(const ValueKey('well-A1'))));
+    await gesture
+        .moveTo(tester.getCenter(find.byKey(const ValueKey('well-B2'))));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(find.text('4개 well 선택됨 · A1–B2'), findsOneWidget);
+    final action = find.byKey(const ValueKey('sequential-results-action'));
+    await tester.ensureVisible(action);
+    await tester.tap(action);
+    await tester.pumpAndSettle();
+    expect(find.text('A1 · 결과 연속 입력'), findsOneWidget);
+
+    Future<void> save(String value) async {
+      await tester.enterText(
+          find.byKey(const ValueKey('sequential-value')), value);
+      final next = find.byKey(const ValueKey('sequential-save-next'));
+      await tester.ensureVisible(next);
+      await tester.tap(next);
+      await tester.pumpAndSettle();
+    }
+
+    await tester.enterText(
+        find.byKey(const ValueKey('sequential-unit')), 'RFU');
+    await save('1');
+    expect(find.text('A2 · 결과 연속 입력'), findsOneWidget);
+    final skip = find.byKey(const ValueKey('sequential-skip'));
+    await tester.ensureVisible(skip);
+    await tester.tap(skip);
+    await tester.pumpAndSettle();
+    expect(find.text('B1 · 결과 연속 입력'), findsOneWidget);
+    await save('2');
+    expect(find.text('B2 · 결과 연속 입력'), findsOneWidget);
+    await save('3');
+    expect(find.byKey(const ValueKey('sequential-value')), findsNothing);
+    expect(repository.saveCount, 3);
+    expect(
+        repository.plate!.wells
+            .where((w) => w.resultValue != null)
+            .map((w) => w.label),
+        ['A1', 'B1', 'B2']);
+    expect(
+        repository.plate!.wells
+            .where((w) => w.resultValue != null)
+            .every((w) => w.resultUnit == 'RFU'),
+        isTrue);
+    expect(repository.plate!.revisions.length, 3);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('well-A3')));
+    await tester.tap(find.byKey(const ValueKey('well-A3')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(action);
+    await tester.tap(action);
+    await tester.pumpAndSettle();
+    expect(find.text('A3 · 결과 연속 입력'), findsOneWidget);
+    expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('sequential-unit')))
+            .controller!
+            .text,
+        'RFU');
+    expect(repository.saveCount, 3);
+  });
+
   testWidgets('continuous entry persists each well, retries and supports undo',
       (tester) async {
     final repository = FakePlateRepository()
