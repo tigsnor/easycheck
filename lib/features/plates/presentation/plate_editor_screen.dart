@@ -104,6 +104,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
   final _plateAnalysisExportService = const PlateAnalysisExportService();
   late final PlateEditorController _editorController;
   Plate? _plate;
+  final _recentResultUnits = <String>[];
   bool _isLoading = true;
   Object? _loadError;
   bool _isSaving = false;
@@ -1090,6 +1091,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     if (widget.readOnly || plate == null || _isSaving || _failedPlate != null) {
       return;
     }
+    final selectedForEntry = Set<WellPosition>.unmodifiable(_selectedPositions);
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     await showModalBottomSheet<void>(
       context: context,
@@ -1099,6 +1101,13 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
       enableDrag: false,
       builder: (_) => SequentialResultSheet(
         plate: plate,
+        selectedPositions: selectedForEntry,
+        recentUnits: [..._recentResultUnits],
+        onUnitSaved: (unit) {
+          _recentResultUnits.remove(unit);
+          _recentResultUnits.insert(0, unit);
+          if (_recentResultUnits.length > 8) _recentResultUnits.removeLast();
+        },
         start: _selectedPosition ??
             const WellPosition(rowIndex: 0, columnIndex: 0),
         onPositionChanged: (position) {
@@ -3014,13 +3023,12 @@ class _PlateContextActionBar extends StatelessWidget {
                             label: '추가·교체 계산',
                             onPressed: isSaving ? null : onMediumChange,
                           ),
-                          if (hasSingleSelection)
-                            _ContextActionButton(
-                              key: const ValueKey('sequential-results-action'),
-                              icon: Icons.playlist_add_check,
-                              label: '결과 연속 입력',
-                              onPressed: isSaving ? null : onSequentialResults,
-                            ),
+                          _ContextActionButton(
+                            key: const ValueKey('sequential-results-action'),
+                            icon: Icons.playlist_add_check,
+                            label: '결과 연속 입력',
+                            onPressed: isSaving ? null : onSequentialResults,
+                          ),
                           _ContextActionButton(
                             key: const ValueKey('assign-selected-group-action'),
                             icon: Icons.palette_outlined,

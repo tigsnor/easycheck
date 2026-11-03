@@ -22,6 +22,9 @@ void main() {
       {required Future<bool> Function(Well) save,
       Plate? plate,
       String start = 'A1',
+      Set<WellPosition> selection = const {},
+      List<String> recentUnits = const [],
+      ValueChanged<String>? unitSaved,
       double textScale = 1,
       ValueChanged<WellPosition>? changed}) async {
     await tester.pumpWidget(MaterialApp(
@@ -36,12 +39,16 @@ void main() {
                     onPressed: () => showModalBottomSheet<void>(
                       context: context,
                       isScrollControlled: true,
+                      useSafeArea: true,
                       isDismissible: false,
                       enableDrag: false,
                       builder: (_) => SequentialResultSheet(
                         plate: plate ??
                             Plate(id: 'p', experimentId: 'e', name: 'Plate'),
                         start: WellPosition.fromLabel(start),
+                        selectedPositions: selection,
+                        recentUnits: recentUnits,
+                        onUnitSaved: unitSaved,
                         onSave: save,
                         onPositionChanged: changed ?? (_) {},
                       ),
@@ -59,6 +66,130 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets(
+      'frozen discontiguous selection starts at first well, reorders remaining wells and never writes outside it',
+      (tester) async {
+    final selection =
+        {'A1', 'A3', 'B1', 'B3'}.map(WellPosition.fromLabel).toSet();
+    final saved = <Well>[];
+    final moved = <WellPosition>[];
+    await show(tester, start: 'B3', selection: selection, changed: moved.add,
+        save: (w) async {
+      saved.add(w);
+      return true;
+    });
+    expect(find.text('A1 · 결과 연속 입력'), findsOneWidget);
+    expect(moved.single.label, 'A1');
+    selection.clear(); // Parent selection changes must not change this session.
+    await tester.enterText(key('sequential-value'), '1');
+    await tap(tester, 'sequential-save-next');
+    expect(find.text('A3 · 결과 연속 입력'), findsOneWidget);
+    await column(tester);
+    await tap(tester, 'sequential-skip');
+    expect(find.text('B1 · 결과 연속 입력'), findsOneWidget);
+    await tester.enterText(key('sequential-value'), '2');
+    await tap(tester, 'sequential-save-next');
+    expect(find.text('B3 · 결과 연속 입력'), findsOneWidget);
+    await tester.enterText(key('sequential-value'), '3');
+    await tap(tester, 'sequential-save-next');
+    expect(saved.map((w) => w.label), ['A1', 'B1', 'B3']);
+    expect(find.byType(SequentialResultSheet), findsNothing);
+  });
+
+  testWidgets(
+      'failed save and skip cancellation retain input; confirmed skip never changes results or propagates discarded units',
+      (tester) async {
+    final base = Plate(id: 'p', experimentId: 'e', name: 'Plate');
+    final original = base.wells.first
+        .copyWith(resultValue: 0, resultUnit: 'OD450', excluded: true);
+    final plate = base.copyWith(wells: [original, ...base.wells.skip(1)]);
+    final attempts = <Well>[];
+    final units = <String>[];
+    await show(tester,
+        plate: plate,
+        recentUnits: ['RFU'],
+        unitSaved: units.add,
+        selection: {'A1', 'B2'}.map(WellPosition.fromLabel).toSet(),
+        save: (w) async {
+      attempts.add(w);
+      return false;
+    });
+    await tester.enterText(key('sequential-value'), '9');
+    await tester.enterText(key('sequential-unit'), 'discarded');
+    await tap(tester, 'sequential-save-next');
+    await tap(tester, 'sequential-skip');
+    await tester.tap(find.text('계속 입력'));
+    await tester.pumpAndSettle();
+    expect(field(tester, 'sequential-value'), '9');
+    expect(key('sequential-save-error'), findsOneWidget);
+    await tap(tester, 'sequential-skip');
+    await tester.tap(key('confirm-sequential-discard-move'));
+    await tester.pumpAndSettle();
+    expect(find.text('B2 · 결과 연속 입력'), findsOneWidget);
+    expect(field(tester, 'sequential-unit'), 'RFU');
+    expect(plate.wells.first.toJson(), original.toJson());
+    expect(units, isEmpty);
+    await tap(tester, 'sequential-skip');
+    expect(attempts, hasLength(1));
+    expect(find.byType(SequentialResultSheet), findsNothing);
+  });
+
+  testWidgets(
+      'changing scope from an outside dirty well requires discard and keeps original frozen targets',
+      (tester) async {
+    await show(tester,
+        selection: {'A1', 'A3'}.map(WellPosition.fromLabel).toSet(),
+        save: (_) async => true);
+    await tap(tester, 'sequential-scope-all');
+    await tap(tester, 'sequential-skip');
+    expect(find.text('A2 · 결과 연속 입력'), findsOneWidget);
+    await tester.enterText(key('sequential-value'), '88');
+    await tap(tester, 'sequential-scope-selection');
+    await tester.tap(find.text('계속 입력'));
+    await tester.pumpAndSettle();
+    expect(field(tester, 'sequential-value'), '88');
+    expect(
+        tester.widget<ChoiceChip>(key('sequential-scope-all')).selected, true);
+    await tap(tester, 'sequential-scope-selection');
+    await tester.tap(key('confirm-sequential-discard-move'));
+    await tester.pumpAndSettle();
+    expect(find.text('A3 · 결과 연속 입력'), findsOneWidget);
+    expect(field(tester, 'sequential-value'), isEmpty);
+  });
+
+  testWidgets(
+      'exponent toolbar inserts at cursor and unit reuse only affects explicitly edited input',
+      (tester) async {
+    final saved = <Well>[];
+    final units = <String>[];
+    final base = Plate(id: 'p', experimentId: 'e', name: 'Plate');
+    final plate = base.copyWith(wells: [
+      base.wells.first.copyWith(resultValue: 1),
+      ...base.wells.skip(1)
+    ]);
+    await show(tester, plate: plate, recentUnits: ['RFU'], unitSaved: units.add,
+        save: (w) async {
+      saved.add(w);
+      return true;
+    });
+    expect(field(tester, 'sequential-unit'),
+        isEmpty); // Never fill an existing unitless measurement.
+    await tester.enterText(key('sequential-value'), '1.23');
+    final controller =
+        tester.widget<TextField>(key('sequential-value')).controller!;
+    controller.selection = const TextSelection.collapsed(offset: 3);
+    await tap(tester, 'sequential-insert-exponent');
+    await tap(tester, 'sequential-insert-minus');
+    expect(field(tester, 'sequential-value'), '1.2e-3');
+    await tap(tester, 'sequential-unit-RFU');
+    expect(saved, isEmpty);
+    await tap(tester, 'sequential-save-next');
+    expect(saved.single.resultValue, 0.0012);
+    expect(saved.single.resultUnit, 'RFU');
+    expect(units, ['RFU']);
+    expect(field(tester, 'sequential-unit'), 'RFU');
+  });
+
   testWidgets('small screen with large text and keyboard keeps save reachable',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 700));
@@ -66,7 +197,10 @@ void main() {
     tester.view.viewInsets = const FakeViewPadding(bottom: 240);
     addTearDown(tester.view.resetViewInsets);
     final saved = <Well>[];
-    await show(tester, textScale: 1.6, save: (w) async {
+    await show(tester,
+        textScale: 1.6,
+        selection: {'A1', 'A2', 'B1', 'B2'}.map(WellPosition.fromLabel).toSet(),
+        recentUnits: ['RFU', 'OD450'], save: (w) async {
       saved.add(w);
       return true;
     });
@@ -177,6 +311,10 @@ void main() {
     expect(moved, isEmpty);
     expect(tester.widget<TextField>(key('sequential-value')).enabled, isFalse);
     expect(tester.widget<IconButton>(key('close-sequential-results')).onPressed,
+        isNull);
+    expect(tester.widget<TextButton>(key('sequential-skip')).onPressed, isNull);
+    expect(
+        tester.widget<TextButton>(key('sequential-insert-exponent')).onPressed,
         isNull);
     expect(find.text('A1 · 결과 연속 입력'), findsOneWidget);
     pending.complete(true);
