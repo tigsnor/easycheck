@@ -1,3 +1,4 @@
+import 'widgets/protocol_change_review_screen.dart';
 import '../domain/protocol_editing.dart';
 import 'widgets/protocol_editor_screen.dart';
 import 'widgets/task_actual_times_dialog.dart';
@@ -70,8 +71,11 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   String _pendingCorrectionReason = '';
   bool get _isCorrecting =>
       _persistedExperiment.status == ExperimentStatus.correcting;
+  bool _savingProtocol = false;
+  ExperimentRevision? _pendingProtocolRevision;
   bool get _editingEnabled =>
       !_isLocked &&
+      !(_isSaving && _savingProtocol) &&
       !(_isSaving &&
           (_isCorrecting ||
               _status == ExperimentStatus.completed ||
@@ -704,7 +708,8 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
         .map(
             (t) => ExperimentTask.fromJson(Map<String, Object?>.from(t as Map)))
         .toList();
-    return ProtocolEditing.changesSavedDefinition(saved, _tasks);
+    return ProtocolEditing.changesSavedDefinition(saved, _tasks,
+        includeAdditions: ProtocolEditing.requiresReason(_persistedExperiment));
   }
 
   bool get _canManageProtocol =>
@@ -873,10 +878,53 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       return false;
     }
 
+    final auditProtocol =
+        ProtocolEditing.requiresReason(_persistedExperiment) &&
+            ProtocolEditing.changesSavedDefinition(
+                _persistedExperiment.tasks, _tasks,
+                includeAdditions: true);
     setState(() {
+      _savingProtocol = auditProtocol;
       _isSaving = true;
       _saveError = null;
     });
+    if (auditProtocol) {
+      try {
+        ProtocolEditing.validate(_persistedExperiment, _tasks,
+            preserveSettings: false);
+      } on FormatException catch (error) {
+        setState(() {
+          _isSaving = false;
+          _savingProtocol = false;
+        });
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+        return false;
+      }
+      final pending = _pendingProtocolRevision;
+      if (pending == null ||
+          jsonEncode(pending.protocolAfterTasks!
+                  .map((t) => t.toJson())
+                  .toList()) !=
+              jsonEncode(_tasks.map((t) => t.toJson()).toList())) {
+        final reason = await Navigator.of(context).push<String>(
+            MaterialPageRoute(
+                builder: (_) => ProtocolChangeReviewScreen(
+                    before: _persistedExperiment.tasks, after: [..._tasks])));
+        if (!mounted) return false;
+        if (reason == null) {
+          setState(() {
+            _isSaving = false;
+            _savingProtocol = false;
+          });
+          return false;
+        }
+        _pendingProtocolRevision = ProtocolEditing.revision(
+            _persistedExperiment, [..._tasks], reason, DateTime.now());
+      }
+    } else {
+      _pendingProtocolRevision = null;
+    }
     String? completionRecord;
     if (_persistedExperiment.status != ExperimentStatus.completed &&
         _status == ExperimentStatus.completed) {
@@ -903,7 +951,10 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       }
     }
     final now = DateTime.now();
-    final revisions = [..._persistedExperiment.revisions];
+    final revisions = [
+      ..._persistedExperiment.revisions,
+      if (auditProtocol) _pendingProtocolRevision!,
+    ];
     DateTime? completedAt = _persistedExperiment.completedAt;
     if (_persistedExperiment.status != ExperimentStatus.completed &&
         _status == ExperimentStatus.completed) {
@@ -971,6 +1022,8 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     }
     _persistedExperiment = updated;
     _savedFingerprint = savingFingerprint;
+    _pendingProtocolRevision = null;
+    _savingProtocol = false;
     if (mounted) {
       setState(() {
         _isSaving = false;
@@ -1240,6 +1293,7 @@ class _ExperimentHistoryCard extends StatelessWidget {
   }
 
   static String _historyDate(DateTime value) {
+    value = value.toLocal();
     String twoDigits(int number) => number.toString().padLeft(2, '0');
     return '${value.year}.${twoDigits(value.month)}.${twoDigits(value.day)} '
         '${twoDigits(value.hour)}:${twoDigits(value.minute)}';
@@ -1558,9 +1612,9 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
                 icon: const Icon(Icons.edit_note),
                 label: const Text('단계 구성 편집')),
             if (widget.onManage == null)
-              const Text('구성 편집은 수행 기록이 없는 초안·계획 실험에서 가능합니다.'),
+              const Text('구성 편집은 저장 처리 후 또는 완료·보관 잠금을 해제한 뒤 가능합니다.'),
             if (widget.protocolDraftPending)
-              const Text('단계 이름·순서·삭제 변경이 아직 저장되지 않았습니다. 상단에서 저장한 뒤 실행해주세요.'),
+              const Text('단계 구성 변경이 아직 저장되지 않았습니다. 상단에서 저장한 뒤 실행해주세요.'),
             ..._focusedTasks(),
             ExpansionTile(
               key: const PageStorageKey('all-experiment-tasks'),

@@ -78,7 +78,7 @@ void main() {
     const codec = EasyCheckBackupService();
     final backup =
         codec.decode(codec.encode(experiments: [loaded], plates: []));
-    expect(backup.schemaVersion, 11);
+    expect(backup.schemaVersion, 12);
     await FileBackupRecoveryService(rootDirectory: restored.path)
         .recover(backup);
     final recovered =
@@ -117,6 +117,6 @@ void main() {
     final envelope =
         jsonDecode(await File('${root.path}/experiments.json').readAsString())
             as Map;
-    expect(envelope['schemaVersion'], 6);
+    expect(envelope['schemaVersion'], 7);
   });
 }

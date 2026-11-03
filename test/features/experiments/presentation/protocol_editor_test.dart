@@ -155,12 +155,11 @@ void main() {
     expect(writes.last.tasks[1].title, '준비 수정');
     expect(writes.last.status, ExperimentStatus.inProgress);
     expect(tester.widget<TextButton>(key('edit-protocol-steps')).onPressed,
-        isNull);
+        isNotNull);
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets(
-      'a cancelled prior execution still locks structure even with cleared timestamps',
+  testWidgets('cancelled execution allows audited edits but prevents deletion',
       (tester) async {
     final task = protocolExperiment()
         .tasks
@@ -169,9 +168,9 @@ void main() {
         .resetExecution(
             TaskExecutionAction.cancelStart, '오시작', DateTime.utc(2026));
     await editor(tester, (_) {}, source: protocolExperiment(tasks: [task]));
-    expect(find.byType(TextField), findsNothing);
-    expect(tester.widget<TextButton>(key('apply-protocol-draft')).onPressed,
-        isNull);
-    expect(find.text('수행 기록이 없는 초안·계획 실험에서만 편집할 수 있습니다.'), findsOneWidget);
+    expect(key('protocol-title-a'), findsOneWidget);
+    expect(
+        tester.widget<TextButton>(key('protocol-delete-a')).onPressed, isNull);
+    expect(find.textContaining('노트 저장 시 변경 전후'), findsOneWidget);
   });
 }

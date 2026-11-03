@@ -108,7 +108,7 @@ class _ProtocolEditorScreenState extends State<ProtocolEditorScreen> {
   }
 
   Future<void> _delete(ExperimentTask task) async {
-    if (_tasks.length <= 1) return;
+    if (_tasks.length <= 1 || ProtocolEditing.hasExecution(task)) return;
     FocusManager.instance.primaryFocus?.unfocus();
     final remove = await showDialog<bool>(
         context: context,
@@ -206,7 +206,7 @@ class _ProtocolEditorScreenState extends State<ProtocolEditorScreen> {
             child: !editable
                 ? const Padding(
                     padding: EdgeInsets.all(20),
-                    child: Text('수행 기록이 없는 초안·계획 실험에서만 편집할 수 있습니다.'))
+                    child: Text('완료·보관 실험은 잠금을 해제한 뒤 편집해주세요.'))
                 : SingleChildScrollView(
                     controller: _scroll,
                     padding: const EdgeInsets.all(16),
@@ -214,9 +214,12 @@ class _ProtocolEditorScreenState extends State<ProtocolEditorScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           const Text(
-                              '실행 전 단계의 이름·순서를 바꾸거나 추가·삭제합니다. 기존 단계의 예정 시간·알림 설정은 유지합니다. 적용 후 실험 노트에서 저장해주세요.'),
+                              '단계의 이름·순서를 바꾸거나 미수행 단계를 추가·삭제합니다. 기존 단계의 예정 시간·알림 설정은 유지합니다. 적용 후 실험 노트에서 저장해주세요.'),
                           const Text(
-                              '단계는 최소 1개 유지합니다. 수행 기록이 생기면 이 구성 편집은 잠깁니다.'),
+                              '단계는 최소 1개 유지합니다. 수행 기록이 있는 단계는 삭제할 수 없습니다. 중단할 단계는 실행 화면의 단계 생략을 사용하세요.'),
+                          if (ProtocolEditing.requiresReason(widget.experiment))
+                            const Text(
+                                '노트 저장 시 변경 전후를 확인하고 사유를 입력합니다. 기존 수행 시각과 이력은 유지됩니다.'),
                           if (_error != null)
                             Text(_error!,
                                 style: TextStyle(
@@ -273,7 +276,10 @@ class _ProtocolEditorScreenState extends State<ProtocolEditorScreen> {
                                           TextButton.icon(
                                               key: ValueKey(
                                                   'protocol-delete-${_tasks[i].id}'),
-                                              onPressed: _tasks.length == 1
+                                              onPressed: _tasks.length == 1 ||
+                                                      ProtocolEditing
+                                                          .hasExecution(
+                                                              _tasks[i])
                                                   ? null
                                                   : () => _delete(_tasks[i]),
                                               icon: const Icon(

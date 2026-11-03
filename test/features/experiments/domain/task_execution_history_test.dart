@@ -130,11 +130,11 @@ void main() {
     expect(loaded.toJson(), experiment.toJson());
     final envelope =
         jsonDecode(await File('${root.path}/experiments.json').readAsString());
-    expect(envelope['schemaVersion'], 6);
+    expect(envelope['schemaVersion'], 7);
     const codec = EasyCheckBackupService();
     final encoded = codec.encode(experiments: [loaded], plates: []);
     final backup = codec.decode(encoded);
-    expect(backup.schemaVersion, 11);
+    expect(backup.schemaVersion, 12);
     await FileBackupRecoveryService(rootDirectory: recoveredRoot.path)
         .recover(backup);
     expect(

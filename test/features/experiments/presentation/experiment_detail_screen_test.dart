@@ -265,7 +265,12 @@ void main() {
     expect(find.text('현미경 사진 촬영'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(TextButton, '저장'));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(saved!.tasks, hasLength(7));
+    await tester.enterText(
+        find.byKey(const ValueKey('protocol-change-reason')), '관찰 사진 추가');
+    await tester.tap(find.byKey(const ValueKey('confirm-protocol-change')));
+    await tester.pumpAndSettle();
 
     expect(saved, isNotNull);
     expect(saved!.tasks, hasLength(8));

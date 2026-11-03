@@ -158,7 +158,7 @@ void main() {
       p
     ]);
     final backup = codec.decode(encoded);
-    expect(backup.schemaVersion, 11);
+    expect(backup.schemaVersion, 12);
     await FileBackupRecoveryService(rootDirectory: recovery.path)
         .recover(backup);
     final restored = (await FilePlateRepository(rootDirectory: recovery.path)
