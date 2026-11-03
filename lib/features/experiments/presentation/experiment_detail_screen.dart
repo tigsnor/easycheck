@@ -1,3 +1,5 @@
+import '../domain/protocol_presets.dart';
+import 'widgets/protocol_preset_review_screen.dart';
 import 'widgets/protocol_change_review_screen.dart';
 import '../domain/protocol_editing.dart';
 import 'widgets/protocol_editor_screen.dart';
@@ -64,6 +66,8 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   late final TextEditingController _notesController;
   late ExperimentStatus _status;
   late String _experimentType;
+  int _typeFieldEpoch = 0;
+  String? _pendingProtocolType;
   late List<ExperimentTask> _tasks;
   late List<ExperimentResource> _resources;
   late Experiment _persistedExperiment;
@@ -131,7 +135,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
             widget.experiment.tasks.isEmpty &&
             !widget.experiment.isReadOnly &&
             widget.experiment.status != ExperimentStatus.correcting
-        ? _defaultTasks(widget.experiment.experimentType)
+        ? ProtocolPresets.initialTasks(widget.experiment.experimentType)
         : [...widget.experiment.tasks];
     _resources = [...widget.experiment.resources];
     for (final controller in [
@@ -326,6 +330,8 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
             child: Column(
               children: [
                 DropdownButtonFormField<String>(
+                  key: ValueKey(
+                      'experiment-type-$_typeFieldEpoch-$_experimentType'),
                   isExpanded: true,
                   initialValue: _experimentType,
                   decoration: const InputDecoration(labelText: '실험 유형'),
@@ -348,12 +354,15 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
                       child: Text('Custom'),
                     ),
                   ],
-                  onChanged: !_editingEnabled
-                      ? null
-                      : (value) => setState(
-                            () => _experimentType = value ?? 'Custom',
-                          ),
+                  onChanged: _canManageProtocol ? _compareProtocolPreset : null,
                 ),
+                TextButton.icon(
+                    key: const ValueKey('compare-protocol-preset'),
+                    onPressed: _canManageProtocol
+                        ? () => _compareProtocolPreset(_experimentType)
+                        : null,
+                    icon: const Icon(Icons.compare_arrows),
+                    label: const Text('추천 단계 비교')),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<ExperimentStatus>(
                   key: ValueKey('experiment-status-${_status.name}'),
@@ -708,8 +717,10 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
         .map(
             (t) => ExperimentTask.fromJson(Map<String, Object?>.from(t as Map)))
         .toList();
-    return ProtocolEditing.changesSavedDefinition(saved, _tasks,
-        includeAdditions: ProtocolEditing.requiresReason(_persistedExperiment));
+    return _experimentType != baseline['experimentType'] ||
+        ProtocolEditing.changesSavedDefinition(saved, _tasks,
+            includeAdditions:
+                ProtocolEditing.requiresReason(_persistedExperiment));
   }
 
   bool get _canManageProtocol =>
@@ -720,6 +731,28 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       ProtocolEditing.canEdit(_persistedExperiment) &&
       ProtocolEditing.canEdit(
           _persistedExperiment.copyWith(status: _status, tasks: _tasks));
+
+  Future<void> _compareProtocolPreset(String? type) async {
+    if (type == null || !_canManageProtocol) return;
+    final draft = await Navigator.of(context).push<ProtocolPresetDraft>(
+        MaterialPageRoute(
+            builder: (_) => ProtocolPresetReviewScreen(
+                experiment: _persistedExperiment.copyWith(
+                    status: ProtocolEditing.requiresReason(_persistedExperiment)
+                        ? _persistedExperiment.status
+                        : _status,
+                    experimentType: _experimentType,
+                    tasks: [..._tasks]),
+                targetType: type)));
+    if (!mounted) return;
+    setState(() {
+      _typeFieldEpoch++;
+      if (draft != null && _canManageProtocol) {
+        _experimentType = draft.type;
+        _tasks = draft.tasks;
+      }
+    });
+  }
 
   Future<void> _manageProtocol() async {
     if (!_canManageProtocol) return;
@@ -880,9 +913,10 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
 
     final auditProtocol =
         ProtocolEditing.requiresReason(_persistedExperiment) &&
-            ProtocolEditing.changesSavedDefinition(
-                _persistedExperiment.tasks, _tasks,
-                includeAdditions: true);
+            (_experimentType != _persistedExperiment.experimentType ||
+                ProtocolEditing.changesSavedDefinition(
+                    _persistedExperiment.tasks, _tasks,
+                    includeAdditions: true));
     setState(() {
       _savingProtocol = auditProtocol;
       _isSaving = true;
@@ -903,6 +937,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
       }
       final pending = _pendingProtocolRevision;
       if (pending == null ||
+          _pendingProtocolType != _experimentType ||
           jsonEncode(pending.protocolAfterTasks!
                   .map((t) => t.toJson())
                   .toList()) !=
@@ -910,7 +945,11 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
         final reason = await Navigator.of(context).push<String>(
             MaterialPageRoute(
                 builder: (_) => ProtocolChangeReviewScreen(
-                    before: _persistedExperiment.tasks, after: [..._tasks])));
+                    before: _persistedExperiment.tasks,
+                    after: [..._tasks],
+                    beforeType: _persistedExperiment.experimentType,
+                    afterType: _experimentType)));
+
         if (!mounted) return false;
         if (reason == null) {
           setState(() {
@@ -920,10 +959,13 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
           return false;
         }
         _pendingProtocolRevision = ProtocolEditing.revision(
-            _persistedExperiment, [..._tasks], reason, DateTime.now());
+            _persistedExperiment, [..._tasks], reason, DateTime.now(),
+            afterType: _experimentType);
+        _pendingProtocolType = _experimentType;
       }
     } else {
       _pendingProtocolRevision = null;
+      _pendingProtocolType = null;
     }
     String? completionRecord;
     if (_persistedExperiment.status != ExperimentStatus.completed &&
@@ -1023,6 +1065,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     _persistedExperiment = updated;
     _savedFingerprint = savingFingerprint;
     _pendingProtocolRevision = null;
+    _pendingProtocolType = null;
     _savingProtocol = false;
     if (mounted) {
       setState(() {
@@ -1195,34 +1238,6 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
           summary: summary,
           before: _persistedExperiment.copyWith(revisions: []))
     ]));
-  }
-
-  List<ExperimentTask> _defaultTasks(String experimentType) {
-    final titles = switch (experimentType) {
-      'CCK-8' || 'MTT' => const [
-          '세포 seeding',
-          '세포 부착 incubation',
-          'Treatment 처리',
-          'Assay reagent 투입',
-          '발색 incubation',
-          'Plate reader 측정',
-          '결과 파일 가져오기',
-        ],
-      'ELISA' => const [
-          '시료 및 standard 준비',
-          '시료 반응',
-          '세척',
-          'Detection reagent 반응',
-          '기질 반응',
-          'Plate reader 측정',
-          '결과 파일 가져오기',
-        ],
-      _ => const ['실험 준비', 'Treatment 처리', '결과 측정', '결과 파일 가져오기'],
-    };
-    return [
-      for (var index = 0; index < titles.length; index++)
-        ExperimentTask(id: 'default-$index', title: titles[index]),
-    ];
   }
 }
 

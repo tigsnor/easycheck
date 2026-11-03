@@ -5,8 +5,13 @@ import '../../domain/protocol_editing.dart';
 
 class ProtocolChangeReviewScreen extends StatefulWidget {
   const ProtocolChangeReviewScreen(
-      {required this.before, required this.after, super.key});
+      {required this.before,
+      required this.after,
+      this.beforeType,
+      this.afterType,
+      super.key});
   final List<ExperimentTask> before, after;
+  final String? beforeType, afterType;
   @override
   State<ProtocolChangeReviewScreen> createState() =>
       _ProtocolChangeReviewScreenState();
@@ -102,6 +107,9 @@ class _ProtocolChangeReviewScreenState
                     children: [
                       const Text(
                           '진행·정정 중이거나 수행 기록이 있는 실험입니다. 변경 사유와 변경 전후 단계 구성을 함께 저장합니다. 기존 수행 기록은 유지합니다.'),
+                      if (widget.beforeType != widget.afterType)
+                        Text(
+                            '유형 변경: ${widget.beforeType} → ${widget.afterType}'),
                       const SizedBox(height: 12),
                       Container(
                           key: _reasonKey,

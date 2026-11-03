@@ -68,17 +68,26 @@ abstract final class ProtocolEditing {
         ]);
   }
 
-  static ExperimentRevision revision(Experiment before,
-      List<ExperimentTask> after, String reason, DateTime at) {
+  static ExperimentRevision revision(
+      Experiment before, List<ExperimentTask> after, String reason, DateTime at,
+      {String? afterType}) {
     final validated = validate(before, after, preserveSettings: false);
+    final typeChanged = afterType != null && afterType != before.experimentType;
+    if (afterType != null && afterType.trim().isEmpty) {
+      throw const FormatException('실험 유형을 확인해주세요.');
+    }
     if (reason.trim().isEmpty ||
-        !changesSavedDefinition(before.tasks, after, includeAdditions: true)) {
+        (!typeChanged &&
+            !changesSavedDefinition(before.tasks, after,
+                includeAdditions: true))) {
       throw const FormatException('변경 내용과 사유가 필요합니다.');
     }
     return ExperimentRevision(
         id: 'protocol-${at.microsecondsSinceEpoch}-${before.revisions.length}',
         changedAt: at.toUtc(),
-        summary: '단계 구성 변경',
+        summary: typeChanged
+            ? '실험 유형 변경: ${before.experimentType} → $afterType'
+            : '단계 구성 변경',
         reason: reason.trim(),
         before: before.copyWith(revisions: []),
         protocolAfterTasks: validated);
