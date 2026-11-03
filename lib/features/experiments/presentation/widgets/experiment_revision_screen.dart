@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/experiment.dart';
+import '../../domain/protocol_editing.dart';
 
 /// Historical metadata only; never opens current Plate/files as old originals.
 class ExperimentRevisionScreen extends StatelessWidget {
@@ -15,6 +16,10 @@ class ExperimentRevisionScreen extends StatelessWidget {
       revision.summary,
       '기록 시각: ${date(revision.changedAt)}',
       if (revision.reason.isNotEmpty) '사유·검토 메모: ${revision.reason}',
+      if (before != null && revision.protocolAfterTasks != null) ...[
+        ...ProtocolEditing.describe(before.tasks, revision.protocolAfterTasks!),
+        '이하 수행 기록은 변경 당시 보존한 원본입니다. 현재 노트와 다를 수 있습니다.',
+      ],
       if (before != null) ...[
         '',
         '변경 전 노트',
@@ -47,6 +52,11 @@ class ExperimentRevisionScreen extends StatelessWidget {
               '생략 기록: ${date(task.executionMetadata.skippedAt)} / 사유: ${task.executionMetadata.skipReason ?? '없음'}\n'
               '예정: ${task.plannedMinutes == null ? '미지정' : '${task.plannedMinutes}분'} / 알림 설정: ${task.reminderEnabled ? '켜짐' : '꺼짐'}',
         '',
+        for (final task in before.tasks)
+          for (final record in task.executionHistory)
+            '${task.title}의 이전 수행: ${record.title} · ${record.action.label}\n'
+                '기록: ${date(record.recordedAt)} · 사유: ${record.reason}\n'
+                '시작: ${date(record.startedAt)} / 완료: ${date(record.completedAt)}',
         '시약·장비',
         for (final resource in before.resources)
           '${resource.type == ExperimentResourceType.reagent ? '시약' : '장비'}: ${resource.name}\n'

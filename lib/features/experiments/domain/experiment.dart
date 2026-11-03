@@ -268,10 +268,38 @@ class ExperimentRevision {
     required this.summary,
     this.reason = '',
     this.before,
+    this.protocolAfterTasks,
   });
 
   factory ExperimentRevision.fromJson(Map<String, Object?> json) {
+    List<ExperimentTask> strictTasks(Object? raw, {bool allowEmpty = false}) {
+      if (raw is! List || (!allowEmpty && raw.isEmpty)) {
+        throw const FormatException('단계 이력 목록이 올바르지 않습니다.');
+      }
+      final ids = <String>{};
+      return List.unmodifiable(raw.map((value) {
+        if (value is! Map) throw const FormatException('단계 이력이 올바르지 않습니다.');
+        final task = ExperimentTask.fromJson(Map<String, Object?>.from(value));
+        if (task.id.trim().isEmpty ||
+            task.title.trim().isEmpty ||
+            !ids.add(task.id)) {
+          throw const FormatException('단계 이력 ID·이름을 확인해주세요.');
+        }
+        return task;
+      }));
+    }
+
+    final after = json['protocolAfterTasks'];
+    if (after != null) {
+      final before = json['before'];
+      final reason = json['reason'];
+      if (before is! Map || reason is! String || reason.trim().isEmpty) {
+        throw const FormatException('단계 변경 이력에는 변경 전 기록과 사유가 필요합니다.');
+      }
+      strictTasks(before['tasks'], allowEmpty: true);
+    }
     return ExperimentRevision(
+      protocolAfterTasks: after == null ? null : strictTasks(after),
       id: json['id'] as String,
       changedAt: DateTime.parse(json['changedAt'] as String),
       summary: json['summary'] as String,
@@ -290,6 +318,7 @@ class ExperimentRevision {
   final String summary;
   final String reason;
   final Experiment? before;
+  final List<ExperimentTask>? protocolAfterTasks;
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -297,6 +326,9 @@ class ExperimentRevision {
         'summary': summary,
         'reason': reason,
         if (before != null) 'before': before!.copyWith(revisions: []).toJson(),
+        if (protocolAfterTasks != null)
+          'protocolAfterTasks':
+              protocolAfterTasks!.map((t) => t.toJson()).toList(),
       };
 }
 

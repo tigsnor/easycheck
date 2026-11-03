@@ -260,7 +260,7 @@ void main() {
     final encoded = codec.encode(
         experiments: [experiment()], plates: [p], templates: [template]);
     final backup = codec.decode(encoded);
-    expect(backup.schemaVersion, 11);
+    expect(backup.schemaVersion, 12);
     await FileBackupRecoveryService(rootDirectory: restored.path)
         .recover(backup);
     expect(

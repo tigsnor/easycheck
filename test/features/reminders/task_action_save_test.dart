@@ -311,7 +311,7 @@ void main() {
   });
 
   testWidgets(
-      'starting a newly added task saves it without dropping existing tasks',
+      'new steps in an in-progress experiment require audited save before execution',
       (tester) async {
     reminders = TaskReminderCoordinator(
         loadExperiments: () async => [stored], service: os);
@@ -324,6 +324,11 @@ void main() {
       await tap(tester, find.widgetWithText(FilledButton, '추가'));
     }
     expect(saved, isEmpty);
+    await tap(tester, find.widgetWithText(TextButton, '저장'));
+    await tester.enterText(
+        find.byKey(const ValueKey('protocol-change-reason')), '추가 관찰 필요');
+    await key(tester, 'confirm-protocol-change');
+    expect(stored.revisions.single.reason, '추가 관찰 필요');
     await tap(tester, find.byKey(const PageStorageKey('all-experiment-tasks')));
     for (final title in ['추가 관찰 Y', '추가 관찰 X']) {
       final row = find.widgetWithText(CheckboxListTile, title);

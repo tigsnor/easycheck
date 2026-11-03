@@ -5,12 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../../support/protocol_fixture.dart';
 
 void main() {
-  test(
-      'only drafts/plans without any current or archived execution can edit structure',
+  test('editable statuses allow structure changes; execution requires a reason',
       () {
     for (final status in ExperimentStatus.values) {
       expect(ProtocolEditing.canEdit(protocolExperiment(status: status)),
-          [ExperimentStatus.draft, ExperimentStatus.planned].contains(status));
+          !protocolExperiment(status: status).isReadOnly);
     }
     final t = protocolExperiment().tasks.first;
     final now = DateTime.utc(2026);
@@ -19,6 +18,7 @@ void main() {
       t.copyWith(completedAt: now),
       t.copyWith(isCompleted: true),
       t.copyWith(
+          startedAt: now,
           executionMetadata: TaskExecutionMetadata(startRecordedAt: now)),
       t.resetExecution(TaskExecutionAction.skip, '생략', now),
       t
@@ -26,10 +26,16 @@ void main() {
           .resetExecution(TaskExecutionAction.cancelStart, '오시작', now),
     ]) {
       final source = protocolExperiment(tasks: [recorded]);
-      expect(ProtocolEditing.canEdit(source), false);
+      expect(ProtocolEditing.canEdit(source), true);
+      expect(ProtocolEditing.requiresReason(source), true);
+      expect(
+          ProtocolEditing.validate(source, [recorded.copyWith(title: '변경')])
+              .single
+              .title,
+          '변경');
       expect(
           () => ProtocolEditing.validate(
-              source, [recorded.copyWith(title: '변경')]),
+              source, [const ExperimentTask(id: 'new', title: '대체')]),
           throwsFormatException);
     }
   });
