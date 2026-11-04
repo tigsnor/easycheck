@@ -67,6 +67,82 @@ class FakePlateTemplateRepository implements PlateTemplateRepository {
 }
 
 void main() {
+  for (final unit in ['RFU', 'RLU', 'OD570', 'OD450', '']) {
+    testWidgets(
+        'bulk import preserves explicit unit "$unit" without stale wavelength',
+        (tester) async {
+      final repository = FakePlateRepository()
+        ..plate = Plate(id: 'p', experimentId: 'e', name: 'Plate');
+      await tester.pumpWidget(MaterialApp(
+          home: PlateEditorScreen(experimentId: 'e', repository: repository)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('bulk-result-import-button')));
+      await tester.pumpAndSettle();
+      final matrix = find.byKey(const ValueKey('bulk-result-matrix-field'));
+      await tester.enterText(matrix, 'A\t0.82\t0.79');
+      final unitField = find.byKey(const ValueKey('bulk-result-unit-field'));
+      await tester.ensureVisible(unitField);
+      await tester.enterText(unitField, unit);
+      await tester.pumpAndSettle();
+      expect(
+          tester.widget<TextField>(matrix).controller!.text, 'A\t0.82\t0.79');
+      final wavelength = tester.widget<TextField>(
+          find.byKey(const ValueKey('bulk-result-wavelength-field')));
+      expect(wavelength.controller!.text, '450');
+      expect(wavelength.enabled, isFalse);
+      expect(find.text('적용 단위: ${unit.isEmpty ? '없음' : unit}'), findsOneWidget);
+      final open = find.byKey(const ValueKey('open-full-import-preview'));
+      await tester.ensureVisible(open);
+      await tester.tap(open);
+      await tester.pumpAndSettle();
+      expect(find.text('적용 후: 0.82 ${unit.isEmpty ? '(단위 없음)' : unit}'),
+          findsOneWidget);
+      expect(repository.saveCount, 0);
+      await tester.tap(find.byKey(const ValueKey('close-import-preview')));
+      await tester.pumpAndSettle();
+      final apply = find.byKey(const ValueKey('apply-bulk-results-button'));
+      await tester.ensureVisible(apply);
+      await tester.tap(apply);
+      await tester.pumpAndSettle();
+      expect(repository.plate!.wells[0].resultValue, 0.82);
+      expect(repository.plate!.wells[1].resultValue, 0.79);
+      expect(repository.plate!.wells[0].resultUnit, unit.isEmpty ? null : unit);
+      expect(repository.plate!.importHistory.single.resultUnit, unit);
+    });
+  }
+
+  testWidgets(
+      'switching back to OD retains explicitly entered wavelength and matrix',
+      (tester) async {
+    final repository = FakePlateRepository()
+      ..plate = Plate(id: 'p', experimentId: 'e', name: 'Plate');
+    await tester.pumpWidget(MaterialApp(
+        home: PlateEditorScreen(experimentId: 'e', repository: repository)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('bulk-result-import-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const ValueKey('bulk-result-matrix-field')), 'A\t0.82');
+    final wavelength =
+        find.byKey(const ValueKey('bulk-result-wavelength-field'));
+    await tester.ensureVisible(wavelength);
+    await tester.enterText(wavelength, '570');
+    final unit = find.byKey(const ValueKey('bulk-result-unit-field'));
+    await tester.enterText(unit, 'RFU');
+    await tester.pumpAndSettle();
+    expect(find.text('적용 단위: RFU'), findsOneWidget);
+    await tester.enterText(unit, 'od');
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(wavelength).enabled, isTrue);
+    expect(find.text('적용 단위: OD570'), findsOneWidget);
+    final apply = find.byKey(const ValueKey('apply-bulk-results-button'));
+    await tester.ensureVisible(apply);
+    await tester.tap(apply);
+    await tester.pumpAndSettle();
+    expect(repository.plate!.wells[0].resultValue, 0.82);
+    expect(repository.plate!.wells[0].resultUnit, 'OD570');
+  });
+
   testWidgets(
       'full import preview is read only, refreshes units and matches saved values',
       (tester) async {

@@ -1893,16 +1893,13 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
     return messages.join('\n');
   }
 
+  bool get _usesWavelength => _unitController.text.trim().toUpperCase() == 'OD';
+
   String get _resolvedResultUnit {
     final unit = _unitController.text.trim();
-    final wavelength = _wavelengthController.text.trim();
-    if (unit.isEmpty) {
-      return wavelength.isEmpty ? '' : '${wavelength}nm';
-    }
-    if (wavelength.isEmpty || unit.contains(wavelength)) {
-      return unit;
-    }
-    return '$unit$wavelength';
+    // A separate absorbance wavelength only qualifies plain OD. Preserve
+    // complete/custom units (e.g. OD570, RFU, RLU) and explicitly unitless data.
+    return _usesWavelength ? 'OD${_wavelengthController.text.trim()}' : unit;
   }
 
   @override
@@ -1983,7 +1980,7 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
                     controller: _unitController,
                     decoration: const InputDecoration(
                       labelText: '결과 단위',
-                      hintText: '예: OD',
+                      hintText: '예: OD, RFU, RLU, OD570',
                     ),
                   ),
                 ),
@@ -1992,9 +1989,10 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
                   child: TextField(
                     key: const ValueKey('bulk-result-wavelength-field'),
                     controller: _wavelengthController,
+                    enabled: _usesWavelength,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                      labelText: '측정 파장 (nm)',
+                      labelText: '흡광 파장 (nm)',
                       hintText: '예: 450',
                     ),
                   ),
@@ -2002,6 +2000,8 @@ class _BulkResultImportSheetState extends State<_BulkResultImportSheet> {
               ],
             ),
             const SizedBox(height: 8),
+            const Text(
+                '별도 파장은 OD에만 적용합니다. RFU·RLU 또는 OD570처럼 입력한 단위에는 붙이지 않습니다. 단위를 비우면 단위 없이 저장합니다.'),
             Text(
               '적용 단위: ${_resolvedResultUnit.isEmpty ? '없음' : _resolvedResultUnit}',
             ),
