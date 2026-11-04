@@ -56,7 +56,8 @@ void main() {
       name: 'Review template',
       createdAt: DateTime.utc(2026),
       plate: Plate(id: 'source', experimentId: 'source', name: 'Source'));
-  Future<void> open(WidgetTester tester, Notes notes, {Plates? plates}) async {
+  Future<void> open(WidgetTester tester, Notes notes,
+      {Plates? plates, bool expandCells = true}) async {
     await tester.pumpWidget(MaterialApp(
         home: ExperimentsHomeScreen(
             repository: notes,
@@ -66,6 +67,9 @@ void main() {
     await tester.pumpAndSettle();
     await tap(tester, find.text('첫 실험 만들기'));
     await tester.enterText(field('실험 제목'), 'Study');
+    if (expandCells) {
+      await tap(tester, find.text('노트 참고용 세포 정보 (선택)'));
+    }
   }
 
   Future<void> chooseTemplate(WidgetTester tester, String name) async {
@@ -89,16 +93,35 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(field('세포 이름'), 'HeLa');
     await tap(tester, find.text('생성'));
-    final error = find.text('세포 정보를 기록하려면 이름, 0 이상의 계수, 정수 지수를 모두 입력해주세요.');
+    final error = find.text('세포 정보를 기록하려면 이름과 세포수를 입력해주세요.');
     expect(error, findsOneWidget);
     expect(tester.getTopLeft(error).dy, greaterThanOrEqualTo(0));
     expect(tester.getBottomRight(error).dy, lessThan(400));
     expect(notes.attempts, isEmpty);
     expect(tester.takeException(), isNull);
   });
-  testWidgets('untouched optional cell info stays absent', (tester) async {
+  testWidgets(
+      'collapsed reference keeps draft and expands again for validation',
+      (tester) async {
     final notes = Notes();
     await open(tester, notes);
+    final section = find.text('노트 참고용 세포 정보 (선택)');
+    await tester.enterText(field('세포 이름'), 'HeLa');
+    await tap(tester, section);
+    expect(field('세포 이름'), findsNothing);
+    await tap(tester, find.text('생성'));
+    expect(field('세포 이름'), findsOneWidget);
+    expect(notes.attempts, isEmpty);
+    await tester.enterText(field('세포수'), '10000');
+    await tap(tester, section);
+    await tap(tester, find.text('생성'));
+    expect(notes.experiments.single.cellCountLabel, 'HeLa: 10000/ml');
+  });
+
+  testWidgets('untouched optional cell info stays absent', (tester) async {
+    final notes = Notes();
+    await open(tester, notes, expandCells: false);
+    expect(field('세포 이름'), findsNothing);
     await tap(tester, find.text('생성'));
     expect(notes.experiments.single.cellCountLabel, isNull);
   });
@@ -111,7 +134,7 @@ void main() {
     await tap(tester, find.text('생성'));
     expect(notes.attempts, isEmpty);
     for (final pair in [
-      ('1', ''),
+      ('', '4'),
       ('NaN', '4'),
       ('-1', '4'),
       ('1', '1.5'),
@@ -128,6 +151,25 @@ void main() {
     await tap(tester, find.text('생성'));
     expect(notes.experiments.single.cellCountLabel, 'HeLa: 0×10^4/ml');
   });
+  for (final input in [
+    ('10000', '', '10000'),
+    ('1', '4', '1×10^4'),
+    ('1e4', '', '1e4')
+  ]) {
+    testWidgets(
+        'creation scientific preview matches saved quantity ${input.$1}/${input.$2}',
+        (tester) async {
+      final notes = Notes();
+      await open(tester, notes);
+      await tester.enterText(field('세포 이름'), 'HeLa');
+      await tester.enterText(field('세포수'), input.$1);
+      await tester.enterText(field('10^n'), input.$2);
+      await tester.pumpAndSettle();
+      expect(find.text('입력값: 10,000 cells/mL'), findsOneWidget);
+      await tap(tester, find.text('생성'));
+      expect(notes.experiments.single.cellCountLabel, 'HeLa: ${input.$3}/ml');
+    });
+  }
   testWidgets('failed save keeps all fields and retries with the same identity',
       (tester) async {
     final notes = Notes()..fail = true;

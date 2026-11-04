@@ -54,6 +54,81 @@ void main() {
   }
 
   testWidgets(
+      'split exponent previews and stores selected cell quantity without changing unit',
+      (tester) async {
+    final repo = await open(tester);
+    await edit(tester, 'row-header-A');
+    await tester.enterText(key('cell-name-input'), 'HeLa');
+    await tester.enterText(key('cell-density-input'), '1');
+    await tester.enterText(key('cell-exponent-input'), '4');
+    await tester.pumpAndSettle();
+    expect(find.text('입력값: 10,000 cells/mL'), findsOneWidget);
+    await tap(tester, key('cell-unit-cells/mL'));
+    await tap(tester, find.text('cells/well').last);
+    expect(find.text('입력값: 10,000 cells/well'), findsOneWidget);
+    await tap(tester, key('apply-cell-condition'));
+    expect(
+        repo.plate!.wells.take(12).map((w) => w.cellCondition),
+        everyElement(const CellCondition(
+            name: 'HeLa', density: 10000, unit: 'cells/well')));
+    expect(repo.plate!.wells.skip(12).map((w) => w.cellCondition),
+        everyElement(isNull));
+    await tap(tester, key('assign-cell-condition-action'));
+    final writes = repo.saveCount;
+    expect(
+        tester.widget<TextField>(key('cell-exponent-input')).controller!.text,
+        isEmpty);
+    await tap(tester, key('apply-cell-condition'));
+    expect(repo.saveCount, writes);
+  });
+
+  testWidgets(
+      'reopening high precision data is lossless; exponent-only input blocks save',
+      (tester) async {
+    const condition = CellCondition(
+        name: 'HeLa', density: .12345678912345678, unit: 'cells/well');
+    final base = empty();
+    final repo = await open(tester,
+        plate: base.copyWith(wells: [
+          base.wells.first.copyWith(cellCondition: condition),
+          ...base.wells.skip(1)
+        ]));
+    await edit(tester, 'well-A1');
+    await tap(tester, key('apply-cell-condition'));
+    expect(repo.saveCount, 0);
+    expect(repo.plate!.wells.first.cellCondition, condition);
+    await tap(tester, key('assign-cell-condition-action'));
+    await tester.enterText(key('cell-density-input'), '');
+    await tester.enterText(key('cell-exponent-input'), '4');
+    await tap(tester, key('apply-cell-condition'));
+    expect(repo.saveCount, 0);
+    expect(find.textContaining('0 이상의 숫자'), findsOneWidget);
+    await tester.enterText(key('cell-exponent-input'), '');
+    await tap(tester, key('apply-cell-condition'));
+    expect(repo.plate!.wells.first.cellCondition,
+        const CellCondition(name: 'HeLa'));
+  });
+
+  testWidgets(
+      'condition reuse clears an old multiplier and exponent edits require discard confirmation',
+      (tester) async {
+    final repo = await open(tester, plate: cellPlate());
+    await edit(tester, 'well-D1');
+    await tester.enterText(key('cell-density-input'), '1');
+    await tester.enterText(key('cell-exponent-input'), '4');
+    await tap(tester, find.widgetWithText(ActionChip, hekLow.label));
+    expect(
+        tester.widget<TextField>(key('cell-exponent-input')).controller!.text,
+        isEmpty);
+    await tester.enterText(key('cell-exponent-input'), '2');
+    await tap(tester, key('close-cell-condition'));
+    expect(find.text('세포 조건 입력을 버릴까요?'), findsOneWidget);
+    await tester.tap(find.text('입력 버리고 닫기'));
+    await tester.pumpAndSettle();
+    expect(repo.saveCount, 0);
+  });
+
+  testWidgets(
       'assigns multiple types and densities to row selections and reuses conditions without changing treatment',
       (tester) async {
     final original = cellPlate().copyWith(wells: [

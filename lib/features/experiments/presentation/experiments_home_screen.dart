@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
+import '../../../shared/models/cell_number.dart';
+import '../../../shared/presentation/scientific_cell_input.dart';
 import '../../reminders/application/task_reminder_coordinator.dart';
 import '../../reminders/data/task_reminder_service.dart';
 import '../../reminders/domain/task_reminder_target.dart';
@@ -1583,6 +1584,7 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
   String? _saveError;
   String? _cellError;
   final _cellField = GlobalKey();
+  final _cellSection = ExpansibleController();
   final _cellFocus = FocusNode();
   late final String _initialFingerprint;
   String get _fingerprint => jsonEncode([
@@ -1652,6 +1654,7 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
     _projectController.dispose();
     _notesController.dispose();
     _cellFocus.dispose();
+    _cellSection.dispose();
     _cellNameController.dispose();
     _cellCountController.dispose();
     _cellExponentController.dispose();
@@ -1749,96 +1752,70 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Text(
-                        '세포수 (선택)',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                          key: _cellField,
-                          child: TextField(
-                            focusNode: _cellFocus,
-                            controller: _cellNameController,
-                            textInputAction: TextInputAction.next,
-                            decoration: InputDecoration(
-                              labelText: '세포 이름',
-                              hintText: '예: hek293',
-                              errorText: _cellError,
-                              errorMaxLines: 4,
-                            ),
-                          )),
-                      const SizedBox(height: 12),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      ExpansionTile(
+                        key: const ValueKey('create-cell-reference-section'),
+                        controller: _cellSection,
+                        maintainState: true,
+                        tilePadding: EdgeInsets.zero,
+                        title: const Text('노트 참고용 세포 정보 (선택)'),
+                        subtitle:
+                            const Text('실제 well별 세포 조건은 생성 후 Plate에서 입력합니다.'),
                         children: [
-                          Expanded(
-                            flex: 2,
-                            child: TextField(
-                              controller: _cellCountController,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
-                              textInputAction: TextInputAction.next,
-                              decoration: const InputDecoration(
-                                labelText: '세포수',
-                                hintText: '예: 1',
-                                prefixText: '× ',
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextField(
-                              controller: _cellExponentController,
-                              keyboardType: TextInputType.number,
-                              textInputAction: TextInputAction.next,
-                              decoration: const InputDecoration(
-                                labelText: '10^n',
-                                hintText: '6',
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            flex: 2,
-                            child: DropdownButtonFormField<String>(
-                              isExpanded: true,
-                              onTap: () =>
-                                  FocusManager.instance.primaryFocus?.unfocus(),
-                              initialValue: _cellCountUnit,
-                              decoration:
-                                  const InputDecoration(labelText: '단위'),
-                              items: const [
-                                DropdownMenuItem(
-                                    value: 'ml', child: Text('ml')),
-                                DropdownMenuItem(
-                                  value: 'well',
-                                  child: Text('well'),
+                          Container(
+                              key: _cellField,
+                              child: TextField(
+                                focusNode: _cellFocus,
+                                controller: _cellNameController,
+                                textInputAction: TextInputAction.next,
+                                decoration: InputDecoration(
+                                  labelText: '세포 이름',
+                                  hintText: '예: hek293',
+                                  errorText: _cellError,
+                                  errorMaxLines: 4,
                                 ),
-                                DropdownMenuItem(
-                                  value: 'plate',
-                                  child: Text('plate'),
-                                ),
-                                DropdownMenuItem(
-                                    value: 'etc', child: Text('etc')),
-                              ],
-                              onChanged: (value) => setState(
-                                  () => _cellCountUnit = value ?? 'ml'),
-                            ),
+                              )),
+                          const SizedBox(height: 12),
+                          ScientificCellInput(
+                            coefficientController: _cellCountController,
+                            exponentController: _cellExponentController,
+                            unit: switch (_cellCountUnit) {
+                              'ml' => 'cells/mL',
+                              'well' => 'cells/well',
+                              'plate' => 'cells/plate',
+                              _ => '기타 단위',
+                            },
                           ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            isExpanded: true,
+                            onTap: () =>
+                                FocusManager.instance.primaryFocus?.unfocus(),
+                            initialValue: _cellCountUnit,
+                            decoration: const InputDecoration(labelText: '단위'),
+                            items: const [
+                              DropdownMenuItem(
+                                  value: 'ml', child: Text('cells/mL')),
+                              DropdownMenuItem(
+                                  value: 'well', child: Text('cells/well')),
+                              DropdownMenuItem(
+                                  value: 'plate', child: Text('cells/plate')),
+                              DropdownMenuItem(value: 'etc', child: Text('기타')),
+                            ],
+                            onChanged: (value) =>
+                                setState(() => _cellCountUnit = value ?? 'ml'),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '예: hek293: 1×10^6/ml\n노트 전체 참고용입니다. 여러 세포 종류·농도는 생성 후 Plate의 세포 조건에서 지정하세요.',
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant),
+                          ),
+                          const SizedBox(height: 12),
                         ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '예: hek293: 1×10^6/ml\n노트 전체 참고용입니다. 여러 세포 종류·농도는 생성 후 Plate의 세포 조건에서 지정하세요.',
-                        style: Theme.of(
-                          context,
-                        ).textTheme.bodySmall?.copyWith(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String?>(
@@ -1908,6 +1885,7 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
 
     final cellCountLabel = _cellCountLabel();
     if (_cellError != null) {
+      _cellSection.expand();
       _cellFocus.requestFocus();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _cellField.currentContext != null) {
@@ -1967,25 +1945,20 @@ class _CreateExperimentSheetState extends State<_CreateExperimentSheet> {
       return null;
     }
 
-    final coefficient = double.tryParse(cellCount);
-    final power = int.tryParse(exponent);
-    if (cellName.isEmpty ||
-        coefficient == null ||
-        !coefficient.isFinite ||
-        coefficient < 0 ||
-        power == null) {
+    double? value;
+    try {
+      value = CellNumber.parse(cellCount, exponent);
+    } on FormatException {
       setState(
-          () => _cellError = '세포 정보를 기록하려면 이름, 0 이상의 계수, 정수 지수를 모두 입력해주세요.');
+          () => _cellError = '0 이상의 숫자와 정수 지수를 확인해주세요. 일반 숫자는 지수를 비워둘 수 있습니다.');
       return null;
     }
-    // Check the combined number for overflow and underflow
-    // without losing the original coefficient's precision in the label.
-    final value = coefficient * math.pow(10, power);
-    if (!value.isFinite || (coefficient > 0 && value == 0)) {
-      setState(() => _cellError = '세포 수가 계산 가능한 범위를 벗어났습니다. 계수와 지수를 확인해주세요.');
+    if (cellName.isEmpty || value == null) {
+      setState(() => _cellError = '세포 정보를 기록하려면 이름과 세포수를 입력해주세요.');
       return null;
     }
-    return '$cellName: $cellCount×10^$exponent/$_cellCountUnit';
+    final amount = exponent.isEmpty ? cellCount : '$cellCount×10^$exponent';
+    return '$cellName: $amount/$_cellCountUnit';
   }
 }
 
