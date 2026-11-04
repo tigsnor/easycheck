@@ -71,6 +71,40 @@ void main() {
     await tap(tester, 'apply-medium-change');
   }
 
+  testWidgets(
+      'plain full replacement needs no reagent unit, invalidates on mode change and preserves measured records',
+      (tester) async {
+    final before = source(measured: true);
+    final repo = await open(tester, plate: before);
+    await tap(tester, 'medium-only-replacement');
+    expect(key('medium-change-unit'), findsNothing);
+    expect(key('medium-change-incoming-concentration'), findsNothing);
+    await enter(tester, 'incoming-volume', '150');
+    await enter(tester, 'medium', 'Fresh medium');
+    await tap(tester, 'calculate-medium-change');
+    expect(find.textContaining('처리 농도·단위 기록 해제'), findsOneWidget);
+    await tap(tester, 'medium-only-replacement');
+    expect(key('medium-change-final-volume'), findsNothing);
+    await tap(tester, 'medium-only-replacement');
+    await tap(tester, 'calculate-medium-change');
+    await apply(tester);
+    expect(repo.saveCount, 0);
+    await tester.enterText(key('condition-correction-reason'), '배지만 전체 교체 기록');
+    await tap(tester, 'confirm-condition-correction');
+    final after = repo.plate!.wells.first;
+    expect(after.volumeValue, 150);
+    expect(after.concentrationValue, isNull);
+    expect(after.concentrationUnit, isNull);
+    expect(after.assayCondition!.medium, 'Fresh medium');
+    expect(after.assayCondition!.vehiclePercent, 0);
+    expect(after.assayCondition!.vehicle, isNull);
+    expect(after.cellCondition, before.wells.first.cellCondition);
+    expect(after.resultValue, 0);
+    expect(after.excluded, true);
+    expect(after.role, before.wells.first.role);
+    expect(repo.plate!.revisions.length, 1);
+  });
+
   for (final landscape in [false, true]) {
     testWidgets(
         'medium sheet keeps title and close inside device safe area, landscape=$landscape',

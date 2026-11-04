@@ -75,7 +75,7 @@ class PlateAnalysisExportService {
       ..writeln()
       ..writeln('Series')
       ..writeln(
-        'group_id\tgroup\trole\tconcentration\tconcentration_unit\tresult_unit\treplicates\tincluded_wells\texcluded_count\texcluded_wells\traw_mean\tblank_corrected_mean\tsample_sd\tcv_percent\tnormalized_percent\tcell_type\tcell_density\tcell_density_unit\tmedium\tvehicle\tvehicle_percent_vv',
+        'group_id\tgroup\trole\tconcentration\tconcentration_unit\tresult_unit\treplicates\tincluded_wells\texcluded_count\texcluded_wells\traw_mean\tblank_corrected_mean\tsample_sd\tcv_percent\tnormalized_percent\tcell_type\tcell_density\tcell_density_unit\tmedium\tvehicle\tvehicle_percent_vv\tblank_correction_status',
       );
     for (final series in report.series) {
       buffer.writeln(
@@ -103,6 +103,13 @@ class PlateAnalysisExportService {
               ? ''
               : series.assayCondition!.vehicle ?? '없음',
           _numberOrEmpty(series.assayCondition?.vehiclePercent),
+          series.reference == null
+              ? 'unknown'
+              : series.blankCorrectedMean == null
+                  ? 'invalid_reference'
+                  : series.reference?.blankMean == null
+                      ? 'not_applied'
+                      : 'applied',
         ].map((value) => _escape(value.toString())).join('\t'),
       );
     }

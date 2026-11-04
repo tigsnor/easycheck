@@ -37,13 +37,14 @@ class _MediumChangeSheetState extends State<MediumChangeSheet> {
       key: TextEditingController()
   };
   MediumChangeMode _mode = MediumChangeMode.add;
+  bool _mediumOnly = false;
   MediumChangePlan? _plan;
   String? _error;
   bool _confirmed = false, _closing = false, _allowPop = false;
   final _feedbackKey = GlobalKey();
   late final String _initial;
-  String get _fingerprint =>
-      jsonEncode([_mode.name, for (final c in _fields.values) c.text]);
+  String get _fingerprint => jsonEncode(
+      [_mode.name, _mediumOnly, for (final c in _fields.values) c.text]);
 
   @override
   void initState() {
@@ -88,8 +89,10 @@ class _MediumChangeSheetState extends State<MediumChangeSheet> {
       final full = _mode == MediumChangeMode.replaceAll;
       final plan = MediumChangePlan(
         mode: _mode,
-        unit: _text('unit'),
-        vehicle: _text('vehicle').isEmpty ? null : _text('vehicle'),
+        mediumOnly: _mediumOnly,
+        unit: _mediumOnly ? '' : _text('unit'),
+        vehicle:
+            _mediumOnly || _text('vehicle').isEmpty ? null : _text('vehicle'),
         initialVolume: full ? 0 : _number('initial-volume', '기존 부피'),
         initialConcentration:
             full ? 0 : _number('initial-concentration', '기존 농도'),
@@ -99,8 +102,10 @@ class _MediumChangeSheetState extends State<MediumChangeSheet> {
             ? _number('removed-volume', '제거 부피')
             : 0,
         incomingVolume: _number('incoming-volume', '추가 용액 부피'),
-        incomingConcentration: _number('incoming-concentration', '추가 용액 농도'),
-        incomingVehiclePercent: _number('incoming-percent', '추가 용액의 용매 비율'),
+        incomingConcentration:
+            _mediumOnly ? 0 : _number('incoming-concentration', '추가 용액 농도'),
+        incomingVehiclePercent:
+            _mediumOnly ? 0 : _number('incoming-percent', '추가 용액의 용매 비율'),
       );
       if (!(plan.incomingVolume * widget.wells.length).isFinite) {
         throw const FormatException('전체 준비량이 계산 범위를 벗어났습니다. 부피를 확인해주세요.');
@@ -230,21 +235,38 @@ class _MediumChangeSheetState extends State<MediumChangeSheet> {
                           overflow: TextOverflow.ellipsis),
                       const Text(
                           '모든 부피는 well당 µL입니다. 같은 시약과 같은 농도 단위, 한 종류의 용매를 계산합니다. 서로 다른 용매 혼합과 단위 환산은 지원하지 않습니다.'),
-                      Wrap(spacing: 8, children: [
-                        for (final mode in MediumChangeMode.values)
-                          ChoiceChip(
-                              key: ValueKey('medium-change-mode-${mode.name}'),
-                              label: Text(mode.label),
-                              selected: _mode == mode,
-                              onSelected: (_) => setState(() {
-                                    _mode = mode;
-                                    _plan = null;
-                                    _error = null;
-                                    _confirmed = false;
-                                  }))
-                      ]),
-                      _input('unit', '공통 농도 단위',
-                          helper: '예: µM. 기존 시약과 추가 용액에 같은 단위를 사용하세요.'),
+                      SwitchListTile(
+                          key: const ValueKey('medium-only-replacement'),
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('배지만 전체 교체 (시약·용매 없음)'),
+                          subtitle: const Text(
+                              '최종 배지와 부피만 입력합니다. 기존 처리 농도 기록은 해제하고 용매 없음(0%)으로 기록합니다.'),
+                          value: _mediumOnly,
+                          onChanged: (value) {
+                            setState(() {
+                              _mediumOnly = value;
+                              if (value) _mode = MediumChangeMode.replaceAll;
+                            });
+                            _invalidate();
+                          }),
+                      if (!_mediumOnly)
+                        Wrap(spacing: 8, children: [
+                          for (final mode in MediumChangeMode.values)
+                            ChoiceChip(
+                                key:
+                                    ValueKey('medium-change-mode-${mode.name}'),
+                                label: Text(mode.label),
+                                selected: _mode == mode,
+                                onSelected: (_) => setState(() {
+                                      _mode = mode;
+                                      _plan = null;
+                                      _error = null;
+                                      _confirmed = false;
+                                    }))
+                        ]),
+                      if (!_mediumOnly)
+                        _input('unit', '공통 농도 단위',
+                            helper: '예: µM. 기존 시약과 추가 용액에 같은 단위를 사용하세요.'),
                       if (_mode != MediumChangeMode.replaceAll) ...[
                         const Text('기존 well의 조건 · 다른 값이나 미기록은 직접 확인'),
                         _input('initial-volume', '기존 배지 부피 (µL)'),
@@ -258,11 +280,14 @@ class _MediumChangeSheetState extends State<MediumChangeSheet> {
                       const SizedBox(height: 12),
                       const Text('추가할 용액의 조건'),
                       _input('incoming-volume', '추가 용액 부피 (µL)'),
-                      _input('incoming-concentration', '추가 용액의 시약 농도'),
-                      _input('incoming-percent', '추가 용액의 용매 비율 (% v/v)'),
-                      _input('vehicle', '계산할 용매 이름 (없으면 빈칸)',
-                          helper:
-                              '용매가 없으면 해당 비율에 0을 명시하세요. 기존 용매와 이름이 같아야 합니다.'),
+                      if (!_mediumOnly)
+                        _input('incoming-concentration', '추가 용액의 시약 농도'),
+                      if (!_mediumOnly)
+                        _input('incoming-percent', '추가 용액의 용매 비율 (% v/v)'),
+                      if (!_mediumOnly)
+                        _input('vehicle', '계산할 용매 이름 (없으면 빈칸)',
+                            helper:
+                                '용매가 없으면 해당 비율에 0을 명시하세요. 기존 용매와 이름이 같아야 합니다.'),
                       _input('medium', '최종 배지/버퍼 이름',
                           helper: '배지 성분은 계산하지 않습니다. 실제 최종 배지 이름을 확인하세요.'),
                       OutlinedButton(
@@ -295,7 +320,9 @@ class _MediumChangeSheetState extends State<MediumChangeSheet> {
                                       key: const ValueKey(
                                           'medium-change-final-volume')),
                                   Text(
-                                      '최종 시약 농도 ${_display(plan.finalConcentration)} ${plan.unit}',
+                                      plan.mediumOnly
+                                          ? '기존 처리 농도·단위 기록 해제 (새 시약 농도는 기록하지 않음)'
+                                          : '최종 시약 농도 ${_display(plan.finalConcentration)} ${plan.unit}',
                                       key: const ValueKey(
                                           'medium-change-final-concentration')),
                                   Text(

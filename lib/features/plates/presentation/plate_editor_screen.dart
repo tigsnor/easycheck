@@ -1159,7 +1159,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     if (draft == null || !mounted) return;
     if (plate.wells
         .where((w) => positions.contains(w.position))
-        .every((w) => w.cellCondition == draft.condition)) {
+        .every((w) => w.cellCondition == draft.applyTo(w.cellCondition))) {
       _editorController.setView(PlateView.cells);
       return;
     }
@@ -1167,11 +1167,12 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         plate.copyWith(wells: [
           for (final well in plate.wells)
             positions.contains(well.position)
-                ? well.copyWith(cellCondition: draft.condition)
+                ? well.copyWith(
+                    cellCondition: draft.applyTo(well.cellCondition))
                 : well,
         ]),
         changeSummary:
-            '세포 조건 지정: ${positions.map((p) => p.label).join(', ')} · ${draft.condition?.label ?? '해제'}');
+            '세포 조건 지정: ${positions.map((p) => p.label).join(', ')} · ${draft.description}');
     if (saved && mounted) _editorController.setView(PlateView.cells);
   }
 
@@ -1201,7 +1202,7 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
     if (draft == null || !mounted) return;
     if (plate.wells
         .where((w) => positions.contains(w.position))
-        .every((w) => w.assayCondition == draft.condition)) {
+        .every((w) => w.assayCondition == draft.applyTo(w.assayCondition))) {
       _editorController.setView(PlateView.medium);
       return;
     }
@@ -1209,11 +1210,12 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         plate.copyWith(wells: [
           for (final well in plate.wells)
             positions.contains(well.position)
-                ? well.copyWith(assayCondition: draft.condition)
+                ? well.copyWith(
+                    assayCondition: draft.applyTo(well.assayCondition))
                 : well,
         ]),
         changeSummary:
-            '배지·용매 조건 지정: ${positions.map((p) => p.label).join(', ')} · ${draft.condition?.label ?? '해제'}');
+            '배지·용매 조건 지정: ${positions.map((p) => p.label).join(', ')} · ${draft.description}');
     if (saved && mounted) _editorController.setView(PlateView.medium);
   }
 
@@ -2578,7 +2580,9 @@ class _AnalysisConcentrationChart extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             useNormalized
-                ? 'Control 대비 (%)'
+                ? (useCorrected
+                    ? 'Control 대비 (%) · Blank 보정'
+                    : 'Control 대비 (%) · Blank 미적용 포함')
                 : useCorrected
                     ? 'Blank 보정 결과'
                     : '원값 (보정·정규화 미적용)',
@@ -2726,7 +2730,11 @@ class _AnalysisSeriesRow extends StatelessWidget {
               value: _formatAnalysisNumber(series.rawMean),
             ),
             _AnalysisMetric(
-              label: 'Blank 보정',
+              label: series.blankCorrectedMean == null
+                  ? 'Blank 기준 확인 필요'
+                  : series.reference?.blankMean == null
+                      ? '보정 안 됨 · 원값'
+                      : 'Blank 보정',
               value: series.blankCorrectedMean == null
                   ? '기준 확인 필요'
                   : _formatAnalysisNumber(series.blankCorrectedMean!),
@@ -2744,7 +2752,10 @@ class _AnalysisSeriesRow extends StatelessWidget {
                   : '${_formatAnalysisNumber(series.coefficientOfVariation!)}%',
             ),
             _AnalysisMetric(
-              label: 'Control 대비',
+              label: series.reference?.blankMean == null &&
+                      series.normalizedPercent != null
+                  ? 'Control 대비 · 원값 기준'
+                  : 'Control 대비',
               value: series.normalizedPercent == null
                   ? '계산 불가'
                   : '${_formatAnalysisNumber(series.normalizedPercent!)}%',

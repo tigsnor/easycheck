@@ -20,8 +20,10 @@ void main() {
           double concentration = 0,
           double percent = 0,
           String unit = 'µM',
-          String? vehicle = 'DMSO'}) =>
+          String? vehicle = 'DMSO',
+          bool mediumOnly = false}) =>
       MediumChangePlan(
+          mediumOnly: mediumOnly,
           mode: mode,
           unit: unit,
           vehicle: vehicle,
@@ -211,5 +213,79 @@ void main() {
             const AssayCondition(medium: 'DMEM', vehiclePercent: 0));
     service.validateSource(
         [blank], plan(initialPercent: 0, vehicle: 'ethanol', percent: 1));
+  });
+
+  test(
+      'plain medium replacement rejects mixing and contradictory reagent inputs',
+      () {
+    for (final invalid in <MediumChangePlan Function()>[
+      () => plan(mediumOnly: true, unit: '', vehicle: null),
+      () => plan(
+          mediumOnly: true,
+          mode: MediumChangeMode.replacePart,
+          removed: 40,
+          unit: '',
+          vehicle: null),
+      () => plan(
+          mediumOnly: true, mode: MediumChangeMode.replaceAll, vehicle: null),
+      () => plan(mediumOnly: true, mode: MediumChangeMode.replaceAll, unit: ''),
+      () => plan(
+          mediumOnly: true,
+          mode: MediumChangeMode.replaceAll,
+          unit: '',
+          vehicle: null,
+          concentration: 1),
+      () => plan(
+          mediumOnly: true,
+          mode: MediumChangeMode.replaceAll,
+          unit: '',
+          vehicle: null,
+          percent: .1),
+    ]) {
+      expect(invalid, throwsFormatException);
+    }
+  });
+
+  test(
+      'plain full replacement clears treatment across mixed sources without changing measurements',
+      () {
+    final source = assayPlate();
+    final positions = source.wells
+        .where((w) => ['A1', 'B1', 'E1'].contains(w.label))
+        .map((w) => w.position)
+        .toSet();
+    final updated = const PlateMediumChangeService().apply(
+        plate: source,
+        positions: positions,
+        plan: plan(
+            mediumOnly: true,
+            mode: MediumChangeMode.replaceAll,
+            unit: '',
+            vehicle: null,
+            volume: 150,
+            initialVolume: double.nan,
+            initialConcentration: double.nan,
+            initialPercent: double.nan),
+        finalMedium: 'Fresh medium');
+    for (var i = 0; i < source.wells.length; i++) {
+      final before = source.wells[i];
+      final after = updated.wells[i];
+      expect(
+          after.toJson(),
+          positions.contains(before.position)
+              ? before
+                  .copyWith(
+                      concentrationValue: null,
+                      concentrationUnit: null,
+                      volumeValue: 150,
+                      volumeUnit: 'µL',
+                      assayCondition: const AssayCondition(
+                          medium: 'Fresh medium', vehiclePercent: 0))
+                  .toJson()
+              : before.toJson());
+    }
+    expect(MeasuredConditionReview.compare(source, updated).changes.length, 3);
+    expect(Plate.fromJson(jsonDecode(jsonEncode(updated.toJson()))).toJson(),
+        updated.toJson());
   });
 }

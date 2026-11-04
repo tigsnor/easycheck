@@ -222,6 +222,8 @@ void main() {
     final repo = await open(tester, plate: cellPlate());
     await edit(tester, 'row-header-A');
     expect(find.textContaining('서로 다른 세포 조건'), findsOneWidget);
+    await tap(tester, key('cell-name-action'));
+    await tap(tester, find.text('입력값으로 변경').last);
     expect(tester.widget<TextField>(key('cell-name-input')).controller!.text,
         isEmpty);
     await tester.enterText(key('cell-name-input'), 'CHO');
