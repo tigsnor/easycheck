@@ -715,6 +715,11 @@ void main() {
     await tester.tap(find.text('첫 실험 만들기'));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, '실험 제목'), 'MTT test');
+    final cellSection =
+        find.byKey(const ValueKey('create-cell-reference-section'));
+    await tester.ensureVisible(cellSection);
+    await tester.tap(cellSection);
+    await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, '세포 이름'), 'hek293');
     await tester.enterText(find.widgetWithText(TextField, '세포수'), '1');
     await tester.enterText(find.widgetWithText(TextField, '10^n'), '6');

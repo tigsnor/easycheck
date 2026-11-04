@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../../../../shared/models/cell_number.dart';
+import '../../../../shared/presentation/scientific_cell_input.dart';
 import '../../domain/cell_condition.dart';
 import '../../domain/well.dart';
 
@@ -23,6 +25,7 @@ class CellConditionSheet extends StatefulWidget {
 class _CellConditionSheetState extends State<CellConditionSheet> {
   final _name = TextEditingController();
   final _density = TextEditingController();
+  final _exponent = TextEditingController();
   final _nameFocus = FocusNode();
   final _densityFocus = FocusNode();
   final _scroll = ScrollController();
@@ -35,7 +38,8 @@ class _CellConditionSheetState extends State<CellConditionSheet> {
   bool _allowPop = false;
   bool _closing = false;
 
-  String get _fingerprint => jsonEncode([_name.text, _density.text, _unit]);
+  String get _fingerprint =>
+      jsonEncode([_name.text, _density.text, _exponent.text, _unit]);
   bool get _mixed =>
       widget.wells.map((w) => w.cellCondition).toSet().length > 1;
 
@@ -49,6 +53,7 @@ class _CellConditionSheetState extends State<CellConditionSheet> {
   void _fill(CellCondition? condition) {
     _name.text = condition?.name ?? '';
     _density.text = condition?.density?.toString() ?? '';
+    _exponent.clear();
     _unit = condition?.unit ?? CellCondition.units.first;
     _nameError = _densityError = null;
   }
@@ -57,6 +62,7 @@ class _CellConditionSheetState extends State<CellConditionSheet> {
   void dispose() {
     _name.dispose();
     _density.dispose();
+    _exponent.dispose();
     _nameFocus.dispose();
     _densityFocus.dispose();
     _scroll.dispose();
@@ -125,14 +131,16 @@ class _CellConditionSheetState extends State<CellConditionSheet> {
   Future<void> _apply() async {
     if (_closing) return;
     final name = _name.text.trim();
-    final text = _density.text.trim();
-    final density = double.tryParse(text);
+    double? density;
+    String? error;
+    try {
+      density = CellNumber.parse(_density.text, _exponent.text);
+    } on FormatException {
+      error = '0 이상의 숫자와 정수 지수를 확인해주세요. 일반 숫자는 지수를 비워둡니다.';
+    }
     setState(() {
       _nameError = name.isEmpty ? '세포 종류를 입력해주세요.' : null;
-      _densityError = text.isNotEmpty &&
-              (density == null || !density.isFinite || density < 0)
-          ? '0 이상의 숫자를 입력해주세요. 예: 5000 또는 1e5'
-          : null;
+      _densityError = error;
     });
     if (_nameError != null || _densityError != null) {
       (_nameError != null ? _nameFocus : _densityFocus).requestFocus();
@@ -200,16 +208,16 @@ class _CellConditionSheetState extends State<CellConditionSheet> {
                       const SizedBox(height: 12),
                       Container(
                           key: _densityField,
-                          child: TextField(
-                              key: const ValueKey('cell-density-input'),
-                              controller: _density,
-                              focusNode: _densityFocus,
-                              keyboardType: TextInputType.text,
-                              decoration: InputDecoration(
-                                  labelText: '세포 농도 / 파종 수 (선택)',
-                                  hintText: '예: 5000 또는 1e5',
-                                  errorText: _densityError,
-                                  errorMaxLines: 3))),
+                          child: ScientificCellInput(
+                              coefficientController: _density,
+                              exponentController: _exponent,
+                              unit: _unit,
+                              coefficientKey:
+                                  const ValueKey('cell-density-input'),
+                              exponentKey:
+                                  const ValueKey('cell-exponent-input'),
+                              coefficientFocusNode: _densityFocus,
+                              errorText: _densityError)),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
                           key: ValueKey('cell-unit-$_unit'),
