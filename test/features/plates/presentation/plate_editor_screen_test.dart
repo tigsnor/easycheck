@@ -1344,7 +1344,7 @@ void main() {
       expect(find.text('Control 대비 · 60%'), findsOneWidget);
       expect(find.text('분석 제외 1개 · B3'), findsOneWidget);
       expect(find.text('농도별 차트'), findsOneWidget);
-      expect(find.text('Control 대비 (%)'), findsOneWidget);
+      expect(find.text('Control 대비 (%) · Blank 보정'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('analysis-chart-drug-a-treatment-µM-OD450')),
         findsOneWidget,

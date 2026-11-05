@@ -22,6 +22,7 @@ class MediumChangePlan {
     required this.initialConcentration,
     required this.initialVehiclePercent,
     this.removedVolume = 0,
+    this.mediumOnly = false,
   }) {
     void nonnegative(double value, String name) {
       if (!value.isFinite || value < 0) {
@@ -34,7 +35,15 @@ class MediumChangePlan {
       if (value > 100) throw const FormatException('용매 비율은 0~100% v/v 범위입니다.');
     }
 
-    if (unit.trim().isEmpty || unit != unit.trim()) {
+    if (mediumOnly &&
+        (mode != MediumChangeMode.replaceAll ||
+            unit.isNotEmpty ||
+            vehicle != null ||
+            incomingConcentration != 0 ||
+            incomingVehiclePercent != 0)) {
+      throw const FormatException('배지만 교체는 시약·용매 없는 전체 교체에만 사용할 수 있습니다.');
+    }
+    if (!mediumOnly && (unit.trim().isEmpty || unit != unit.trim())) {
       throw const FormatException('공통 농도 단위를 입력해주세요.');
     }
     if (vehicle != null &&
@@ -76,6 +85,7 @@ class MediumChangePlan {
     }
   }
 
+  final bool mediumOnly;
   final MediumChangeMode mode;
   final String unit;
   final String? vehicle;
@@ -105,8 +115,10 @@ class MediumChangePlan {
       incomingVolume < 1 ||
       (mode == MediumChangeMode.replacePart && removedVolume < 1);
 
-  String get description => '${mode.label} · 공통 단위 $unit · '
-      '${mode == MediumChangeMode.replaceAll ? '기존 배지 전량 제거' : '기존 $initialVolume µL / $initialConcentration $unit / $initialVehiclePercent% v/v, 제거 $removedVolume µL, 잔류 $retainedVolume µL'} · '
-      '추가 $incomingVolume µL / $incomingConcentration $unit / $incomingVehiclePercent% v/v · '
-      '최종 $finalVolume µL / $finalConcentration $unit / $finalVehiclePercent% v/v · 용매 ${vehicle ?? '없음'}';
+  String get description => mediumOnly
+      ? '배지만 전체 교체 · 기존 배지 전량 제거 · 최종 $finalVolume µL · 용매 없음(0%) · 처리 농도 기록 해제'
+      : '${mode.label} · 공통 단위 $unit · '
+          '${mode == MediumChangeMode.replaceAll ? '기존 배지 전량 제거' : '기존 $initialVolume µL / $initialConcentration $unit / $initialVehiclePercent% v/v, 제거 $removedVolume µL, 잔류 $retainedVolume µL'} · '
+          '추가 $incomingVolume µL / $incomingConcentration $unit / $incomingVehiclePercent% v/v · '
+          '최종 $finalVolume µL / $finalConcentration $unit / $finalVehiclePercent% v/v · 용매 ${vehicle ?? '없음'}';
 }

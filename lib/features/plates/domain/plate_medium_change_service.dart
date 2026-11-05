@@ -53,8 +53,9 @@ class PlateMediumChangeService {
       for (final w in plate.wells)
         if (positions.contains(w.position))
           w.copyWith(
-            concentrationValue: plan.finalConcentration,
-            concentrationUnit: plan.unit,
+            concentrationValue:
+                plan.mediumOnly ? null : plan.finalConcentration,
+            concentrationUnit: plan.mediumOnly ? null : plan.unit,
             volumeValue: plan.finalVolume,
             volumeUnit: 'µL',
             assayCondition: condition,
