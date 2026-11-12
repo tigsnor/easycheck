@@ -7,6 +7,7 @@ import '../../../../shared/presentation/scientific_cell_input.dart';
 import '../../domain/cell_condition.dart';
 import '../../domain/well.dart';
 import 'condition_edit_action.dart';
+import 'seeding_conversion_dialog.dart';
 
 class CellConditionDraft {
   const CellConditionDraft(this.condition)
@@ -240,6 +241,35 @@ class _CellConditionSheetState extends State<CellConditionSheet> {
     await _pop(draft);
   }
 
+  Future<void> _convertQuantity() async {
+    double? quantity;
+    try {
+      quantity = CellNumber.parse(_density.text, _exponent.text);
+      if (quantity == null) throw const FormatException('먼저 세포 수치를 입력해주세요.');
+    } on FormatException catch (e) {
+      setState(() => _densityError = e.message);
+      _densityFocus.requestFocus();
+      final field = _densityField.currentContext;
+      if (field != null) {
+        await Scrollable.ensureVisible(field, alignment: .1);
+      }
+      return;
+    }
+    if (!mounted) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    final result = await showDialog<double>(
+        context: context,
+        builder: (_) =>
+            SeedingConversionDialog(quantity: quantity!, unit: _unit));
+    if (!mounted || result == null) return;
+    setState(() {
+      _density.text = result.toString();
+      _exponent.clear();
+      _unit = _unit == 'cells/mL' ? 'cells/well' : 'cells/mL';
+      _densityError = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) => PopScope(
         canPop: _allowPop,
@@ -329,13 +359,18 @@ class _CellConditionSheetState extends State<CellConditionSheet> {
                                 setState(() => _unit = value);
                               }
                             }),
+                        TextButton.icon(
+                            key: const ValueKey('convert-seeding-quantity'),
+                            onPressed: _convertQuantity,
+                            icon: const Icon(Icons.calculate_outlined),
+                            label: const Text('파종 부피로 단위 환산')),
                       ] else
                         Text(_quantityAction == ConditionEditAction.keep
                             ? '각 well의 기존 세포 수치·단위를 유지합니다.'
                             : '세포 수치·단위를 해제합니다. 세포 종류는 위에서 선택한 방식대로 적용합니다.'),
                       const SizedBox(height: 12),
                       const Text(
-                          'cells/mL는 현탁액 농도, cells/well은 well당 파종 수입니다. 부피에 따른 자동 환산은 하지 않습니다. 약물 처리 농도는 별도로 유지됩니다.'),
+                          'cells/mL는 현탁액 농도, cells/well은 well당 파종 수입니다. 단위 선택만으로는 환산하지 않습니다. 환산하려면 파종 부피로 단위 환산을 사용하세요. 약물 처리 농도는 별도로 유지됩니다.'),
                       if (_mixed)
                         const Padding(
                             padding: EdgeInsets.only(top: 8),
