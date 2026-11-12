@@ -76,6 +76,9 @@ void main() {
       await tester.pumpWidget(MaterialApp(
           home: PlateEditorScreen(experimentId: 'e', repository: repository)));
       await tester.pumpAndSettle();
+      await tester.ensureVisible(
+          find.byKey(const ValueKey('bulk-result-import-button')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('bulk-result-import-button')));
       await tester.pumpAndSettle();
       final matrix = find.byKey(const ValueKey('bulk-result-matrix-field'));
@@ -119,6 +122,9 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: PlateEditorScreen(experimentId: 'e', repository: repository)));
     await tester.pumpAndSettle();
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('bulk-result-import-button')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('bulk-result-import-button')));
     await tester.pumpAndSettle();
     await tester.enterText(
@@ -157,6 +163,9 @@ void main() {
       ..plate = base.copyWith(wells: wells);
     await tester.pumpWidget(MaterialApp(
         home: PlateEditorScreen(experimentId: 'e', repository: repository)));
+    await tester.pumpAndSettle();
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('bulk-result-import-button')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('bulk-result-import-button')));
     await tester.pumpAndSettle();
@@ -222,6 +231,9 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: PlateEditorScreen(experimentId: 'e', repository: repository)));
     await tester.pumpAndSettle();
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('bulk-result-import-button')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('bulk-result-import-button')));
     await tester.pumpAndSettle();
     await tester.enterText(
@@ -269,6 +281,9 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
     expect(repository.saveCount, 0);
+    await tester.ensureVisible(
+        find.byKey(const ValueKey('assign-selected-group-action')));
+    await tester.pumpAndSettle();
     await tester
         .tap(find.byKey(const ValueKey('assign-selected-group-action')));
     await tester.pumpAndSettle();
@@ -430,6 +445,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('well-A1')));
     await tester.pumpAndSettle();
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('edit-selected-well-action')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('edit-selected-well-action')));
     await tester.pumpAndSettle();
     final input = find.byKey(const ValueKey('well-result-value-field'));
@@ -471,6 +489,9 @@ void main() {
     await tester.pumpAndSettle();
     repository.failNextSave = true;
     await tester.tap(find.byKey(const ValueKey('well-A1')));
+    await tester.pumpAndSettle();
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('edit-selected-well-action')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('edit-selected-well-action')));
     await tester.pumpAndSettle();
@@ -670,9 +691,11 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('plate-zoom-in-button')));
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey('assign-selected-group-action')),
-    );
+    await tester.ensureVisible(
+        find.byKey(const ValueKey('assign-selected-group-action')));
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.byKey(const ValueKey('assign-selected-group-action')));
     await tester.pumpAndSettle();
 
     expect(find.text('12개 well 그룹 지정'), findsOneWidget);
@@ -715,7 +738,7 @@ void main() {
     expect(find.byTooltip('선택 영역 그룹 지정'), findsNothing);
     expect(find.byTooltip('희석 계산 적용'), findsNothing);
     expect(find.byTooltip('Plate 내보내기'), findsNothing);
-    expect(find.text('Plate 작업'), findsOneWidget);
+    expect(find.text('배지 작업 · well을 선택하세요'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('bulk-result-import-button')),
       findsOneWidget,
@@ -743,9 +766,11 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('row-header-A')));
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const ValueKey('assign-selected-group-action')),
-    );
+    await tester.ensureVisible(
+        find.byKey(const ValueKey('assign-selected-group-action')));
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.byKey(const ValueKey('assign-selected-group-action')));
     await tester.pumpAndSettle();
 
     expect(find.text('12개 well 그룹 지정'), findsOneWidget);
@@ -771,6 +796,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('apply-dilution-action')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('apply-dilution-action')));
     await tester.pumpAndSettle();
     expect(find.text('피펫팅 계획'), findsOneWidget);
@@ -811,6 +839,10 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('well-A1')));
+    await tester.pumpAndSettle();
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('apply-dilution-action')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('apply-dilution-action')));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
@@ -833,6 +865,9 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: PlateEditorScreen(experimentId: 'e', repository: repository),
     ));
+    await tester.pumpAndSettle();
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('apply-dilution-action')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('apply-dilution-action')));
     await tester.pumpAndSettle();
@@ -875,6 +910,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('apply-dilution-action')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('apply-dilution-action')));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('연속 희석'));
@@ -958,6 +996,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('bulk-result-import-button')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('bulk-result-import-button')));
     await tester.pumpAndSettle();
     await tester.tap(
@@ -1044,6 +1085,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(
+          find.byKey(const ValueKey('bulk-result-import-button')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('bulk-result-import-button')));
       await tester.pumpAndSettle();
       await tester.tap(
@@ -1106,6 +1150,9 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('well-A1')));
     await tester.pumpAndSettle();
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('edit-selected-well-action')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('edit-selected-well-action')));
     await tester.pumpAndSettle();
 
@@ -1138,6 +1185,9 @@ void main() {
     expect(savedWell.excluded, isTrue);
     expect(repository.plate!.revisions.last.summary,
         'well 수정: A1\n분석 제외: 포함 → 제외\n사유: 기포 확인');
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('show-selected-well-action')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('show-selected-well-action')));
     await tester.pumpAndSettle();
     expect(find.text('결과 · 0.82 OD450'), findsOneWidget);
@@ -1181,6 +1231,9 @@ void main() {
     final undoButton = find.widgetWithIcon(IconButton, Icons.undo);
     expect(tester.widget<IconButton>(undoButton).onPressed, isNull);
 
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('apply-dilution-action')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('apply-dilution-action')));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, '시작 농도'), '90');
@@ -1220,6 +1273,9 @@ void main() {
 
     repository.failNextSave = true;
     await tester.tap(find.byKey(const ValueKey('well-A1')));
+    await tester.pumpAndSettle();
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('edit-selected-well-action')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('edit-selected-well-action')));
     await tester.pumpAndSettle();

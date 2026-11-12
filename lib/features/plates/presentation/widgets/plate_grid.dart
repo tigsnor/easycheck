@@ -68,7 +68,11 @@ class _PlateGridState extends State<PlateGrid> {
       widget.plate.wells.map((w) => w.assayCondition).nonNulls.toSet().toList();
   final _gridKey = GlobalKey();
   final _viewportKey = GlobalKey();
+  final _tableKey = GlobalKey();
   final _horizontalScroll = ScrollController();
+  final _verticalScroll = ScrollController();
+  final _scrollMetrics = ValueNotifier(0);
+  final _wellKeys = <WellPosition, GlobalKey>{};
   Timer? _autoScroll;
   WellPosition? _dragStart;
   WellPosition? _dragEnd;
@@ -85,6 +89,8 @@ class _PlateGridState extends State<PlateGrid> {
   void dispose() {
     _stopDrag();
     _horizontalScroll.dispose();
+    _verticalScroll.dispose();
+    _scrollMetrics.dispose();
     super.dispose();
   }
 
@@ -118,9 +124,8 @@ class _PlateGridState extends State<PlateGrid> {
     final local = box.globalToLocal(pointer);
     final stride = _cellSize + _spacing;
     final end = WellPosition(
-      rowIndex: (local.dy ~/ stride - 1).clamp(0, widget.plate.rowCount - 1),
-      columnIndex:
-          (local.dx ~/ stride - 1).clamp(0, widget.plate.columnCount - 1),
+      rowIndex: (local.dy ~/ stride).clamp(0, widget.plate.rowCount - 1),
+      columnIndex: (local.dx ~/ stride).clamp(0, widget.plate.columnCount - 1),
     );
     if (end == _dragEnd) return;
     _dragEnd = end;
@@ -166,7 +171,11 @@ class _PlateGridState extends State<PlateGrid> {
       scroll(_horizontalScroll.position,
           delta(pointer.dx, visible.left, visible.right));
     }
-    if (vertical != null) {
+    if (_verticalScroll.hasClients &&
+        _verticalScroll.position.maxScrollExtent > 0) {
+      scroll(_verticalScroll.position,
+          delta(pointer.dy, visible.top, visible.bottom));
+    } else if (vertical != null) {
       scroll(vertical.position, delta(pointer.dy, visible.top, visible.bottom));
     }
     _moveDrag(pointer);
@@ -201,6 +210,8 @@ class _PlateGridState extends State<PlateGrid> {
           Wrap(spacing: 8, children: [
             ChoiceChip(
               key: const ValueKey('plate-cells-view'),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              labelPadding: const EdgeInsets.symmetric(horizontal: 2),
               label: const Text('세포'),
               avatar: const Icon(Icons.biotech_outlined, size: 18),
               selected: _showCells,
@@ -208,6 +219,8 @@ class _PlateGridState extends State<PlateGrid> {
             ),
             ChoiceChip(
               key: const ValueKey('plate-medium-view'),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              labelPadding: const EdgeInsets.symmetric(horizontal: 2),
               label: const Text('배지'),
               avatar: const Icon(Icons.science_outlined, size: 18),
               selected: _currentView == PlateView.medium,
@@ -215,6 +228,8 @@ class _PlateGridState extends State<PlateGrid> {
             ),
             ChoiceChip(
               key: const ValueKey('plate-results-view'),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              labelPadding: const EdgeInsets.symmetric(horizontal: 2),
               label: const Text('결과'),
               avatar: const Icon(Icons.fact_check_outlined, size: 18),
               selected: _showResults,
@@ -257,6 +272,8 @@ class _PlateGridState extends State<PlateGrid> {
           Wrap(spacing: 8, children: [
             ChoiceChip(
               key: const ValueKey('plate-scroll-mode'),
+              padding: EdgeInsets.zero,
+              labelPadding: const EdgeInsets.symmetric(horizontal: 4),
               label: const Text('스크롤'),
               selected: !widget.dragSelectionEnabled,
               onSelected: (_) {
@@ -267,6 +284,8 @@ class _PlateGridState extends State<PlateGrid> {
             ),
             ChoiceChip(
               key: const ValueKey('plate-drag-selection'),
+              padding: EdgeInsets.zero,
+              labelPadding: const EdgeInsets.symmetric(horizontal: 4),
               label: const Text('범위 선택'),
               selected: widget.dragSelectionEnabled,
               onSelected: (_) {
@@ -275,6 +294,11 @@ class _PlateGridState extends State<PlateGrid> {
                 }
               },
             ),
+            IconButton(
+                key: const ValueKey('plate-coordinate-action'),
+                tooltip: '좌표로 이동',
+                onPressed: _goToCoordinate,
+                icon: const Icon(Icons.my_location_outlined)),
           ]),
           Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -287,7 +311,6 @@ class _PlateGridState extends State<PlateGrid> {
               )),
           LayoutBuilder(builder: (context, constraints) {
             final columns = plate.columnCount + 1;
-            final rows = plate.rowCount + 1;
             final fitSize =
                 (constraints.maxWidth - _spacing * (columns - 1)) / columns;
             final scale = (MediaQuery.textScalerOf(context).scale(12) / 12)
@@ -296,37 +319,51 @@ class _PlateGridState extends State<PlateGrid> {
                 ? fitSize.clamp(8.0, double.infinity)
                 : widget.requestedCellSize! * scale;
             _cellSize = size;
-            return Listener(
-                onPointerCancel: (_) => _stopDrag(),
-                onPointerUp: (_) => _stopDrag(),
-                child: SizedBox(
-                    key: _viewportKey,
-                    child: Scrollbar(
+            final width =
+                size * plate.columnCount + _spacing * (plate.columnCount - 1);
+            final height =
+                size * plate.rowCount + _spacing * (plate.rowCount - 1);
+            final mediaHeight = MediaQuery.sizeOf(context).height;
+            final screenHeight = mediaHeight > 0
+                ? mediaHeight
+                : View.of(context).physicalSize.height /
+                    View.of(context).devicePixelRatio;
+            final viewportHeight =
+                fit ? height : height.clamp(0.0, screenHeight * .45);
+            return Column(key: _tableKey, children: [
+              Row(children: [
+                SizedBox(width: size + _spacing, height: size),
+                Expanded(
+                    child: _headerStrip(
+                        axis: Axis.horizontal,
                         controller: _horizontalScroll,
-                        child: SingleChildScrollView(
-                          key: const ValueKey('plate-horizontal-scroll'),
-                          controller: _horizontalScroll,
-                          scrollDirection: Axis.horizontal,
-                          child: SizedBox(
-                            key: _gridKey,
-                            width: size * columns + _spacing * (columns - 1),
-                            height: size * rows + _spacing * (rows - 1),
-                            child: GridView.builder(
-                              key: const ValueKey('plate-grid'),
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              padding: EdgeInsets.zero,
-                              itemCount: rows * columns,
-                              gridDelegate:
-                                  SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: columns,
-                                      mainAxisSpacing: _spacing,
-                                      crossAxisSpacing: _spacing),
-                              itemBuilder: (context, index) =>
-                                  _cell(index, columns, size),
-                            ),
-                          ),
-                        ))));
+                        size: size,
+                        extent: width,
+                        count: plate.columnCount,
+                        item: (column) => _cell(column + 1, columns, size))),
+              ]),
+              const SizedBox(height: _spacing),
+              SizedBox(
+                  height: viewportHeight,
+                  child: Row(children: [
+                    _headerStrip(
+                        axis: Axis.vertical,
+                        controller: _verticalScroll,
+                        size: size,
+                        extent: height,
+                        count: plate.rowCount,
+                        item: (row) =>
+                            _cell((row + 1) * columns, columns, size)),
+                    const SizedBox(width: _spacing),
+                    Expanded(
+                        child: _scrollableWells(
+                            size: size,
+                            width: width,
+                            height: height,
+                            viewportHeight: viewportHeight,
+                            fit: fit)),
+                  ])),
+            ]);
           }),
           if (fit)
             Text('전체 배치를 확인하는 보기입니다. 정확한 선택은 확대 후 진행하세요.',
@@ -335,6 +372,125 @@ class _PlateGridState extends State<PlateGrid> {
         ]),
       ),
     );
+  }
+
+  Widget _headerStrip({
+    required Axis axis,
+    required ScrollController controller,
+    required double size,
+    required double extent,
+    required int count,
+    required Widget Function(int) item,
+  }) {
+    final horizontal = axis == Axis.horizontal;
+    return SizedBox(
+        width: horizontal ? null : size,
+        height: horizontal ? size : null,
+        child: AnimatedBuilder(
+            animation: Listenable.merge([controller, _scrollMetrics]),
+            child: Flex(direction: axis, children: [
+              for (var i = 0; i < count; i++) ...[
+                if (i > 0)
+                  SizedBox(
+                      width: horizontal ? _spacing : 0,
+                      height: horizontal ? 0 : _spacing),
+                SizedBox(width: size, height: size, child: item(i)),
+              ]
+            ]),
+            builder: (context, child) {
+              final offset = controller.hasClients ? controller.offset : 0.0;
+              return ClipRect(
+                  child: Stack(children: [
+                Positioned(
+                    left: horizontal ? -offset : 0,
+                    top: horizontal ? 0 : -offset,
+                    width: horizontal ? extent : size,
+                    height: horizontal ? size : extent,
+                    child: child!),
+              ]));
+            }));
+  }
+
+  Widget _scrollableWells(
+      {required double size,
+      required double width,
+      required double height,
+      required double viewportHeight,
+      required bool fit}) {
+    final columns = widget.plate.columnCount;
+    final grid = SizedBox(
+        key: _gridKey,
+        width: width,
+        height: height,
+        child: GridView.builder(
+            key: const ValueKey('plate-grid'),
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
+            itemCount: widget.plate.rowCount * columns,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                mainAxisSpacing: _spacing,
+                crossAxisSpacing: _spacing),
+            itemBuilder: (context, index) => _cell(
+                (index ~/ columns + 1) * (columns + 1) + index % columns + 1,
+                columns + 1,
+                size)));
+    final vertical = SizedBox(
+        width: width,
+        height: viewportHeight,
+        child: SingleChildScrollView(
+            key: const ValueKey('plate-vertical-scroll'),
+            controller: _verticalScroll,
+            physics: fit ? const NeverScrollableScrollPhysics() : null,
+            child: grid));
+    return NotificationListener<ScrollMetricsNotification>(
+        onNotification: (_) {
+          // Layout clamps offsets when fitting, zooming or rotating. Those
+          // corrections do not notify the scroll controller's listeners.
+          _scrollMetrics.value++;
+          return false;
+        },
+        child: Listener(
+            onPointerCancel: (_) => _stopDrag(),
+            onPointerUp: (_) => _stopDrag(),
+            child: SizedBox(
+                key: _viewportKey,
+                child: Scrollbar(
+                    controller: _horizontalScroll,
+                    notificationPredicate: (notification) =>
+                        notification.metrics.axis == Axis.horizontal,
+                    child: SingleChildScrollView(
+                        key: const ValueKey('plate-horizontal-scroll'),
+                        controller: _horizontalScroll,
+                        scrollDirection: Axis.horizontal,
+                        child: vertical)))));
+  }
+
+  Future<void> _goToCoordinate() async {
+    _stopDrag();
+    final position = await showDialog<WellPosition>(
+        context: context,
+        builder: (_) => _CoordinateDialog(
+            rows: widget.plate.rowCount, columns: widget.plate.columnCount));
+    if (position == null || !mounted) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    widget.onSelected(position);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    final target = _wellKeys[position]?.currentContext;
+    if (target != null && target.mounted) {
+      await Scrollable.ensureVisible(target,
+          duration: const Duration(milliseconds: 200), alignment: .5);
+    }
+    if (!mounted) return;
+    // Reveal the entire table last so centering a distant well cannot scroll
+    // its fixed column labels above the outer viewport.
+    final table = _tableKey.currentContext;
+    if (table != null && table.mounted) {
+      await Scrollable.ensureVisible(table,
+          duration: const Duration(milliseconds: 200), alignment: 0);
+    }
   }
 
   void _changeView(PlateView view) {
@@ -434,6 +590,7 @@ class _PlateGridState extends State<PlateGrid> {
     final group =
         widget.plate.groups.where((g) => g.id == well.groupId).firstOrNull;
     return GestureDetector(
+        key: _wellKeys.putIfAbsent(position, GlobalKey.new),
         excludeFromSemantics: true,
         onLongPressStart: (details) =>
             _beginDrag(position, details.globalPosition),
@@ -473,6 +630,72 @@ class _PlateGridState extends State<PlateGrid> {
           onLongPress: () => widget.onRangeSelected(position),
         ));
   }
+}
+
+class _CoordinateDialog extends StatefulWidget {
+  const _CoordinateDialog({required this.rows, required this.columns});
+  final int rows, columns;
+
+  @override
+  State<_CoordinateDialog> createState() => _CoordinateDialogState();
+}
+
+class _CoordinateDialogState extends State<_CoordinateDialog> {
+  final _input = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _input.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    try {
+      final text = _input.text.trim().toUpperCase();
+      if (!RegExp(r'^[A-Z][1-9][0-9]*$').hasMatch(text)) {
+        throw const FormatException();
+      }
+      final position = WellPosition.fromLabel(text);
+      if (position.rowIndex >= widget.rows ||
+          position.columnIndex >= widget.columns) {
+        throw const FormatException();
+      }
+      Navigator.pop(context, position);
+    } on FormatException {
+      setState(() => _error =
+          'A1~${String.fromCharCode(64 + widget.rows)}${widget.columns} 범위의 좌표를 입력해주세요.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('좌표로 이동'),
+        content: SingleChildScrollView(
+            child: TextField(
+          key: const ValueKey('plate-coordinate-input'),
+          controller: _input,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          textInputAction: TextInputAction.go,
+          onSubmitted: (_) => _submit(),
+          decoration: InputDecoration(
+              labelText: 'well 좌표',
+              hintText: '예: B7',
+              helperText: '해당 well 하나를 선택하고 화면에 표시합니다.',
+              helperMaxLines: 3,
+              errorText: _error,
+              errorMaxLines: 3),
+        )),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('취소')),
+          FilledButton(
+              key: const ValueKey('plate-coordinate-go'),
+              onPressed: _submit,
+              child: const Text('이동')),
+        ],
+      );
 }
 
 class _WellCell extends StatelessWidget {

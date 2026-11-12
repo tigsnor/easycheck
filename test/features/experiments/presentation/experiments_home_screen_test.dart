@@ -239,6 +239,8 @@ void main() {
       plateTemplateRepository: FakePlateTemplateRepository(),
     )));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Plate 열기'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Plate 열기'));
     await tester.pumpAndSettle();
     expect(
@@ -265,6 +267,8 @@ void main() {
         ..plate = Plate(id: 'p', experimentId: 'e', name: 'Plate'),
       plateTemplateRepository: FakePlateTemplateRepository(),
     )));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Plate 열기'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Plate 열기'));
     await tester.pumpAndSettle();
@@ -313,9 +317,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Drug A CCK-8'), findsNothing);
-    expect(find.text('검색 결과가 없습니다.'), findsOneWidget);
+    expect(find.text('검색·필터에 맞는 실험이 없습니다.'), findsOneWidget);
 
-    await tester.tap(find.text('검색어 지우기'));
+    await tester.tap(find.byKey(const ValueKey('reset-home-filters')));
     await tester.pumpAndSettle();
     expect(find.text('Drug A CCK-8'), findsOneWidget);
   });
@@ -544,6 +548,8 @@ void main() {
 
     expect(repository.experiments, hasLength(2));
     expect(find.text('Original experiment'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Restored experiment'), 200,
+        scrollable: find.byType(Scrollable).first);
     expect(find.text('Restored experiment'), findsOneWidget);
     expect(plateRepository.plate?.name, 'Restored Plate');
   });
@@ -732,6 +738,8 @@ void main() {
     expect(repository.experiments.single.cellCountLabel, 'hek293: 1×10^6/ml');
     expect(find.text('세포수 · hek293: 1×10^6/ml'), findsOneWidget);
     expect(find.text('MTT test'), findsOneWidget);
+    await tester.ensureVisible(find.text('Plate 열기'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Plate 열기'));
     await tester.pumpAndSettle();
     expect(plateRepository.plate!.groups, isEmpty);

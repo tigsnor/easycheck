@@ -29,6 +29,7 @@ import '../application/experiment_duplication_service.dart';
 import '../data/file_experiment_repository.dart';
 import '../data/experiment_repository.dart';
 import '../domain/experiment.dart';
+import '../domain/experiment_home_overview.dart';
 import 'experiment_detail_screen.dart';
 
 class ExperimentsHomeScreen extends StatefulWidget {
@@ -41,6 +42,7 @@ class ExperimentsHomeScreen extends StatefulWidget {
     this.reminderService,
     this.attachmentFileStore,
     this.attachmentExchange = const PlatformAttachmentExchangeService(),
+    this.now,
     super.key,
   })  : repository = repository ?? const FileExperimentRepository(),
         plateRepository = plateRepository ?? const FilePlateRepository(),
@@ -57,6 +59,7 @@ class ExperimentsHomeScreen extends StatefulWidget {
   final PlateRepository plateRepository;
   final DocumentExchangeService documentExchangeService;
   final PlateTemplateRepository plateTemplateRepository;
+  final DateTime Function()? now;
 
   @override
   State<ExperimentsHomeScreen> createState() => _ExperimentsHomeScreenState();
@@ -81,6 +84,11 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
   final _searchController = TextEditingController();
   List<Experiment> _experiments = const [];
   String _query = '';
+  ExperimentStatus? _statusFilter;
+  String? _projectFilter;
+  Timer? _deadlineTicker;
+  bool _isForeground = true;
+  bool _showAllDeadlines = false;
   bool _isLoading = true;
   Object? _loadError;
   bool _isBackupOpen = false;
@@ -90,6 +98,34 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
   bool _isDuplicateOpen = false;
 
   bool get _isDataBusy => _isRestoring || _isDuplicating || _isPreparingBackup;
+  DateTime get _now => widget.now?.call() ?? DateTime.now();
+  bool get _hasFilters =>
+      _query.isNotEmpty || _statusFilter != null || _projectFilter != null;
+
+  void _resetFilters() {
+    _searchController.clear();
+    setState(() {
+      _statusFilter = null;
+      _projectFilter = null;
+    });
+  }
+
+  void _syncHomeState() {
+    if (_projectFilter != null &&
+        !_experiments.any(
+            (e) => ExperimentHomeOverview.projectOf(e) == _projectFilter)) {
+      _projectFilter = null;
+    }
+    final timed = ExperimentHomeOverview.timedTasks(_experiments).isNotEmpty;
+    if (timed && _isForeground && _deadlineTicker == null) {
+      _deadlineTicker = Timer.periodic(const Duration(seconds: 30), (_) {
+        if (mounted) setState(() {});
+      });
+    } else if (!timed || !_isForeground) {
+      _deadlineTicker?.cancel();
+      _deadlineTicker = null;
+    }
+  }
 
   AttachmentFileStore get _attachmentStore =>
       widget.attachmentFileStore ??
@@ -147,6 +183,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
 
   @override
   void dispose() {
+    _deadlineTicker?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _reminderOpenSource?.stopListeningForOpens();
     _reminders.dispose();
@@ -156,7 +193,10 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _isForeground = state == AppLifecycleState.resumed;
+    _syncHomeState();
     if (state == AppLifecycleState.resumed) {
+      setState(() {});
       unawaited(_reminders.refresh());
       _scheduleReminderOpen();
     }
@@ -243,6 +283,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
           records.where((item) => item.id == target.experimentId).firstOrNull;
       setState(() {
         _experiments = records;
+        _syncHomeState();
         _loadError = null;
         _pendingReminderTargets.remove(target);
         _reminderNotice =
@@ -263,29 +304,74 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
     }
   }
 
-  List<Experiment> get _filteredExperiments {
-    if (_query.isEmpty) {
-      return _experiments;
-    }
+  List<Experiment> get _filteredExperiments =>
+      ExperimentHomeOverview.filter(_experiments,
+          query: _query, status: _statusFilter, project: _projectFilter);
 
-    return _experiments.where((experiment) {
-      final haystack = [
-        experiment.title,
-        experiment.projectName ?? '',
-        experiment.experimentType,
-        experiment.researcher ?? '',
-        experiment.cellCountLabel ?? '',
-        experiment.notes,
-        ...experiment.tags,
-      ].join(' ').toLowerCase();
-      return haystack.contains(_query);
-    }).toList();
+  Widget _homeFilters() {
+    final projects = _experiments
+        .map(ExperimentHomeOverview.projectOf)
+        .where((name) => name.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    final status = DropdownButtonFormField<String>(
+        key: ValueKey('home-status-${_statusFilter?.name ?? 'all'}'),
+        initialValue: _statusFilter?.name ?? 'all',
+        isExpanded: true,
+        decoration: const InputDecoration(labelText: '실험 상태'),
+        items: [
+          const DropdownMenuItem(value: 'all', child: Text('전체 상태')),
+          for (final value in ExperimentStatus.values)
+            DropdownMenuItem(
+                value: value.name,
+                child: Text(value.label,
+                    maxLines: 1, overflow: TextOverflow.ellipsis)),
+        ],
+        onChanged: (value) => setState(() {
+              _statusFilter = value == null || value == 'all'
+                  ? null
+                  : ExperimentStatus.values.firstWhere((s) => s.name == value);
+            }));
+    final project = DropdownButtonFormField<String>(
+        key: ValueKey('home-project-${_projectFilter ?? 'all'}'),
+        initialValue:
+            _projectFilter == null ? 'all' : 'project:$_projectFilter',
+        isExpanded: true,
+        decoration: const InputDecoration(labelText: '프로젝트'),
+        items: [
+          const DropdownMenuItem(value: 'all', child: Text('전체 프로젝트')),
+          const DropdownMenuItem(value: 'project:', child: Text('프로젝트 미지정')),
+          for (final value in projects)
+            DropdownMenuItem(
+                value: 'project:$value',
+                child:
+                    Text(value, maxLines: 1, overflow: TextOverflow.ellipsis)),
+        ],
+        onChanged: (value) => setState(() {
+              _projectFilter = value == null || value == 'all'
+                  ? null
+                  : value.substring('project:'.length);
+            }));
+    return LayoutBuilder(builder: (context, constraints) {
+      if (constraints.maxWidth < 380 ||
+          MediaQuery.textScalerOf(context).scale(14) > 18) {
+        return Column(children: [status, const SizedBox(height: 12), project]);
+      }
+      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: status),
+        const SizedBox(width: 12),
+        Expanded(child: project)
+      ]);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     _scheduleReminderOpen();
     final experiments = _filteredExperiments;
+    final now = _now;
+    final urgent = ExperimentHomeOverview.urgentTasks(experiments, now);
 
     return PopScope(
       canPop: !_isDataBusy,
@@ -326,6 +412,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
                       ),
                       const SizedBox(height: 12),
                       SearchBar(
+                        key: const ValueKey('home-search'),
                         controller: _searchController,
                         hintText: '제목, 태그, 실험 유형 검색',
                         leading: const Icon(Icons.search),
@@ -338,7 +425,18 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
                             ),
                         ],
                       ),
-                      const SizedBox(height: 20),
+                      if (_experiments.isNotEmpty || _hasFilters) ...[
+                        const SizedBox(height: 12),
+                        _homeFilters(),
+                      ],
+                      if (_hasFilters)
+                        Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                                key: const ValueKey('reset-home-filters'),
+                                onPressed: _resetFilters,
+                                child: const Text('검색·필터 초기화'))),
+                      const SizedBox(height: 12),
                       if (_reminderListenerFailed ||
                           _reminderTargetFailed ||
                           _reminderNotice != null)
@@ -405,6 +503,30 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
                                           : () => _reminders.refresh(),
                                       icon: const Icon(Icons.refresh)),
                                 ))),
+                      if (urgent.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Text('확인할 단계 · ${urgent.length}개',
+                            key: const ValueKey('home-urgent-heading'),
+                            style: Theme.of(context).textTheme.titleMedium),
+                        const Text('현재 검색·필터 기준 · 예정 종료까지 30분 이내 또는 시간 초과'),
+                        for (final item
+                            in _showAllDeadlines ? urgent : urgent.take(3))
+                          _HomeDeadlineCard(
+                              experiment: item.experiment,
+                              task: item.task,
+                              now: now,
+                              onOpen: () => _openExperiment(item.experiment,
+                                  initialTaskId: item.task.id)),
+                        if (urgent.length > 3)
+                          TextButton(
+                              key: const ValueKey('toggle-home-deadlines'),
+                              onPressed: () => setState(
+                                  () => _showAllDeadlines = !_showAllDeadlines),
+                              child: Text(_showAllDeadlines
+                                  ? '3개만 보기'
+                                  : '나머지 ${urgent.length - 3}개 단계 보기')),
+                        const SizedBox(height: 12),
+                      ],
                       _QuickActionsCard(onCreate: _showCreateExperimentSheet),
                       const SizedBox(height: 18),
                       Text(
@@ -423,13 +545,14 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
                         _ExperimentLoadErrorCard(onRetry: _loadExperiments)
                       else if (experiments.isEmpty)
                         _EmptyExperimentCard(
-                          message: _query.isEmpty
+                          message: _experiments.isEmpty
                               ? '아직 실험 노트가 없습니다.'
-                              : '검색 결과가 없습니다.',
-                          actionLabel: _query.isEmpty ? '첫 실험 만들기' : '검색어 지우기',
-                          onAction: _query.isEmpty
+                              : '검색·필터에 맞는 실험이 없습니다.',
+                          actionLabel:
+                              _experiments.isEmpty ? '첫 실험 만들기' : '검색·필터 초기화',
+                          onAction: _experiments.isEmpty
                               ? _showCreateExperimentSheet
-                              : _searchController.clear,
+                              : _resetFilters,
                         )
                       else
                         for (final experiment in experiments)
@@ -477,6 +600,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
       if (!mounted) return;
       setState(() {
         _experiments = experiments;
+        _syncHomeState();
         _isLoading = false;
         _loadError = null;
       });
@@ -494,12 +618,13 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
   }
 
   Future<void> _openExperiment(Experiment experiment,
-      {TaskReminderTarget? reminderTarget}) async {
+      {TaskReminderTarget? reminderTarget, String? initialTaskId}) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ExperimentDetailScreen(
           experiment: experiment,
           reminderTarget: reminderTarget,
+          initialTaskId: initialTaskId,
           onChanged: _saveExperiment,
           reminders: _reminders,
           attachmentFileStore: _attachmentStore,
@@ -633,6 +758,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
     setState(() {
       _experiments =
           _experiments.where((item) => item.id != experiment.id).toList();
+      _syncHomeState();
     });
     await _reminders.refresh();
     if (!mounted) return;
@@ -899,6 +1025,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
 
     experiments.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     _experiments = experiments;
+    _syncHomeState();
   }
 
   void _showError(String message) {
@@ -1401,6 +1528,46 @@ class _ExperimentCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _HomeDeadlineCard extends StatelessWidget {
+  const _HomeDeadlineCard(
+      {required this.experiment,
+      required this.task,
+      required this.now,
+      required this.onOpen});
+  final Experiment experiment;
+  final ExperimentTask task;
+  final DateTime now;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final due = task.dueAt!;
+    final remaining = due.difference(now);
+    final overdue = remaining.isNegative;
+    final minutes = (remaining.inMilliseconds.abs() / 60000).ceil();
+    final timing = overdue
+        ? '$minutes분 초과'
+        : remaining == Duration.zero
+            ? '예정 종료 시각'
+            : '$minutes분 후 예정 종료';
+    final local = due.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return Card(
+      child: ListTile(
+          key: ValueKey('home-deadline-${experiment.id}-${task.id}'),
+          isThreeLine: true,
+          leading: Icon(
+              overdue ? Icons.timer_off_outlined : Icons.timer_outlined,
+              color: overdue ? Theme.of(context).colorScheme.error : null),
+          title: Text('${task.title} · $timing'),
+          subtitle: Text(
+              '${experiment.title}\n예정 종료 ${local.month}/${local.day} ${two(local.hour)}:${two(local.minute)}'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: onOpen),
     );
   }
 }

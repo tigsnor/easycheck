@@ -37,6 +37,7 @@ class ExperimentDetailScreen extends StatefulWidget {
     this.plateRepository,
     this.reminders,
     this.reminderTarget,
+    this.initialTaskId,
     this.plateTemplateRepository,
     this.documentExchangeService,
     this.attachmentFileStore = const FileAttachmentFileStore(),
@@ -49,6 +50,7 @@ class ExperimentDetailScreen extends StatefulWidget {
   final PlateRepository? plateRepository;
   final TaskReminderCoordinator? reminders;
   final TaskReminderTarget? reminderTarget;
+  final String? initialTaskId;
   final PlateTemplateRepository? plateTemplateRepository;
   final DocumentExchangeService? documentExchangeService;
   final AttachmentFileStore attachmentFileStore;
@@ -103,7 +105,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _section = widget.reminderTarget != null
+    _section = widget.reminderTarget != null || widget.initialTaskId != null
         ? 1
         : switch (widget.experiment.status) {
             ExperimentStatus.inProgress => 1,
@@ -132,6 +134,7 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
     _status = widget.experiment.status;
     _experimentType = widget.experiment.experimentType;
     _tasks = widget.reminderTarget == null &&
+            widget.initialTaskId == null &&
             widget.experiment.tasks.isEmpty &&
             !widget.experiment.isReadOnly &&
             widget.experiment.status != ExperimentStatus.correcting
@@ -467,7 +470,9 @@ class _ExperimentDetailScreenState extends State<ExperimentDetailScreen> {
           onManage: _canManageProtocol ? _manageProtocol : null,
           canRecord: !_hasEditedSavedProtocol,
           protocolDraftPending: _hasEditedSavedProtocol,
-          focusTaskId: widget.reminderTarget?.taskId,
+          focusTaskId: widget.reminderTarget?.taskId ?? widget.initialTaskId,
+          focusLabel:
+              widget.reminderTarget != null ? '알림에서 연 단계' : '홈에서 선택한 단계',
           historyEnabled: !_isSaving,
           tasks: _tasks,
           enabled: _editingEnabled &&
@@ -1327,12 +1332,14 @@ class _ExperimentChecklistCard extends StatefulWidget {
     required this.recordStatus,
     required this.historyEnabled,
     this.focusTaskId,
+    this.focusLabel = '선택한 단계',
   });
 
   final VoidCallback? onManage;
   final bool canRecord, protocolDraftPending;
   final bool historyEnabled;
   final String? focusTaskId;
+  final String focusLabel;
   final Future<void> Function(ExperimentTask task) onRecord;
   final Widget Function(ExperimentTask task) recordStatus;
   final List<ExperimentTask> tasks;
@@ -1721,7 +1728,7 @@ class _ExperimentChecklistCardState extends State<_ExperimentChecklistCard> {
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Text(
               target >= 0
-                  ? '알림에서 연 단계'
+                  ? widget.focusLabel
                   : running.isEmpty
                       ? '다음 단계'
                       : '진행 중 ${running.length}개 단계',
