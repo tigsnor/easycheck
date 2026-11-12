@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../shared/models/well_position.dart';
+import '../domain/plate.dart';
 
 enum PlateView { cells, medium, results }
 
@@ -104,6 +105,41 @@ class PlateEditorController extends ChangeNotifier {
       for (var row = 0; row < rowCount; row++)
         WellPosition(rowIndex: row, columnIndex: columnIndex),
     };
+    _rangeAnchor = null;
+    notifyListeners();
+  }
+
+  /// Only a single explicit condition may seed a condition selection. Unknown
+  /// conditions and mixed selections never silently expand to unrelated wells.
+  Set<WellPosition> matchingConditionPositions(Plate plate) {
+    if (_view == PlateView.results || _selectedPositions.isEmpty) return {};
+    final selected = plate.wells
+        .where((w) => _selectedPositions.contains(w.position))
+        .toList();
+    if (selected.length != _selectedPositions.length) return {};
+    final condition = _view == PlateView.cells
+        ? selected.first.cellCondition
+        : selected.first.assayCondition;
+    if (condition == null ||
+        selected.any((w) =>
+            (_view == PlateView.cells ? w.cellCondition : w.assayCondition) !=
+            condition)) {
+      return {};
+    }
+    return {
+      for (final well in plate.wells)
+        if ((_view == PlateView.cells
+                ? well.cellCondition
+                : well.assayCondition) ==
+            condition)
+          well.position,
+    };
+  }
+
+  void selectMatchingCondition(Plate plate) {
+    final positions = matchingConditionPositions(plate);
+    if (positions.isEmpty) return;
+    _selectedPositions = Set.unmodifiable(positions);
     _rangeAnchor = null;
     notifyListeners();
   }

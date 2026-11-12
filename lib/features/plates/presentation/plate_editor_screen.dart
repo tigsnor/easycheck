@@ -304,6 +304,12 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         bottomNavigationBar: plate == null || widget.readOnly
             ? null
             : _PlateContextActionBar(
+                view: _editorController.view,
+                onSelectMatching: _editorController
+                        .matchingConditionPositions(plate)
+                        .isEmpty
+                    ? null
+                    : () => _editorController.selectMatchingCondition(plate),
                 selectedPositions: _selectedPositions,
                 hasSingleSelection: _selectedPositions.length == 1,
                 isSaving: _isSaving || _failedPlate != null,
@@ -2933,6 +2939,8 @@ class _PlateValidationIssueRow extends StatelessWidget {
 
 class _PlateContextActionBar extends StatelessWidget {
   const _PlateContextActionBar({
+    required this.view,
+    required this.onSelectMatching,
     required this.selectedPositions,
     required this.hasSingleSelection,
     required this.isSaving,
@@ -2949,6 +2957,8 @@ class _PlateContextActionBar extends StatelessWidget {
   });
 
   final Set<WellPosition> selectedPositions;
+  final PlateView view;
+  final VoidCallback? onSelectMatching;
 
   int get selectedCount => selectedPositions.length;
   final bool hasSingleSelection;
@@ -2967,12 +2977,114 @@ class _PlateContextActionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasSelection = selectedCount > 0;
-    final labels = selectedPositions.map((p) => p.label).toList();
+    final sorted = selectedPositions.toList()
+      ..sort((a, b) => a.rowIndex != b.rowIndex
+          ? a.rowIndex.compareTo(b.rowIndex)
+          : a.columnIndex.compareTo(b.columnIndex));
+    final labels = sorted.map((p) => p.label).toList();
+    final columns = sorted.map((p) => p.columnIndex).toList()..sort();
+    final rectangle = hasSelection &&
+        (sorted.last.rowIndex - sorted.first.rowIndex + 1) *
+                (columns.last - columns.first + 1) ==
+            selectedCount;
     final selectionLabel = labels.isEmpty
         ? ''
         : labels.length == 1
             ? labels.first
-            : '${labels.first}–${labels.last}';
+            : rectangle
+                ? '${labels.first}–${labels.last}'
+                : '${labels.take(3).join(', ')}${labels.length > 3 ? ' 외 ${labels.length - 3}개' : ''}';
+    final actions = <_ContextActionButton>[
+      _ContextActionButton(
+          key: const ValueKey('assign-cell-condition-action'),
+          icon: Icons.biotech_outlined,
+          label: '세포 조건',
+          primary: view == PlateView.cells,
+          onPressed: isSaving || !hasSelection ? null : onAssignCells),
+      _ContextActionButton(
+          key: const ValueKey('assign-assay-condition-action'),
+          icon: Icons.science_outlined,
+          label: '배지·용매',
+          primary: view == PlateView.medium,
+          onPressed: isSaving || !hasSelection ? null : onAssignAssay),
+      if (view != PlateView.results)
+        _ContextActionButton(
+            key: const ValueKey('select-matching-condition-action'),
+            icon: Icons.select_all,
+            label: view == PlateView.cells ? '같은 세포 조건' : '같은 배지 조건',
+            tooltip:
+                '하나의 지정된 조건을 선택하면 같은 ${view == PlateView.cells ? '세포 종류·수치·단위' : '배지·용매·비율'}의 well을 모두 선택합니다.',
+            onPressed: isSaving ? null : onSelectMatching),
+      _ContextActionButton(
+          key: const ValueKey('medium-change-action'),
+          icon: Icons.calculate_outlined,
+          label: '추가·교체 계산',
+          onPressed: isSaving || !hasSelection ? null : onMediumChange),
+      _ContextActionButton(
+          key: const ValueKey('sequential-results-action'),
+          icon: Icons.playlist_add_check,
+          label: '결과 연속 입력',
+          primary: view == PlateView.results,
+          onPressed: isSaving ? null : onSequentialResults),
+      if (!hasSelection)
+        _ContextActionButton(
+            key: const ValueKey('bulk-result-import-button'),
+            icon: Icons.table_view_outlined,
+            label: '결과 일괄 입력',
+            onPressed: isSaving ? null : onBulkResultImport),
+      if (hasSingleSelection) ...[
+        _ContextActionButton(
+            key: const ValueKey('show-selected-well-action'),
+            icon: Icons.info_outline,
+            label: '상세',
+            onPressed: onShowDetails),
+        _ContextActionButton(
+            key: const ValueKey('edit-selected-well-action'),
+            icon: Icons.edit_outlined,
+            label: '편집',
+            onPressed: isSaving ? null : onEdit),
+      ],
+      if (hasSelection)
+        _ContextActionButton(
+            key: const ValueKey('assign-selected-group-action'),
+            icon: Icons.palette_outlined,
+            label: '그룹 지정',
+            onPressed: isSaving ? null : onAssignGroup),
+      _ContextActionButton(
+          key: const ValueKey('apply-dilution-action'),
+          icon: Icons.water_drop_outlined,
+          label: '희석 적용',
+          onPressed: isSaving ? null : onApplyDilution),
+      if (hasSelection)
+        _ContextActionButton(
+            key: const ValueKey('clear-selection-action'),
+            icon: Icons.deselect,
+            label: '선택 해제',
+            onPressed: isSaving ? null : onClearSelection),
+    ];
+    final leadingKeys = switch (view) {
+      PlateView.cells => [
+          'assign-cell-condition-action',
+          'select-matching-condition-action'
+        ],
+      PlateView.medium => [
+          'assign-assay-condition-action',
+          'medium-change-action',
+          'select-matching-condition-action'
+        ],
+      PlateView.results => [
+          'sequential-results-action',
+          hasSingleSelection
+              ? 'edit-selected-well-action'
+              : 'bulk-result-import-button'
+        ],
+    };
+    final ordered = [
+      for (final name in leadingKeys)
+        ...actions.where((a) => a.key == ValueKey(name)),
+      ...actions
+          .where((a) => !leadingKeys.any((name) => a.key == ValueKey(name))),
+    ];
     return Material(
       key: const ValueKey('plate-context-action-bar'),
       elevation: 8,
@@ -2990,7 +3102,11 @@ class _PlateContextActionBar extends StatelessWidget {
                 child: Text(
                   hasSelection
                       ? '$selectedCount개 well 선택됨 · $selectionLabel'
-                      : 'Plate 작업',
+                      : '${switch (view) {
+                          PlateView.cells => '세포',
+                          PlateView.medium => '배지',
+                          PlateView.results => '결과'
+                        }} 작업 · well을 선택하세요',
                   style: Theme.of(
                     context,
                   ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
@@ -2998,88 +3114,9 @@ class _PlateContextActionBar extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               SingleChildScrollView(
+                key: ValueKey('plate-actions-${view.name}'),
                 scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: hasSelection
-                      ? [
-                          if (hasSingleSelection)
-                            _ContextActionButton(
-                              key: const ValueKey('show-selected-well-action'),
-                              icon: Icons.info_outline,
-                              label: '상세',
-                              onPressed: onShowDetails,
-                            ),
-                          if (hasSingleSelection)
-                            _ContextActionButton(
-                              key: const ValueKey('edit-selected-well-action'),
-                              icon: Icons.edit_outlined,
-                              label: '편집',
-                              onPressed: isSaving ? null : onEdit,
-                            ),
-                          _ContextActionButton(
-                            key: const ValueKey('assign-cell-condition-action'),
-                            icon: Icons.biotech_outlined,
-                            label: '세포 조건',
-                            onPressed: isSaving ? null : onAssignCells,
-                          ),
-                          _ContextActionButton(
-                              key: const ValueKey(
-                                  'assign-assay-condition-action'),
-                              icon: Icons.science_outlined,
-                              label: '배지·용매',
-                              onPressed: isSaving ? null : onAssignAssay),
-                          _ContextActionButton(
-                            key: const ValueKey('medium-change-action'),
-                            icon: Icons.calculate_outlined,
-                            label: '추가·교체 계산',
-                            onPressed: isSaving ? null : onMediumChange,
-                          ),
-                          _ContextActionButton(
-                            key: const ValueKey('sequential-results-action'),
-                            icon: Icons.playlist_add_check,
-                            label: '결과 연속 입력',
-                            onPressed: isSaving ? null : onSequentialResults,
-                          ),
-                          _ContextActionButton(
-                            key: const ValueKey('assign-selected-group-action'),
-                            icon: Icons.palette_outlined,
-                            label: '그룹 지정',
-                            onPressed: isSaving ? null : onAssignGroup,
-                          ),
-                          _ContextActionButton(
-                            key: const ValueKey('apply-dilution-action'),
-                            icon: Icons.water_drop_outlined,
-                            label: '희석 적용',
-                            onPressed: isSaving ? null : onApplyDilution,
-                          ),
-                          _ContextActionButton(
-                            key: const ValueKey('clear-selection-action'),
-                            icon: Icons.deselect,
-                            label: '선택 해제',
-                            onPressed: isSaving ? null : onClearSelection,
-                          ),
-                        ]
-                      : [
-                          _ContextActionButton(
-                            key: const ValueKey('sequential-results-action'),
-                            icon: Icons.playlist_add_check,
-                            label: '결과 연속 입력',
-                            onPressed: isSaving ? null : onSequentialResults,
-                          ),
-                          _ContextActionButton(
-                            key: const ValueKey('bulk-result-import-button'),
-                            icon: Icons.table_view_outlined,
-                            label: '결과 일괄 입력',
-                            onPressed: isSaving ? null : onBulkResultImport,
-                          ),
-                          _ContextActionButton(
-                            key: const ValueKey('apply-dilution-action'),
-                            icon: Icons.water_drop_outlined,
-                            label: '희석 적용',
-                            onPressed: isSaving ? null : onApplyDilution,
-                          ),
-                        ],
-                ),
+                child: Row(children: ordered),
               ),
             ],
           ),
@@ -3094,22 +3131,28 @@ class _ContextActionButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onPressed,
+    this.primary = false,
+    this.tooltip,
     super.key,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onPressed;
+  final bool primary;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
+    final button = primary
+        ? FilledButton.icon(
+            onPressed: onPressed, icon: Icon(icon), label: Text(label))
+        : FilledButton.tonalIcon(
+            onPressed: onPressed, icon: Icon(icon), label: Text(label));
     return Padding(
       padding: const EdgeInsets.only(right: 8),
-      child: FilledButton.tonalIcon(
-        onPressed: onPressed,
-        icon: Icon(icon),
-        label: Text(label),
-      ),
+      child:
+          tooltip == null ? button : Tooltip(message: tooltip!, child: button),
     );
   }
 }

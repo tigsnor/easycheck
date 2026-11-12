@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:easycheck/features/experiments/domain/experiment.dart';
 import 'package:easycheck/features/experiments/presentation/experiments_home_screen.dart';
+import 'package:easycheck/features/experiments/presentation/experiment_detail_screen.dart';
 import 'package:easycheck/features/reminders/data/task_reminder_service.dart';
 import '../../support/reminder_fixture.dart';
 import '../experiments/presentation/experiments_home_screen_test.dart'
@@ -50,8 +51,12 @@ void main() {
             plateTemplateRepository: FakePlateTemplateRepository(),
             reminderService: os)));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Timed assay'), 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Timed assay'));
     await tester.pumpAndSettle();
+    expect(find.byType(ExperimentDetailScreen), findsOneWidget);
   }
 
   Future<void> reveal(WidgetTester tester, Finder f) async {
@@ -267,7 +272,11 @@ void main() {
           reminderEnabled: true)
     ]);
     await open(tester);
-    expect(find.textContaining('초과'), findsOneWidget);
+    expect(
+        find.descendant(
+            of: find.byType(ExperimentDetailScreen),
+            matching: find.textContaining('초과')),
+        findsOneWidget);
     expect(os.entries, isEmpty);
     await tester.pumpWidget(const SizedBox());
     await tester.pumpAndSettle();
