@@ -145,7 +145,6 @@ void main() {
             onSelected: (_) {},
             onRangeSelected: (_) {},
             onRectangleSelected: (_, __) {},
-            onToggleDragSelection: () {},
             onRowSelected: (_) {},
             onColumnSelected: (_) {},
           )))));

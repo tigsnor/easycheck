@@ -36,8 +36,6 @@ void main() {
                   onSelected: controller.selectWell,
                   onRangeSelected: controller.selectRangeTo,
                   onRectangleSelected: controller.selectRectangle,
-                  dragSelectionEnabled: controller.dragSelectionEnabled,
-                  onToggleDragSelection: controller.toggleDragSelection,
                   onRowSelected: (r) => controller.selectRow(r, 12),
                   onColumnSelected: (c) => controller.selectColumn(c, 8),
                 )),
@@ -47,46 +45,32 @@ void main() {
     return controller;
   }
 
-  testWidgets(
-      'fit view explains two modes and switching mode preserves selection',
+  testWidgets('fit view exposes one gesture and no selection mode controls',
       (tester) async {
     final controller = await showGrid(tester, fit: true);
-    final scroll = find.byKey(const ValueKey('plate-scroll-mode'));
-    final select = find.byKey(const ValueKey('plate-drag-selection'));
+    expect(find.byKey(const ValueKey('plate-scroll-mode')), findsNothing);
+    expect(find.byKey(const ValueKey('plate-drag-selection')), findsNothing);
     final hint = find.byKey(const ValueKey('plate-interaction-hint'));
-    expect(tester.widget<ChoiceChip>(scroll).selected, true);
-    expect(tester.widget<Text>(hint).data, contains('길게 누른'));
-    controller.selectRectangle(
-        WellPosition.fromLabel('A1'), WellPosition.fromLabel('B2'));
+    expect(tester.widget<Text>(hint).data, contains('길게'));
+    await tester.tap(well('B2'));
     await tester.pumpAndSettle();
-    final selection = {...controller.selectedPositions};
-    await tester.tap(select);
+    expect(controller.selectedPositions, {WellPosition.fromLabel('B2')});
+    controller.zoomIn();
     await tester.pumpAndSettle();
-    expect(tester.widget<ChoiceChip>(select).selected, true);
-    expect(tester.widget<Text>(hint).data, contains('바로 드래그'));
-    await tester.tap(select);
-    await tester.pumpAndSettle();
-    expect(controller.dragSelectionEnabled, true);
-    await tester.tap(scroll);
-    await tester.pumpAndSettle();
-    expect(controller.dragSelectionEnabled, false);
-    expect(controller.selectedPositions, selection);
-    expect(tester.widget<Text>(hint).data, contains('길게 누른'));
+    expect(controller.selectedPositions, {WellPosition.fromLabel('B2')});
+    expect(tester.widget<Text>(hint).data, contains('길게'));
   });
 
-  for (final direct in [false, true]) {
+  for (final fit in [false, true]) {
     testWidgets(
-        'drag updates and shrinks a rectangle from a fixed anchor, direct=$direct',
+        'long-press drag updates and shrinks a rectangle from a fixed anchor, fit=$fit',
         (tester) async {
-      final controller = await showGrid(tester);
+      final controller = await showGrid(tester, fit: fit);
       // A previous selection must not become the new gesture's anchor.
       controller.selectWell(WellPosition.fromLabel('D5'));
-      if (direct) {
-        await tester.tap(find.byKey(const ValueKey('plate-drag-selection')));
-      }
       await tester.pumpAndSettle();
       final gesture = await tester.startGesture(tester.getCenter(well('A1')));
-      if (!direct) await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(milliseconds: 600));
       await gesture.moveTo(tester.getCenter(well('C3')));
       await tester.pump();
       expect(controller.selectedPositions, hasLength(9));
@@ -108,7 +92,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(controller.selectedPositions, hasLength(4));
       final reverse = await tester.startGesture(tester.getCenter(well('C3')));
-      if (!direct) await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(milliseconds: 600));
       await reverse.moveTo(tester.getCenter(well('A1')));
       await tester.pump();
       expect(controller.selectedPositions, hasLength(9));
@@ -124,16 +108,18 @@ void main() {
       'quick swipes scroll without selecting and offset drag maps to correct wells',
       (tester) async {
     final controller = await showGrid(tester, size: const Size(320, 500));
+    controller.selectWell(WellPosition.fromLabel('H12'));
+    await tester.pumpAndSettle();
     final before = tester.getTopLeft(well('A1')).dx;
     await tester.dragFrom(tester.getCenter(well('A2')), const Offset(-160, 0));
     await tester.pumpAndSettle();
     expect(tester.getTopLeft(well('A1')).dx, lessThan(before));
-    expect(controller.selectedPositions, isEmpty);
+    expect(controller.selectedPositions, {WellPosition.fromLabel('H12')});
     final top = tester.getTopLeft(well('A3')).dy;
     await tester.dragFrom(tester.getCenter(well('A3')), const Offset(0, -100));
     await tester.pumpAndSettle();
     expect(tester.getTopLeft(well('A3')).dy, lessThan(top));
-    expect(controller.selectedPositions, isEmpty);
+    expect(controller.selectedPositions, {WellPosition.fromLabel('H12')});
     Scrollable.of(tester.element(find.byType(PlateGrid)), axis: Axis.vertical)
         .position
         .jumpTo(0);
@@ -142,9 +128,9 @@ void main() {
             find.byKey(const ValueKey('plate-horizontal-scroll')))
         .controller!;
     scroll.jumpTo(200);
-    controller.toggleDragSelection();
     await tester.pumpAndSettle();
     final gesture = await tester.startGesture(tester.getCenter(well('A5')));
+    await tester.pump(const Duration(milliseconds: 600));
     await gesture.moveTo(tester.getCenter(well('B7')));
     await tester.pump();
     expect(controller.selectedPositions, hasLength(6));
@@ -160,9 +146,9 @@ void main() {
       'edge scrolling reaches H12 and pointer cancellation stops scrolling',
       (tester) async {
     final controller = await showGrid(tester, size: const Size(320, 500));
-    controller.toggleDragSelection();
     await tester.pumpAndSettle();
     final gesture = await tester.startGesture(tester.getCenter(well('A1')));
+    await tester.pump(const Duration(milliseconds: 600));
     await gesture.moveTo(const Offset(310, 490));
     for (var i = 0; i < 65; i++) {
       await tester.pump(const Duration(milliseconds: 40));
@@ -181,9 +167,9 @@ void main() {
     testWidgets('drag respects scaled and fitted cell coordinates, fit=$fit',
         (tester) async {
       final controller = await showGrid(tester, scale: 1.6, fit: fit);
-      controller.toggleDragSelection();
       await tester.pumpAndSettle();
       final gesture = await tester.startGesture(tester.getCenter(well('B2')));
+      await tester.pump(const Duration(milliseconds: 600));
       await gesture.moveTo(tester.getCenter(well('C4')));
       await tester.pump();
       expect(controller.selectedPositions, hasLength(6));
