@@ -270,10 +270,9 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: PlateEditorScreen(experimentId: 'e', repository: repository)));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('plate-drag-selection')));
-    await tester.pumpAndSettle();
     final gesture = await tester
         .startGesture(tester.getCenter(find.byKey(const ValueKey('well-A1'))));
+    await tester.pump(const Duration(milliseconds: 600));
     await gesture
         .moveTo(tester.getCenter(find.byKey(const ValueKey('well-C3'))));
     await tester.pump();
@@ -298,15 +297,8 @@ void main() {
             .toSet(),
         {'A1', 'A2', 'A3', 'B1', 'B2', 'B3', 'C1', 'C2', 'C3'});
     expect(find.byKey(const ValueKey('start-range-action')), findsNothing);
-    await tester.ensureVisible(find.byKey(const ValueKey('plate-scroll-mode')));
-    await tester.tap(find.byKey(const ValueKey('plate-scroll-mode')));
-    await tester.pumpAndSettle();
-    expect(
-        tester
-            .widget<ChoiceChip>(
-                find.byKey(const ValueKey('plate-drag-selection')))
-            .selected,
-        isFalse);
+    expect(find.byKey(const ValueKey('plate-scroll-mode')), findsNothing);
+    expect(find.byKey(const ValueKey('plate-drag-selection')), findsNothing);
   });
 
   testWidgets(
@@ -319,10 +311,9 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: PlateEditorScreen(experimentId: 'e', repository: repository)));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('plate-drag-selection')));
-    await tester.pumpAndSettle();
     final gesture = await tester
         .startGesture(tester.getCenter(find.byKey(const ValueKey('well-A1'))));
+    await tester.pump(const Duration(milliseconds: 600));
     await gesture
         .moveTo(tester.getCenter(find.byKey(const ValueKey('well-B2'))));
     await gesture.up();
@@ -652,7 +643,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Plate 작업 보기'), findsOneWidget);
-    expect(find.textContaining('well을 길게 누른 채 드래그하면 범위 선택'), findsOneWidget);
+    expect(find.textContaining('길게 누르고 끌어 범위 선택'), findsOneWidget);
     expect(
       tester.getSize(find.byKey(const ValueKey('well-A1'))).width,
       closeTo(48, 0.1),

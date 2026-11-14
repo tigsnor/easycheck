@@ -25,8 +25,6 @@ class PlateGrid extends StatefulWidget {
     required this.onSelected,
     required this.onRangeSelected,
     required this.onRectangleSelected,
-    required this.onToggleDragSelection,
-    this.dragSelectionEnabled = false,
     this.initialResultsView = false,
     this.view,
     this.onViewChanged,
@@ -44,8 +42,6 @@ class PlateGrid extends StatefulWidget {
   final ValueChanged<WellPosition> onSelected;
   final ValueChanged<WellPosition> onRangeSelected;
   final void Function(WellPosition start, WellPosition end) onRectangleSelected;
-  final VoidCallback onToggleDragSelection;
-  final bool dragSelectionEnabled;
   final bool initialResultsView;
   final PlateView? view;
   final ValueChanged<PlateView>? onViewChanged;
@@ -99,7 +95,6 @@ class _PlateGridState extends State<PlateGrid> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.plate.id != widget.plate.id ||
         oldWidget.requestedCellSize != widget.requestedCellSize ||
-        oldWidget.dragSelectionEnabled != widget.dragSelectionEnabled ||
         oldWidget.view != widget.view) {
       _stopDrag();
     }
@@ -269,46 +264,19 @@ class _PlateGridState extends State<PlateGrid> {
                 onPressed: widget.onZoomIn,
                 icon: const Icon(Icons.add_circle_outline)),
           ]),
-          Wrap(spacing: 8, children: [
-            ChoiceChip(
-              key: const ValueKey('plate-scroll-mode'),
-              padding: EdgeInsets.zero,
-              labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-              label: const Text('스크롤'),
-              selected: !widget.dragSelectionEnabled,
-              onSelected: (_) {
-                if (widget.dragSelectionEnabled) {
-                  widget.onToggleDragSelection();
-                }
-              },
-            ),
-            ChoiceChip(
-              key: const ValueKey('plate-drag-selection'),
-              padding: EdgeInsets.zero,
-              labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-              label: const Text('범위 선택'),
-              selected: widget.dragSelectionEnabled,
-              onSelected: (_) {
-                if (!widget.dragSelectionEnabled) {
-                  widget.onToggleDragSelection();
-                }
-              },
-            ),
-            IconButton(
-                key: const ValueKey('plate-coordinate-action'),
-                tooltip: '좌표로 이동',
-                onPressed: _goToCoordinate,
-                icon: const Icon(Icons.my_location_outlined)),
-          ]),
           Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                widget.dragSelectionEnabled
-                    ? '범위 선택: well에서 바로 드래그하세요. 가장자리에서 자동 스크롤됩니다.'
-                    : '스크롤: 밀어서 화면 이동 · well을 길게 누른 채 드래그하면 범위 선택',
-                key: const ValueKey('plate-interaction-hint'),
-                style: Theme.of(context).textTheme.bodySmall,
-              )),
+              child: Row(children: [
+                Expanded(
+                    child: Text('길게 누르고 끌어 범위 선택\n한 번 눌러 개별 선택 · 확대 후 밀어서 이동',
+                        key: const ValueKey('plate-interaction-hint'),
+                        style: Theme.of(context).textTheme.bodySmall)),
+                IconButton(
+                    key: const ValueKey('plate-coordinate-action'),
+                    tooltip: '좌표로 이동',
+                    onPressed: _goToCoordinate,
+                    icon: const Icon(Icons.my_location_outlined)),
+              ])),
           LayoutBuilder(builder: (context, constraints) {
             final columns = plate.columnCount + 1;
             final fitSize =
@@ -596,13 +564,7 @@ class _PlateGridState extends State<PlateGrid> {
             _beginDrag(position, details.globalPosition),
         onLongPressMoveUpdate: (details) => _moveDrag(details.globalPosition),
         onLongPressEnd: (_) => _stopDrag(),
-        onPanStart: widget.dragSelectionEnabled
-            ? (details) => _beginDrag(position, details.globalPosition)
-            : null,
-        onPanUpdate: widget.dragSelectionEnabled
-            ? (details) => _moveDrag(details.globalPosition)
-            : null,
-        onPanEnd: widget.dragSelectionEnabled ? (_) => _stopDrag() : null,
+        onLongPressCancel: _stopDrag,
         child: _WellCell(
           key: ValueKey('well-${well.label}'),
           well: well,

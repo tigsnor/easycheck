@@ -375,10 +375,6 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
                               onRangeSelected: _selectRangeTo,
                               onRectangleSelected:
                                   _editorController.selectRectangle,
-                              dragSelectionEnabled:
-                                  _editorController.dragSelectionEnabled,
-                              onToggleDragSelection:
-                                  _editorController.toggleDragSelection,
                               onRowSelected: _selectRow,
                               onColumnSelected: _selectColumn,
                             ),

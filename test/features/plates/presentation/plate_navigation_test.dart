@@ -34,10 +34,6 @@ void main() {
                                 onSelected: controller.selectWell,
                                 onRangeSelected: controller.selectRangeTo,
                                 onRectangleSelected: controller.selectRectangle,
-                                dragSelectionEnabled:
-                                    controller.dragSelectionEnabled,
-                                onToggleDragSelection:
-                                    controller.toggleDragSelection,
                                 onRowSelected: (r) =>
                                     controller.selectRow(r, 12),
                                 onColumnSelected: (c) =>
@@ -150,9 +146,9 @@ void main() {
     expect(controller.selectedPositions, isEmpty);
     scroll(tester, 'horizontal').jumpTo(180);
     scroll(tester, 'vertical').jumpTo(100);
-    controller.toggleDragSelection();
     await tester.pumpAndSettle();
     final gesture = await tester.startGesture(tester.getCenter(key('well-D5')));
+    await tester.pump(const Duration(milliseconds: 600));
     await gesture.moveTo(tester.getCenter(key('well-F7')));
     await tester.pump();
     expect(controller.selectedPositions, hasLength(9));

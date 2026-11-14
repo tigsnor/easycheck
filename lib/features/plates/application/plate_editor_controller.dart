@@ -31,15 +31,6 @@ class PlateEditorController extends ChangeNotifier {
   WellPosition? get rangeAnchor => _rangeAnchor;
   WellPosition? _rangeAnchor;
 
-  bool get dragSelectionEnabled => _dragSelectionEnabled;
-  bool _dragSelectionEnabled = false;
-
-  void toggleDragSelection() {
-    _dragSelectionEnabled = !_dragSelectionEnabled;
-    _rangeAnchor = null;
-    notifyListeners();
-  }
-
   void selectRectangle(WellPosition start, WellPosition end) {
     _selectedPosition = end;
     _selectedPositions = _rectangle(start, end).toSet();
@@ -152,15 +143,12 @@ class PlateEditorController extends ChangeNotifier {
   }
 
   void clearSelection() {
-    if (_selectedPosition == null &&
-        _selectedPositions.isEmpty &&
-        !_dragSelectionEnabled) {
+    if (_selectedPosition == null && _selectedPositions.isEmpty) {
       return;
     }
     _selectedPosition = null;
     _selectedPositions = const {};
     _rangeAnchor = null;
-    _dragSelectionEnabled = false;
     notifyListeners();
   }
 
