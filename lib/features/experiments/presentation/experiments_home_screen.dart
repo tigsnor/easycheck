@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../data/deleted_experiment_repository.dart';
 import 'dart:convert';
 import '../../../shared/models/cell_number.dart';
 import '../../../shared/presentation/scientific_cell_input.dart';
@@ -38,6 +39,7 @@ class ExperimentsHomeScreen extends StatefulWidget {
     PlateRepository? plateRepository,
     DocumentExchangeService? documentExchangeService,
     PlateTemplateRepository? plateTemplateRepository,
+    this.deletedRepository = const FileDeletedExperimentRepository(),
     this.recoveryService,
     this.reminderService,
     this.attachmentFileStore,
@@ -51,6 +53,7 @@ class ExperimentsHomeScreen extends StatefulWidget {
         plateTemplateRepository =
             plateTemplateRepository ?? const FilePlateTemplateRepository();
 
+  final DeletedExperimentRepository deletedRepository;
   final BackupRecoveryService? recoveryService;
   final TaskReminderService? reminderService;
   final AttachmentFileStore? attachmentFileStore;
@@ -97,7 +100,12 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
   bool _isDuplicating = false;
   bool _isDuplicateOpen = false;
 
-  bool get _isDataBusy => _isRestoring || _isDuplicating || _isPreparingBackup;
+  bool _isDeletingOrRecovering = false;
+  bool get _isDataBusy =>
+      _isRestoring ||
+      _isDuplicating ||
+      _isPreparingBackup ||
+      _isDeletingOrRecovering;
   DateTime get _now => widget.now?.call() ?? DateTime.now();
   bool get _hasFilters =>
       _query.isNotEmpty || _statusFilter != null || _projectFilter != null;
@@ -383,6 +391,11 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
                 title: const Text('PlateNote'),
                 actions: [
                   IconButton(
+                    tooltip: '최근 삭제한 작업',
+                    onPressed: _showDeletedExperiments,
+                    icon: const Icon(Icons.restore_from_trash_outlined),
+                  ),
+                  IconButton(
                     tooltip: '전체 데이터 백업 및 복원',
                     onPressed: _showBackupSheet,
                     icon: const Icon(Icons.settings_backup_restore),
@@ -577,7 +590,7 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
                 label: const Text('새 실험'),
               ),
             )),
-        if (_isDataBusy)
+        if (_isRestoring || _isDuplicating || _isPreparingBackup)
           const Positioned.fill(
               child: ColoredBox(
             color: Color(0x99000000),
@@ -710,12 +723,22 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
   }
 
   Future<void> _deleteExperiment(Experiment experiment) async {
+    if (_isDataBusy) return;
+    setState(() => _isDeletingOrRecovering = true);
+    try {
+      await _deleteExperimentRecord(experiment);
+    } finally {
+      if (mounted) setState(() => _isDeletingOrRecovering = false);
+    }
+  }
+
+  Future<void> _deleteExperimentRecord(Experiment experiment) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('실험을 삭제할까요?'),
         content: Text(
-          '“${experiment.title}” 실험 노트와 연결된 Plate·첨부 목록을 삭제합니다. 삭제 직후에는 실행 취소할 수 있습니다.',
+          '“${experiment.title}” 실험 노트와 연결된 Plate·첨부 목록을 삭제합니다. 삭제 후 실행 취소하거나 홈의 ‘최근 삭제한 작업’에서 복구할 수 있습니다.',
         ),
         actions: [
           TextButton(
@@ -737,6 +760,10 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
     Plate? deletedPlate;
     try {
       deletedPlate = await widget.plateRepository.loadPlate(experiment.id);
+      await widget.deletedRepository.save(DeletedExperiment(
+          experiment: experiment,
+          plate: deletedPlate,
+          deletedAt: DateTime.now().toUtc()));
       await widget.repository.deleteExperiment(experiment.id);
       await widget.plateRepository.deletePlate(experiment.id);
     } on Object catch (error) {
@@ -766,7 +793,11 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text('“${experiment.title}”을 삭제했습니다.'),
+          content:
+              Text('“${experiment.title}”을 삭제했습니다. 최근 삭제한 작업에서 복구할 수 있습니다.'),
+          duration: const Duration(seconds: 8),
+          persist: MediaQuery.accessibleNavigationOf(context),
+          showCloseIcon: true,
           action: SnackBarAction(
             label: '실행 취소',
             onPressed: () => _restoreDeletedExperiment(
@@ -778,28 +809,93 @@ class _ExperimentsHomeScreenState extends State<ExperimentsHomeScreen>
       );
   }
 
-  Future<void> _restoreDeletedExperiment({
-    required Experiment experiment,
-    required Plate? plate,
-  }) async {
+  Future<void> _showDeletedExperiments() async {
+    if (_isDataBusy) return;
+    setState(() => _isDeletingOrRecovering = true);
     try {
-      await widget.repository.saveExperiment(experiment);
-      if (plate != null) {
-        await widget.plateRepository.savePlate(plate);
+      final entries = await widget.deletedRepository.load();
+      final existing =
+          (await widget.repository.loadExperiments()).map((e) => e.id).toSet();
+      final deleted = entries
+          .where((e) => !existing.contains(e.experiment.id))
+          .toList()
+        ..sort((a, b) => b.deletedAt.compareTo(a.deletedAt));
+      if (!mounted) return;
+      final selected =
+          await Navigator.of(context).push<DeletedExperiment>(MaterialPageRoute(
+              builder: (context) => Scaffold(
+                    appBar: AppBar(title: const Text('최근 삭제한 작업')),
+                    body: SafeArea(
+                        child: deleted.isEmpty
+                            ? const Center(child: Text('삭제한 작업이 없습니다.'))
+                            : ListView(children: [
+                                const Padding(
+                                    padding: EdgeInsets.all(16),
+                                    child: Text(
+                                        '이 기기에 보관된 작업입니다. 앱을 다시 열어도 복구할 수 있습니다.')),
+                                for (final entry in deleted)
+                                  ListTile(
+                                    title: Text(entry.experiment.title),
+                                    subtitle: Text(
+                                        '삭제: ${entry.deletedAt.toLocal().toString().split('.').first}'),
+                                    trailing: TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, entry),
+                                        child: const Text('복구')),
+                                  ),
+                              ])),
+                  )));
+      if (selected != null && mounted) {
+        await _restoreDeletedRecord(
+            experiment: selected.experiment, plate: selected.plate);
       }
     } on Object catch (error) {
-      if (mounted) {
-        _showError('삭제를 취소하지 못했습니다: $error');
+      if (mounted) _showError('삭제한 작업을 불러오지 못했습니다: $error');
+    } finally {
+      if (mounted) setState(() => _isDeletingOrRecovering = false);
+    }
+  }
+
+  Future<void> _restoreDeletedExperiment(
+      {required Experiment experiment, required Plate? plate}) async {
+    if (_isDataBusy) return;
+    setState(() => _isDeletingOrRecovering = true);
+    try {
+      await _restoreDeletedRecord(experiment: experiment, plate: plate);
+    } finally {
+      if (mounted) setState(() => _isDeletingOrRecovering = false);
+    }
+  }
+
+  Future<void> _restoreDeletedRecord(
+      {required Experiment experiment, required Plate? plate}) async {
+    try {
+      final existing = await widget.repository.loadExperiments();
+      if (existing.any((e) => e.id == experiment.id)) {
+        if (mounted) _showError('이미 같은 작업이 있습니다. 기존 기록을 유지했습니다.');
+        return;
       }
+      // Publish the experiment only after its Plate is restored. Failed restores
+      // retain the deletion snapshot so the user can retry from the menu.
+      if (plate != null) await widget.plateRepository.savePlate(plate);
+      await widget.repository.saveExperiment(experiment);
+    } on Object catch (error) {
+      if (mounted) _showError('복구하지 못했습니다. 최근 삭제한 작업에서 다시 시도해주세요: $error');
       return;
     }
     if (!mounted) return;
     setState(() => _upsertLocalExperiment(experiment));
     await _reminders.refresh();
+    try {
+      await widget.deletedRepository.remove(experiment.id);
+    } on Object {
+      // Already restored records are filtered out; never roll back live data
+      // merely because cleanup failed.
+    }
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('실험과 Plate 데이터를 복원했습니다.')));
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(const SnackBar(content: Text('실험과 Plate 데이터를 복원했습니다.')));
   }
 
   Future<void> _showBackupSheet() async {
