@@ -1421,6 +1421,10 @@ class _PlateEditorScreenState extends State<PlateEditorScreen> {
         ..showSnackBar(
           SnackBar(
             content: Text(successMessage),
+            duration: const Duration(seconds: 4),
+            persist:
+                recordHistory && MediaQuery.accessibleNavigationOf(context),
+            showCloseIcon: true,
             action: recordHistory
                 ? SnackBarAction(label: '실행 취소', onPressed: _undoLastChange)
                 : null,

@@ -1239,6 +1239,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.plate!.wells[0].concentrationValue, 90);
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(find.byType(SnackBar), findsNothing);
     await tester.tap(find.byTooltip('마지막 Plate 변경 실행 취소'));
     await tester.pumpAndSettle();
 

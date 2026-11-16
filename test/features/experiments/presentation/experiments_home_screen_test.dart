@@ -1,3 +1,4 @@
+import '../../../support/deleted_experiment_fixture.dart';
 import 'package:easycheck/features/backup/data/file_backup_recovery_service.dart';
 import 'package:easycheck/features/plates/presentation/plate_editor_screen.dart';
 import 'package:easycheck/features/backup/domain/easycheck_backup_service.dart';
@@ -150,6 +151,7 @@ void main() {
     final exchange = FakeDocumentExchangeService();
     await tester.pumpWidget(MaterialApp(
         home: ExperimentsHomeScreen(
+            deletedRepository: FakeDeletedExperimentRepository(),
             repository: experiments,
             plateRepository: plates,
             plateTemplateRepository: templates,
@@ -207,7 +209,9 @@ void main() {
         Plate(id: 'p', experimentId: source.id, name: 'Source');
     await tester.pumpWidget(MaterialApp(
         home: ExperimentsHomeScreen(
-            repository: experiments, plateRepository: plates)));
+            deletedRepository: FakeDeletedExperimentRepository(),
+            repository: experiments,
+            plateRepository: plates)));
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.more_vert).first);
     await tester.pumpAndSettle();
@@ -233,6 +237,7 @@ void main() {
         status: ExperimentStatus.completed);
     await tester.pumpWidget(MaterialApp(
         home: ExperimentsHomeScreen(
+      deletedRepository: FakeDeletedExperimentRepository(),
       repository: FakeExperimentRepository([experiment]),
       plateRepository: FakePlateRepository()
         ..plate = Plate(id: 'p', experimentId: 'e', name: 'Plate'),
@@ -262,6 +267,7 @@ void main() {
         status: ExperimentStatus.archived);
     await tester.pumpWidget(MaterialApp(
         home: ExperimentsHomeScreen(
+      deletedRepository: FakeDeletedExperimentRepository(),
       repository: FakeExperimentRepository([experiment]),
       plateRepository: FakePlateRepository()
         ..plate = Plate(id: 'p', experimentId: 'e', name: 'Plate'),
@@ -298,7 +304,10 @@ void main() {
     ]);
 
     await tester.pumpWidget(
-      MaterialApp(home: ExperimentsHomeScreen(repository: repository)),
+      MaterialApp(
+          home: ExperimentsHomeScreen(
+              deletedRepository: FakeDeletedExperimentRepository(),
+              repository: repository)),
     );
     await tester.pumpAndSettle();
 
@@ -340,7 +349,10 @@ void main() {
     );
 
     await tester.pumpWidget(
-      MaterialApp(home: ExperimentsHomeScreen(repository: repository)),
+      MaterialApp(
+          home: ExperimentsHomeScreen(
+              deletedRepository: FakeDeletedExperimentRepository(),
+              repository: repository)),
     );
     await tester.pumpAndSettle();
 
@@ -362,7 +374,10 @@ void main() {
   ) async {
     final repository = FlakyExperimentRepository([]);
     await tester.pumpWidget(
-      MaterialApp(home: ExperimentsHomeScreen(repository: repository)),
+      MaterialApp(
+          home: ExperimentsHomeScreen(
+              deletedRepository: FakeDeletedExperimentRepository(),
+              repository: repository)),
     );
     await tester.pumpAndSettle();
     expect(find.text('아직 실험 노트가 없습니다.'), findsOneWidget);
@@ -381,56 +396,128 @@ void main() {
     expect(find.text('Newly refreshed experiment'), findsOneWidget);
   });
 
-  testWidgets('confirms experiment deletion and restores it with undo', (
-    tester,
-  ) async {
-    final experiment = Experiment(
-      id: 'experiment-1',
-      title: 'Delete safety test',
-      experimentType: 'CCK-8',
-      createdAt: DateTime.utc(2026, 6, 8),
-      updatedAt: DateTime.utc(2026, 6, 8),
-    );
-    final repository = FakeExperimentRepository([experiment]);
-    final plateRepository = FakePlateRepository()
-      ..plate = Plate(
-        id: 'plate-1',
-        experimentId: experiment.id,
-        name: '96-well Plate',
+  for (final recovery in [
+    'undo',
+    'timeout',
+    'close',
+    'save failure',
+    'restore failure',
+    'accessible',
+    'narrow'
+  ]) {
+    testWidgets('deletion recovery: $recovery', (
+      tester,
+    ) async {
+      if (recovery == 'narrow') {
+        tester.view.physicalSize = const Size(320, 800);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+      }
+      final experiment = Experiment(
+        id: 'experiment-1',
+        title: 'Delete safety test',
+        experimentType: 'CCK-8',
+        createdAt: DateTime.utc(2026, 6, 8),
+        updatedAt: DateTime.utc(2026, 6, 8),
       );
+      final deletedRepository = FakeDeletedExperimentRepository()
+        ..failSave = recovery == 'save failure';
+      final repository = FakeExperimentRepository([experiment]);
+      final plateRepository = FakePlateRepository()
+        ..plate = Plate(
+          id: 'plate-1',
+          experimentId: experiment.id,
+          name: '96-well Plate',
+        );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: ExperimentsHomeScreen(
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                accessibleNavigation: recovery == 'accessible',
+                textScaler: TextScaler.linear(recovery == 'narrow' ? 1.6 : 1),
+              ),
+              child: child!),
+          home: ExperimentsHomeScreen(
+            deletedRepository: deletedRepository,
+            repository: repository,
+            plateRepository: plateRepository,
+            plateTemplateRepository: FakePlateTemplateRepository(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.byIcon(Icons.more_vert).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.more_vert).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('삭제'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('실험을 삭제할까요?'), findsOneWidget);
+      expect(repository.experiments, hasLength(1));
+      await tester.tap(
+        find.byKey(const ValueKey('confirm-delete-experiment-button')),
+      );
+      await tester.pumpAndSettle();
+
+      if (recovery == 'save failure') {
+        expect(repository.experiments, hasLength(1));
+        expect(plateRepository.plate, isNotNull);
+        expect(find.textContaining('실험을 삭제하지 못했습니다'), findsOneWidget);
+        return;
+      }
+      expect(repository.experiments, isEmpty);
+      expect(plateRepository.plate, isNull);
+      if (recovery == 'accessible') {
+        await tester.pump(const Duration(seconds: 12));
+        expect(find.text('실행 취소'), findsOneWidget);
+      }
+      if (recovery == 'undo' || recovery == 'accessible') {
+        await tester.tap(find.text('실행 취소'));
+      } else {
+        if (recovery == 'close' || recovery == 'narrow') {
+          await tester.tap(find.descendant(
+              of: find.byType(SnackBar), matching: find.byType(IconButton)));
+        } else {
+          await tester.pump(const Duration(seconds: 9));
+        }
+        await tester.pumpAndSettle();
+        expect(find.byType(SnackBar), findsNothing);
+        expect(repository.experiments, isEmpty);
+        // Recreate the home screen to ensure recovery does not rely on its callback.
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpWidget(MaterialApp(
+            home: ExperimentsHomeScreen(
           repository: repository,
           plateRepository: plateRepository,
+          deletedRepository: deletedRepository,
           plateTemplateRepository: FakePlateTemplateRepository(),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+        )));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('최근 삭제한 작업'));
+        await tester.pumpAndSettle();
+        if (recovery == 'restore failure') plateRepository.failNextSave = true;
+        await tester.tap(find.text('복구'));
+      }
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.more_vert).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('삭제'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('실험을 삭제할까요?'), findsOneWidget);
-    expect(repository.experiments, hasLength(1));
-    await tester.tap(
-      find.byKey(const ValueKey('confirm-delete-experiment-button')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(repository.experiments, isEmpty);
-    expect(plateRepository.plate, isNull);
-    await tester.tap(find.text('실행 취소'));
-    await tester.pumpAndSettle();
-
-    expect(repository.experiments.single.id, experiment.id);
-    expect(plateRepository.plate?.experimentId, experiment.id);
-    expect(find.text('Delete safety test'), findsOneWidget);
-  });
+      if (recovery == 'restore failure') {
+        expect(repository.experiments, isEmpty);
+        expect(deletedRepository.entries, hasLength(1));
+        await tester.tap(find.byTooltip('최근 삭제한 작업'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('복구'));
+        await tester.pumpAndSettle();
+      }
+      expect(repository.experiments.single.id, experiment.id);
+      expect(plateRepository.plate?.experimentId, experiment.id);
+      expect(find.text('Delete safety test'), findsOneWidget);
+      expect(deletedRepository.entries, isEmpty);
+    });
+  }
 
   testWidgets(
       'opens recovery when existing data cannot be read and requires explicit confirmation',
@@ -451,6 +538,7 @@ void main() {
     });
     await tester.pumpWidget(MaterialApp(
         home: ExperimentsHomeScreen(
+            deletedRepository: FakeDeletedExperimentRepository(),
             repository: repository,
             plateRepository: FakePlateRepository(),
             plateTemplateRepository: FakePlateTemplateRepository(),
@@ -517,6 +605,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: ExperimentsHomeScreen(
+          deletedRepository: FakeDeletedExperimentRepository(),
           repository: repository,
           plateRepository: plateRepository,
           plateTemplateRepository: FakePlateTemplateRepository(),
@@ -577,6 +666,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: ExperimentsHomeScreen(
+          deletedRepository: FakeDeletedExperimentRepository(),
           repository: FakeExperimentRepository([]),
           plateRepository: FakePlateRepository(),
           documentExchangeService: exchange,
@@ -639,6 +729,7 @@ void main() {
           child: child!,
         ),
         home: ExperimentsHomeScreen(
+          deletedRepository: FakeDeletedExperimentRepository(),
           repository: repository,
           plateRepository: plates,
           plateTemplateRepository: FakePlateTemplateRepository(),
@@ -710,6 +801,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: ExperimentsHomeScreen(
+          deletedRepository: FakeDeletedExperimentRepository(),
           repository: repository,
           plateRepository: plateRepository,
           plateTemplateRepository: FakePlateTemplateRepository(),
@@ -781,6 +873,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: ExperimentsHomeScreen(
+          deletedRepository: FakeDeletedExperimentRepository(),
           repository: repository,
           plateRepository: plateRepository,
           plateTemplateRepository: FakePlateTemplateRepository([template]),
@@ -840,6 +933,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: ExperimentsHomeScreen(
+          deletedRepository: FakeDeletedExperimentRepository(),
           repository: repository,
           plateRepository: plateRepository,
           plateTemplateRepository: FakePlateTemplateRepository([template]),
@@ -881,6 +975,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: ExperimentsHomeScreen(
+            deletedRepository: FakeDeletedExperimentRepository(),
             repository: repository,
             plateRepository: plateRepository,
             plateTemplateRepository: FakePlateTemplateRepository(),

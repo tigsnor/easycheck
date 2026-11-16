@@ -1,3 +1,4 @@
+import '../../support/deleted_experiment_fixture.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:easycheck/features/experiments/domain/experiment.dart';
@@ -46,6 +47,7 @@ void main() {
                 child: child!)
             : null,
         home: ExperimentsHomeScreen(
+            deletedRepository: FakeDeletedExperimentRepository(),
             repository: repo,
             plateRepository: FakePlateRepository(),
             plateTemplateRepository: FakePlateTemplateRepository(),
